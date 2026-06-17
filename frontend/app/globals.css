@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --dentia-background: #f8fafc;
+  --dentia-primary: #16a34a;
+  --dentia-secondary: #22c55e;
+  --dentia-soft: #bbf7d0;
+  --dentia-text: #1f2937;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--dentia-background);
+  color: var(--dentia-text);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
