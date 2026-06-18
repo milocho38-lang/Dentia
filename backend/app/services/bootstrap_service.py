@@ -2,10 +2,10 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from pwdlib import PasswordHash
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password, normalize_email
 from app.core.security_catalog import PERMISSIONS, ROLES, validate_security_catalog
 from app.models.associations import RolePermission, UserRole, UserSite
 from app.models.audit_event import AuditEvent
@@ -16,7 +16,6 @@ from app.models.site import Site
 from app.models.user import User
 
 
-PASSWORD_HASH = PasswordHash.recommended()
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 BOOTSTRAP_ADVISORY_LOCK_ID = 3_368_450_051
 
@@ -42,10 +41,6 @@ class BootstrapResult:
     admin_user_id: str
     permission_count: int
     role_count: int
-
-
-def normalize_email(email: str) -> str:
-    return email.strip().casefold()
 
 
 def validate_bootstrap_input(data: BootstrapInput) -> BootstrapInput:
@@ -153,7 +148,7 @@ def bootstrap_installation(
         name=data.admin_name,
         email=data.admin_email,
         normalized_email=normalize_email(data.admin_email),
-        password_hash=PASSWORD_HASH.hash(data.admin_password),
+        password_hash=hash_password(data.admin_password),
         status="Activo",
         failed_login_attempts=0,
         must_change_password=False,
