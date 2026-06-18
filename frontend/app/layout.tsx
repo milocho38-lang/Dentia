@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
+import { AuthProvider } from "@/providers/AuthProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Dentia",
-  description: "Plataforma de gestion odontologica",
+  title: {
+    default: "Dentia",
+    template: "%s | Dentia",
+  },
+  description: "Gestión Odontológica Inteligente",
 };
 
 export default function RootLayout({
@@ -13,7 +17,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }
