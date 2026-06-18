@@ -26,6 +26,11 @@ interface AuthContextValue {
   login: (credentials: LoginCredentials) => Promise<AuthUser>;
   logout: () => Promise<void>;
   refresh: () => Promise<AuthUser>;
+  changePassword: (data: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }) => Promise<AuthUser>;
   hasPermission: (permission: string) => boolean;
   hasAnyPermission: (permissions: string[]) => boolean;
 }
@@ -79,6 +84,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return session.user;
   }, [applySession]);
 
+  const changePassword = useCallback(
+    async (data: {
+      current_password: string;
+      new_password: string;
+      confirm_password: string;
+    }) => {
+      const session = await authService.changePassword(data);
+      applySession(session);
+      return session.user;
+    },
+    [applySession],
+  );
+
   const permissionSet = useMemo(
     () => new Set(user?.permissions ?? []),
     [user?.permissions],
@@ -91,11 +109,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       logout,
       refresh,
+      changePassword,
       hasPermission: (permission) => permissionSet.has(permission),
       hasAnyPermission: (permissions) =>
         permissions.some((permission) => permissionSet.has(permission)),
     }),
-    [login, logout, permissionSet, refresh, status, user],
+    [changePassword, login, logout, permissionSet, refresh, status, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

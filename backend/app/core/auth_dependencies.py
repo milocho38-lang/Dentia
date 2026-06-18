@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Annotated
 from uuid import UUID
 
@@ -90,3 +91,22 @@ def get_current_auth_context(
     context.auth_session.last_seen_at = utc_now()
     session.commit()
     return context
+
+
+def require_permission(permission: str) -> Callable:
+    def permission_dependency(
+        context: Annotated[AuthContext, Depends(get_current_auth_context)],
+    ) -> AuthContext:
+        if context.user.must_change_password:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debes cambiar tu contraseña antes de continuar.",
+            )
+        if permission not in context.permissions:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para realizar esta acción.",
+            )
+        return context
+
+    return permission_dependency

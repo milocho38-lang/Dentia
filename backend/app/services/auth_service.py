@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -10,6 +11,7 @@ from app.core.security import (
     create_refresh_token,
     email_fingerprint,
     get_refresh_session_id,
+    hash_password,
     hash_refresh_token,
     normalize_email,
     refresh_token_matches,
@@ -499,6 +501,84 @@ def logout(
         entity_id=context.auth_session.id,
     )
     session.commit()
+
+
+def change_password(
+    session: Session,
+    *,
+    context: AuthContext,
+    current_password: str,
+    new_password: str,
+    metadata: RequestMetadata,
+) -> tuple[TokenResponse, str, int]:
+    if not verify_password(current_password, context.user.password_hash):
+        raise AuthenticationError("La contraseña actual no es correcta.", 400)
+    if len(new_password) < 12:
+        raise AuthenticationError(
+            "La nueva contraseña debe tener al menos 12 caracteres.",
+            400,
+        )
+    if current_password == new_password:
+        raise AuthenticationError(
+            "La nueva contraseña debe ser diferente.",
+            400,
+        )
+
+    now = utc_now()
+    other_sessions = list(
+        session.scalars(
+            select(AuthSession).where(
+                AuthSession.user_id == context.user.id,
+                AuthSession.company_id == context.user.company_id,
+                AuthSession.id != context.auth_session.id,
+                AuthSession.is_active.is_(True),
+                AuthSession.revoked_at.is_(None),
+            )
+        )
+    )
+    for auth_session in other_sessions:
+        auth_session.is_active = False
+        auth_session.revoked_at = now
+        auth_session.revoked_by = context.user.id
+        auth_session.revoke_reason = "PASSWORD_CHANGED"
+
+    context.user.password_hash = hash_password(new_password)
+    context.user.password_changed_at = now
+    context.user.must_change_password = False
+    context.user.auth_version += 1
+
+    new_refresh_token = create_refresh_token(context.auth_session.id)
+    context.auth_session.refresh_token_hash = hash_refresh_token(
+        new_refresh_token
+    )
+    context.auth_session.rotation_counter += 1
+    context.auth_session.last_seen_at = now
+    context.auth_session.ip_address = metadata.ip_address
+    context.auth_session.user_agent = metadata.user_agent
+
+    _add_audit(
+        session,
+        action="PASSWORD_CHANGED",
+        result="SUCCESS",
+        metadata=metadata,
+        company_id=context.user.company_id,
+        user_id=context.user.id,
+        session_id=context.auth_session.id,
+        entity="user",
+        entity_id=context.user.id,
+        detail={"sessions_revoked": len(other_sessions)},
+    )
+    response = _build_token_response(
+        session,
+        context.user,
+        context.auth_session,
+    )
+    remaining_seconds = max(
+        0,
+        int((context.auth_session.expires_at - now).total_seconds()),
+    )
+    session.commit()
+    return response, new_refresh_token, remaining_seconds
 
 
 def register_access_denied(

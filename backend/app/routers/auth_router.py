@@ -15,9 +15,11 @@ from app.schemas.auth_schema import (
     MeResponse,
     TokenResponse,
 )
+from app.schemas.user_schema import ChangePasswordRequest
 from app.services.auth_service import (
     AuthContext,
     AuthenticationError,
+    change_password,
     login,
     logout,
     register_access_denied,
@@ -142,3 +144,25 @@ def me_endpoint(
         must_change_password=context.user.must_change_password,
         session_id=context.auth_session.id,
     )
+
+
+@router.post("/change-password", response_model=TokenResponse)
+def change_password_endpoint(
+    payload: ChangePasswordRequest,
+    request: Request,
+    response: Response,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(get_current_auth_context)],
+) -> TokenResponse:
+    try:
+        token_response, refresh_token, max_age = change_password(
+            session,
+            context=context,
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+            metadata=get_request_metadata(request),
+        )
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+    set_refresh_cookie(response, refresh_token, max_age)
+    return token_response

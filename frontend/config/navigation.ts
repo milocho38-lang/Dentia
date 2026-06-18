@@ -10,4 +10,9 @@ export const navigationItems: NavigationItem[] = [
     href: "/dashboard",
     permission: "dashboard.view",
   },
+  {
+    label: "Usuarios",
+    href: "/configuracion/usuarios",
+    permission: "users.view",
+  },
 ];

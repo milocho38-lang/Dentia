@@ -34,3 +34,20 @@ export async function logout(): Promise<LogoutResponse> {
     clearClientSession();
   }
 }
+
+export async function changePassword(data: {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}): Promise<TokenResponse> {
+  const response = await apiRequest<TokenResponse>(
+    "/api/auth/change-password",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+  setAccessToken(response.access_token);
+  return response;
+}

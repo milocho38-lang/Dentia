@@ -16,7 +16,7 @@ export function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forgotOpen, setForgotOpen] = useState(false);
-  const { login, status } = useAuth();
+  const { login, status, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = getSafeReturnUrl(searchParams.get("returnTo"));
@@ -24,9 +24,11 @@ export function LoginForm() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace(returnTo);
+      router.replace(
+        user?.must_change_password ? "/cambiar-contrasena" : returnTo,
+      );
     }
-  }, [returnTo, router, status]);
+  }, [returnTo, router, status, user?.must_change_password]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,8 +48,15 @@ export function LoginForm() {
 
     setSubmitting(true);
     try {
-      await login({ email: email.trim(), password });
-      router.replace(returnTo);
+      const authenticatedUser = await login({
+        email: email.trim(),
+        password,
+      });
+      router.replace(
+        authenticatedUser.must_change_password
+          ? "/cambiar-contrasena"
+          : returnTo,
+      );
     } catch (loginError) {
       setError(getLoginErrorMessage(loginError));
     } finally {
