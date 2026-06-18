@@ -34,12 +34,22 @@ El sistema deberá gestionar:
 
 Antes de realizar cualquier modificación, leer:
 
-1. docs/D001_ARQUITECTURA_FUNCIONAL.md
-2. docs/D002_REGLAS_NEGOCIO.md
-3. docs/D002A_CASOS_USO.md
-4. docs/D003_MODELO_DATOS.md
-5. docs/D004_ARQUITECTURA_TECNICA.md
-6. docs/D005_ROADMAP.md
+1. DOCS/D001 - ARQUITECTURA FUNCIONAL.md
+2. DOCS/D002 - REGLAS DE NEGOCIO.md
+3. DOCS/D002A - CASOS DE USO OPERATIVOS.md
+4. DOCS/D003A - MODELO DATOS.md
+5. DOCS/D003B - MODELO DATOS.md
+6. DOCS/D003C - MODELO DATOS.md
+7. DOCS/D003D - MODELO DATOS.md
+8. DOCS/D003E - MODELO DATOS.md
+9. DOCS/D004A - ARQUITECTURA TECNICA.md
+10. DOCS/D004B - ARQUITECTURA TECNICA.md
+11. DOCS/D004C - ARQUITECTURA TECNICA.md
+12. DOCS/D004D - ARQUITECTURA TECNICA.md
+13. DOCS/D004E - ARQUITECTURA TECNICA.md
+14. DOCS/D005 - ROADMAP DESARROLLO.md
+15. DOCS/D006 - IDENTIDAD VISUAL.md
+16. DOCS/HISTORIAL_DECISIONES.md
 
 Las decisiones de desarrollo deben respetar dichos documentos.
 
@@ -184,7 +194,7 @@ Después del desarrollo:
 
 Seguir estrictamente el orden definido en:
 
-docs/D005_ROADMAP.md
+DOCS/D005 - ROADMAP DESARROLLO.md
 
 No avanzar a módulos posteriores sin aprobación.
 

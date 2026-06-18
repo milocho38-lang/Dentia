@@ -186,7 +186,7 @@ odontologia-app/
 ├── backend/
 ├── database/
 ├── storage/
-├── docs/
+├── DOCS/
 ├── scripts/
 └── README.md
 ```

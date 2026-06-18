@@ -236,7 +236,7 @@ Fases posteriores al MVP:
 
 ## 8. Inconsistencias o vacios encontrados
 
-- Rutas y nombres de documentos: AGENTS.md referencia nombres como docs/D001_ARQUITECTURA_FUNCIONAL.md, pero los archivos reales estan en DOCS y usan nombres con espacios, por ejemplo D001 - ARQUITECTURA FUNCIONAL.md.
+- Rutas y nombres de documentos: esta inconsistencia fue corregida en C003B. La carpeta oficial es DOCS y AGENTS.md referencia los nombres reales de los archivos.
 - Nombre del archivo D006: el usuario lo menciona como DOCS/D006_IDENTIDAD_VISUAL.md, pero el archivo real encontrado es DOCS/D006 - IDENTIDAD VISUAL.md.
 - Codificacion de documentos: al leerlos aparecen caracteres corruptos en tildes y simbolos, lo que sugiere un problema de encoding que conviene normalizar antes de seguir documentando o automatizar lecturas.
 - Nombre del producto: D000 hablaba de "Nombre provisional: Dentia", mientras D006 ya establece "Dentia" como nombre comercial. Debe tratarse como nombre oficial desde este punto.

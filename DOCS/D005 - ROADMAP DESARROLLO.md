@@ -90,7 +90,7 @@ frontend/
 backend/
 database/
 storage/
-docs/
+DOCS/
 scripts/
 ```
 
