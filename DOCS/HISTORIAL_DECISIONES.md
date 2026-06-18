@@ -270,7 +270,23 @@ Documento relacionado:
 
 ---
 
-## DEC-020 Bloqueo por intentos fallidos
+## DEC-020 Slogan corporativo oficial
+
+El slogan corporativo oficial de Dentia será:
+
+```text
+Gestión Odontológica Inteligente
+```
+
+Este slogan reemplaza la formulación corporativa anterior.
+
+Documento relacionado:
+
+* D006 - Identidad Visual
+
+---
+
+## DEC-021 Bloqueo por intentos fallidos
 
 La política de bloqueo de autenticación será:
 

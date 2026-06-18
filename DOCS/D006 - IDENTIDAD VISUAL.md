@@ -10,6 +10,18 @@ Dentia queda confirmado como nombre oficial y definitivo del producto.
 
 ---
 
+## Slogan Corporativo
+
+El slogan corporativo oficial de Dentia es:
+
+```text
+Gestión Odontológica Inteligente
+```
+
+Este slogan reemplaza cualquier formulación corporativa anterior.
+
+---
+
 ## Concepto de Marca
 
 Dentia es una plataforma moderna para la gestión integral de consultorios y clínicas odontológicas.
