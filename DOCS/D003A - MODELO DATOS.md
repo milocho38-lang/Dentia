@@ -30,6 +30,7 @@ Representa el consultorio, clínica o profesional independiente.
 | ------------ | ------------ | ------------------------------------ |
 | id           | UUID         | Identificador único                  |
 | nombre       | VARCHAR(200) | Nombre comercial                     |
+| slug         | VARCHAR(100) | Identificador técnico de empresa     |
 | nit          | VARCHAR(50)  | Documento tributario                 |
 | telefono     | VARCHAR(50)  | Teléfono principal                   |
 | correo       | VARCHAR(200) | Correo principal                     |
@@ -37,6 +38,7 @@ Representa el consultorio, clínica o profesional independiente.
 | ciudad       | VARCHAR(100) | Ciudad                               |
 | tipo_empresa | VARCHAR(50)  | Independiente, consultorio o clínica |
 | estado       | VARCHAR(20)  | Activa/Inactiva                      |
+| installation_completed_at | DATETIME NULL | Finalización del bootstrap inicial |
 | created_at   | DATETIME     | Fecha creación                       |
 | updated_at   | DATETIME     | Fecha actualización                  |
 | created_by   | UUID         | Usuario creador                      |
@@ -99,11 +101,18 @@ Usuarios que ingresan al sistema.
 | ------------- | ------------ |
 | id            | UUID         |
 | empresa_id    | UUID         |
+| default_sede_id | UUID NULL   |
 | nombre        | VARCHAR(200) |
 | correo        | VARCHAR(200) |
+| correo_normalizado | VARCHAR(320) |
 | celular       | VARCHAR(50)  |
 | password_hash | TEXT         |
-| ultimo_login  | DATETIME     |
+| ultimo_login  | DATETIME NULL |
+| failed_login_attempts | INTEGER |
+| locked_until  | DATETIME NULL |
+| password_changed_at | DATETIME |
+| must_change_password | BOOLEAN |
+| auth_version  | INTEGER      |
 | estado        | VARCHAR(20)  |
 | created_at    | DATETIME     |
 | updated_at    | DATETIME     |
@@ -125,6 +134,10 @@ Juan Pérez
 ✓ Administrador
 ```
 
+Para el MVP, correo_normalizado será único dentro de la instalación.
+
+Las contraseñas se almacenarán con Argon2id.
+
 ---
 
 # Tabla: roles
@@ -136,10 +149,14 @@ Roles disponibles.
 | Campo       | Tipo         |
 | ----------- | ------------ |
 | id          | UUID         |
+| empresa_id  | UUID         |
+| codigo      | VARCHAR(100) |
 | nombre      | VARCHAR(100) |
 | descripcion | TEXT         |
 | created_at  | DATETIME     |
 | updated_at  | DATETIME     |
+| created_by  | UUID         |
+| is_active   | BOOLEAN      |
 
 ---
 
@@ -163,9 +180,12 @@ Relación entre usuarios y roles.
 | Campo      | Tipo     |
 | ---------- | -------- |
 | id         | UUID     |
+| empresa_id | UUID     |
 | usuario_id | UUID     |
 | rol_id     | UUID     |
 | created_at | DATETIME |
+| created_by | UUID     |
+| is_active  | BOOLEAN  |
 
 ---
 
@@ -186,8 +206,13 @@ Permisos individuales.
 | Campo       | Tipo         |
 | ----------- | ------------ |
 | id          | UUID         |
+| codigo      | VARCHAR(150) |
 | nombre      | VARCHAR(100) |
 | descripcion | TEXT         |
+| modulo      | VARCHAR(100) |
+| created_at  | DATETIME     |
+| updated_at  | DATETIME     |
+| is_active   | BOOLEAN      |
 
 ---
 
@@ -211,11 +236,14 @@ Asocia permisos a roles.
 
 ## Campos
 
-| Campo      | Tipo |
-| ---------- | ---- |
-| id         | UUID |
-| rol_id     | UUID |
-| permiso_id | UUID |
+| Campo      | Tipo     |
+| ---------- | -------- |
+| id         | UUID     |
+| rol_id     | UUID     |
+| permiso_id | UUID     |
+| created_at | DATETIME |
+| created_by | UUID     |
+| is_active  | BOOLEAN  |
 
 ---
 
@@ -224,6 +252,74 @@ Asocia permisos a roles.
 ```text
 roles N ─── N permisos
 ```
+
+---
+
+# Tabla: usuario_sedes
+
+Define las sedes disponibles para un usuario.
+
+## Campos
+
+| Campo       | Tipo     |
+| ----------- | -------- |
+| id          | UUID     |
+| empresa_id  | UUID     |
+| usuario_id  | UUID     |
+| sede_id     | UUID     |
+| es_principal | BOOLEAN |
+| created_at  | DATETIME |
+| created_by  | UUID     |
+| is_active   | BOOLEAN  |
+
+## Regla
+
+Los administradores acceden automáticamente a todas las sedes de su empresa,
+incluidas las creadas posteriormente.
+
+---
+
+# Tabla: auth_sessions
+
+Sesiones activas y revocadas.
+
+## Campos
+
+| Campo                  | Tipo          |
+| ---------------------- | ------------- |
+| id                     | UUID          |
+| empresa_id             | UUID          |
+| usuario_id             | UUID          |
+| sede_activa_id         | UUID NULL     |
+| refresh_token_hash     | TEXT          |
+| token_family_id        | UUID          |
+| ip_address             | VARCHAR(100)  |
+| user_agent             | TEXT          |
+| created_at             | DATETIME      |
+| last_seen_at           | DATETIME      |
+| expires_at             | DATETIME      |
+| revoked_at             | DATETIME NULL |
+| revoke_reason          | VARCHAR(100)  |
+| is_active              | BOOLEAN       |
+
+---
+
+# Tabla: auth_attempts
+
+Registra intentos de autenticación para bloqueo y auditoría.
+
+## Campos
+
+| Campo             | Tipo          |
+| ----------------- | ------------- |
+| id                | UUID          |
+| empresa_id        | UUID NULL     |
+| usuario_id        | UUID NULL     |
+| email_fingerprint | VARCHAR(128)  |
+| ip_address        | VARCHAR(100)  |
+| resultado         | VARCHAR(30)   |
+| motivo_fallo      | VARCHAR(50)   |
+| fecha             | DATETIME      |
 
 ---
 

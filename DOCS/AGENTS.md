@@ -49,7 +49,8 @@ Antes de realizar cualquier modificación, leer:
 13. DOCS/D004E - ARQUITECTURA TECNICA.md
 14. DOCS/D005 - ROADMAP DESARROLLO.md
 15. DOCS/D006 - IDENTIDAD VISUAL.md
-16. DOCS/HISTORIAL_DECISIONES.md
+16. DOCS/D007 - SEGURIDAD Y AUTENTICACION.md
+17. DOCS/HISTORIAL_DECISIONES.md
 
 Las decisiones de desarrollo deben respetar dichos documentos.
 

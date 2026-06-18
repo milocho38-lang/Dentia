@@ -76,7 +76,7 @@ JWT
 ## Hash de Contraseñas
 
 ```text
-bcrypt
+Argon2id
 ```
 
 ---
@@ -410,12 +410,19 @@ Contraseña
 ```text
 Login
  ↓
-JWT
+Access Token JWT
+ +
+Refresh Token
  ↓
 Frontend
  ↓
 API
 ```
+
+El Access Token tendrá una duración de 15 minutos.
+
+El Refresh Token tendrá una duración máxima de 8 horas y expirará tras 60
+minutos de inactividad.
 
 ---
 

@@ -877,3 +877,124 @@ Ejemplo:
 * Administrador.
 
 Esto permitirá operación en consultorios donde el odontólogo realiza funciones administrativas.
+
+---
+
+## 24. Seguridad y Autenticación Aprobada
+
+### RN-090
+
+El login del MVP se realizará mediante:
+
+* Correo.
+* Contraseña.
+
+No se solicitará empresa en la pantalla de login.
+
+---
+
+### RN-091
+
+El correo deberá ser único dentro de la instalación actual.
+
+La arquitectura conservará empresa_id para soportar multiempresa futura.
+
+---
+
+### RN-092
+
+Las contraseñas se almacenarán con Argon2id.
+
+La política será:
+
+* Mínimo 12 caracteres.
+* Permitir espacios y Unicode.
+* No exigir combinaciones artificiales.
+* No forzar cambios periódicos.
+
+---
+
+### RN-093
+
+La sesión utilizará:
+
+* Access Token JWT con duración de 15 minutos.
+* Refresh Token con duración máxima de 8 horas.
+* Expiración por inactividad de 60 minutos.
+
+---
+
+### RN-094
+
+El Access Token se almacenará en memoria.
+
+El Refresh Token se almacenará en cookie HttpOnly.
+
+---
+
+### RN-095
+
+El sistema permitirá múltiples sesiones simultáneas por usuario.
+
+Cada sesión podrá revocarse de manera independiente.
+
+---
+
+### RN-096
+
+Los roles serán empresariales.
+
+El acceso a sedes se controlará separadamente mediante usuario_sedes.
+
+---
+
+### RN-097
+
+Cambiar de sede activa:
+
+* Generará un nuevo Access Token.
+* No requerirá nueva autenticación.
+* Solo permitirá sedes autorizadas.
+
+---
+
+### RN-098
+
+El rol Administrador tendrá acceso automático a todas las sedes presentes y futuras de su empresa.
+
+---
+
+### RN-099
+
+La recuperación de contraseña del MVP será administrativa.
+
+SMTP y recuperación por correo se implementarán en fases posteriores.
+
+---
+
+### RN-100
+
+La arquitectura quedará preparada para MFA futuro.
+
+MFA no se implementará en el MVP.
+
+---
+
+### RN-101
+
+Los modelos mínimos de empresa y sede se crearán durante C005 para establecer el contexto de seguridad.
+
+Su gestión funcional completa se mantiene en C008 y C009.
+
+---
+
+### RN-102
+
+Cinco intentos fallidos consecutivos bloquearán la cuenta durante 15 minutos.
+
+Reglas adicionales:
+
+* Un login exitoso reiniciará el contador.
+* No habrá bloqueo permanente automático.
+* Un administrador autorizado podrá desbloquear la cuenta.
+* Existirá limitación adicional por IP.

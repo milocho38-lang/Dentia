@@ -82,9 +82,11 @@ API
 
 1. Usuario inicia sesión.
 2. Backend valida credenciales.
-3. Backend genera JWT.
-4. Frontend almacena token.
-5. Cada solicitud incluirá JWT.
+3. Backend crea una sesión.
+4. Backend genera Access Token JWT.
+5. Backend entrega Refresh Token mediante cookie HttpOnly.
+6. Frontend mantiene el Access Token en memoria.
+7. Cada solicitud protegida incluye el Access Token.
 
 ---
 
@@ -94,8 +96,10 @@ Información mínima:
 
 ```json
 {
-  "user_id": "",
+  "sub": "",
+  "sid": "",
   "empresa_id": "",
+  "sede_id": "",
   "roles": []
 }
 ```
@@ -105,14 +109,26 @@ Información mínima:
 ## Duración Inicial
 
 ```text
-8 horas
+15 minutos
 ```
 
 ---
 
 ## Renovación
 
-Se implementará mecanismo de refresh token en fases posteriores.
+El Refresh Token se implementará desde C005.
+
+Duración máxima:
+
+```text
+8 horas
+```
+
+Expiración por inactividad:
+
+```text
+60 minutos
+```
 
 ---
 
@@ -125,30 +141,19 @@ Nunca se almacenarán en texto plano.
 ## Hash
 
 ```text
-bcrypt
+Argon2id
 ```
 
 ---
 
 ## Restricciones Iniciales
 
-Mínimo:
+Reglas:
 
-```text
-8 caracteres
-```
-
----
-
-## Recomendación
-
-Solicitar:
-
-```text
-Mayúscula
-Minúscula
-Número
-```
+* Mínimo 12 caracteres.
+* Permitir espacios y Unicode.
+* No exigir combinaciones artificiales.
+* No forzar cambios periódicos.
 
 ---
 
@@ -262,7 +267,13 @@ No podrá ingresar nuevamente
 
 ## Sesiones activas
 
-Podrán invalidarse desde administración en fases futuras.
+Se implementarán desde C005.
+
+El sistema permitirá múltiples sesiones simultáneas y revocación individual o
+global.
+
+La sede activa podrá cambiarse sin nueva autenticación y generará un nuevo
+Access Token.
 
 ---
 
@@ -299,7 +310,10 @@ Toda configuración sensible deberá almacenarse fuera del código.
 ```text
 DATABASE_URL
 JWT_SECRET
-JWT_EXPIRATION
+JWT_ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_HOURS
+SESSION_IDLE_TIMEOUT_MINUTES
 STORAGE_PATH
 OPENAI_API_KEY
 ```

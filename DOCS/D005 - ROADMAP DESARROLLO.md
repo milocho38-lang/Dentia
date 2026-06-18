@@ -163,13 +163,35 @@ Base conectada.
 
 ---
 
+## C005A - Documentación de Seguridad y Autenticación
+
+Incluye:
+
+- Decisiones oficiales de autenticación.
+- Diseño de sesiones y tokens.
+- Política de contraseñas.
+- Diseño multiempresa y multisede.
+- Auditoría de accesos.
+
+---
+
 ## C005 - Login
 
 Incluye:
 
-- Usuario.
+- Modelos mínimos de empresa y sede.
+- Usuarios.
 - Contraseña.
-- JWT.
+- Argon2id.
+- Access Token JWT.
+- Refresh Token.
+- Sesiones activas.
+- Login y logout.
+- Bloqueo por intentos fallidos.
+- Cambio de contraseña.
+- Recuperación administrativa.
+- Protección de rutas y endpoints.
+- Auditoría de accesos.
 
 ---
 
@@ -182,6 +204,11 @@ Incluye:
 - Odontólogo.
 - Odontólogo Administrador.
 
+Nota:
+
+C005 crea la estructura mínima y los roles iniciales requeridos para
+autenticación. C006 implementa su gestión funcional.
+
 ---
 
 ## C007 - Permisos
@@ -193,6 +220,11 @@ Incluye:
 - Consultar.
 - Eliminar lógico.
 
+Nota:
+
+C005 crea el catálogo y las asignaciones mínimas requeridas para proteger
+endpoints. C007 implementa su administración funcional.
+
 ---
 
 ## C008 - Empresas
@@ -201,6 +233,11 @@ Incluye:
 
 - Datos empresa.
 - Configuración básica.
+
+Nota:
+
+C005 crea el modelo mínimo de empresa requerido por seguridad. C008 completa
+su gestión funcional.
 
 ---
 
@@ -212,6 +249,11 @@ Incluye:
 - Editar.
 - Activar.
 - Inactivar.
+
+Nota:
+
+C005 crea el modelo mínimo de sede y usuario_sedes. C009 completa la gestión
+funcional de sedes.
 
 ---
 

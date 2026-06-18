@@ -603,13 +603,11 @@ Zustand
 
 # 24. Autenticación
 
-El frontend almacenará:
+El frontend mantendrá el Access Token JWT únicamente en memoria.
 
-```text
-JWT
-```
+El Refresh Token se almacenará en cookie HttpOnly.
 
-en almacenamiento seguro del navegador.
+No se utilizará localStorage ni sessionStorage para tokens.
 
 ---
 
@@ -619,6 +617,7 @@ en almacenamiento seguro del navegador.
 - Logout.
 - Renovación de sesión.
 - Protección de rutas.
+- Selección de sede autorizada.
 
 ---
 

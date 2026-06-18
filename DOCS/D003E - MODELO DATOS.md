@@ -236,17 +236,20 @@ Registro de acciones críticas.
 
 ### Campos
 
-| Campo      | Tipo         |
-| ---------- | ------------ |
-| id         | UUID         |
-| empresa_id | UUID         |
-| usuario_id | UUID         |
-| entidad    | VARCHAR(100) |
-| entidad_id | UUID         |
-| accion     | VARCHAR(100) |
-| detalle    | TEXT         |
-| ip_origen  | VARCHAR(100) |
-| fecha      | DATETIME     |
+| Campo       | Tipo          |
+| ----------- | ------------- |
+| id          | UUID          |
+| empresa_id  | UUID NULL     |
+| usuario_id  | UUID NULL     |
+| session_id  | UUID NULL     |
+| entidad     | VARCHAR(100)  |
+| entidad_id  | UUID NULL     |
+| accion      | VARCHAR(100)  |
+| resultado   | VARCHAR(30)   |
+| detalle     | TEXT          |
+| ip_origen   | VARCHAR(100)  |
+| user_agent  | TEXT          |
+| fecha       | DATETIME      |
 
 ---
 
@@ -262,6 +265,13 @@ Reversar Pago
 Modificar Evolución
 Finalizar Tratamiento
 Anular Documento
+Login Exitoso
+Login Fallido
+Logout
+Cambio de Contraseña
+Sesión Revocada
+Cambio de Sede
+Acceso Denegado
 ```
 
 ---

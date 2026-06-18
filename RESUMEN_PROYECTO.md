@@ -107,7 +107,7 @@ Frontend:
 
 Backend:
 
-- Python 3.12+, FastAPI, SQLAlchemy, Alembic, Pydantic, JWT y bcrypt.
+- Python 3.12+, FastAPI, SQLAlchemy, Alembic, Pydantic, JWT y Argon2id.
 - Arquitectura por capas: Router, Service, Repository, Database.
 - La capa Service concentra reglas de negocio, validaciones clinicas, financieras, permisos, auditoria y generacion de alertas.
 - API REST como unico canal entre frontend y backend.
@@ -230,7 +230,7 @@ Fases posteriores al MVP:
 - Manejo de fechas y zonas horarias: se recomienda UTC, pero falta definir zona local por empresa o sede y reglas para agenda.
 - Estados como texto controlado: agiliza el inicio, pero puede generar inconsistencias si no se centralizan constantes y validaciones.
 - Consistencia visual: D006 define paleta y estilo, pero aun falta convertirlo en sistema de diseno concreto con tokens, componentes base, reglas de espaciado, tipografia y estados interactivos.
-- Seguridad de JWT y almacenamiento en frontend: se menciona almacenamiento seguro, pero falta decision especifica sobre cookies httpOnly vs almacenamiento del navegador.
+- Seguridad de JWT y almacenamiento en frontend: definido en D007. Access Token en memoria y Refresh Token en cookie HttpOnly.
 - Pruebas: los documentos exigen pruebas por modulo, services, endpoints y validaciones, pero aun no detallan estrategia minima, fixtures o datos semilla.
 - Instalacion local: se desea facilidad de instalacion, pero Python, Node.js, PostgreSQL y storage pueden ser una barrera si no se define automatizacion.
 
@@ -257,5 +257,5 @@ Fases posteriores al MVP:
 - Reportes: estan definidos funcionalmente, pero no se detallan metricas exactas, filtros obligatorios ni permisos por rol.
 - Identidad visual incompleta: D006 define paleta, estilo y lineamientos generales, pero el logo esta pendiente y no se especifica tipografia, iconografia, densidad exacta de tablas, variantes de botones, estados hover/focus/disabled ni criterios de accesibilidad de contraste.
 - Backups: se recomienda backup diario, pero falta definir retencion, ubicacion, cifrado, restauracion probada y responsable operativo en instalacion local.
-- Refresh token: queda para fases posteriores; para MVP con JWT de 8 horas falta definir comportamiento de expiracion, renovacion manual y cierre de sesion.
+- Refresh token: definido para C005 con rotacion, duracion maxima de 8 horas e inactividad de 60 minutos. El Access Token dura 15 minutos.
 - Eliminacion logica universal: se prohiben eliminaciones fisicas en tablas criticas, pero algunos historiales y tablas puente no incluyen is_active. Falta clasificacion formal de tablas criticas, historicas, puente y catalogos.

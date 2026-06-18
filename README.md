@@ -97,3 +97,26 @@ alembic -c alembic.ini revision --autogenerate -m "descripcion"
 
 La migración inicial de C004 no crea tablas de negocio. Únicamente establece la
 línea base de Alembic.
+
+## Instalación inicial de seguridad
+
+Después de aplicar todas las migraciones, ejecute desde `backend/`:
+
+```bash
+python -m app.cli.bootstrap
+```
+
+También puede proporcionar los datos no sensibles como argumentos:
+
+```bash
+python -m app.cli.bootstrap \
+  --company-name "Mi Consultorio" \
+  --company-slug "mi-consultorio" \
+  --site-name "Sede Principal" \
+  --admin-name "Administrador" \
+  --admin-email "admin@consultorio.local"
+```
+
+La contraseña siempre se solicita de forma oculta por consola. El comando solo
+funciona cuando no existen empresas ni usuarios y realiza toda la instalación
+en una única transacción.

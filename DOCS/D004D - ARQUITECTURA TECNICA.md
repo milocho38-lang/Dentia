@@ -254,11 +254,15 @@ empresa_id + documento
 
 ## Usuarios
 
-No podrá existir más de un usuario con el mismo correo dentro de la misma empresa.
+Para el MVP no podrá existir más de un usuario con el mismo correo normalizado
+dentro de la instalación.
 
 ```text
-empresa_id + correo
+correo_normalizado
 ```
+
+empresa_id se conservará en usuarios y entidades de seguridad para soportar la
+evolución futura a multiempresa SaaS.
 
 ---
 
