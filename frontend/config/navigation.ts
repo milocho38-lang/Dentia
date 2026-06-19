@@ -11,6 +11,11 @@ export const navigationItems: NavigationItem[] = [
     permission: "dashboard.view",
   },
   {
+    label: "Agenda",
+    href: "/agenda",
+    permission: "appointments.view",
+  },
+  {
     label: "Usuarios",
     href: "/configuracion/usuarios",
     permission: "users.view",

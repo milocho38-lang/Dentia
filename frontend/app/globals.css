@@ -80,3 +80,38 @@ a {
 .dentia-pulse {
   animation: dentia-pulse 1.4s ease-in-out infinite;
 }
+
+.dentia-calendar .fc {
+  --fc-border-color: #e2e8f0;
+  --fc-page-bg-color: #ffffff;
+  --fc-neutral-bg-color: #f8fafc;
+  --fc-today-bg-color: rgba(34, 197, 94, 0.05);
+  color: #334155;
+  font-size: 0.875rem;
+}
+
+.dentia-calendar .fc-theme-standard td,
+.dentia-calendar .fc-theme-standard th {
+  border-color: #e2e8f0;
+}
+
+.dentia-calendar .fc-timegrid-slot {
+  height: 1.15rem;
+}
+
+.dentia-calendar .fc-timegrid-slot-label {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.dentia-calendar .fc-col-header-cell-cushion {
+  padding: 0.8rem 0.25rem;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.dentia-calendar .fc-event {
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 5px rgb(15 23 42 / 0.12);
+  cursor: pointer;
+}

@@ -60,6 +60,7 @@ export function Sidebar({
           <nav className="mt-3 space-y-1" aria-label="Navegación principal">
             {visibleItems.map((item) => {
               const active = pathname === item.href;
+              const isAgenda = item.href === "/agenda";
               return (
                 <Link
                   key={item.href}
@@ -80,12 +81,22 @@ export function Sidebar({
                     }`}
                   >
                     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none">
-                      <path
-                        d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-12h6V4h-6v4Z"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinejoin="round"
-                      />
+                      {isAgenda ? (
+                        <path
+                          d="M7 3v3m10-3v3M4.5 9h15M6 5h12a2 2 0 0 1 2 2v12H4V7a2 2 0 0 1 2-2Zm2 8h3v3H8v-3Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      ) : (
+                        <path
+                          d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-12h6V4h-6v4Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                      )}
                     </svg>
                   </span>
                   {item.label}

@@ -14,6 +14,7 @@ from app.models.permission import Permission
 from app.models.role import Role
 from app.models.site import Site
 from app.models.user import User
+from app.services.agenda_service import ensure_agenda_seed_data
 
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -191,6 +192,13 @@ def bootstrap_installation(
                     created_by=admin.id,
                 )
             )
+
+    ensure_agenda_seed_data(
+        session,
+        company_id=company.id,
+        admin_user=admin,
+        site=site,
+    )
 
     completed_at = datetime.now(timezone.utc)
     company.installation_completed_at = completed_at

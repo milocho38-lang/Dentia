@@ -1,0 +1,849 @@
+from datetime import datetime, timezone
+from uuid import UUID
+
+from sqlalchemy import and_, or_, select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.models.agenda import (
+    Appointment,
+    AppointmentHistory,
+    AppointmentType,
+    Dentist,
+    DentistSite,
+    Patient,
+)
+from app.models.associations import UserSite
+from app.models.audit_event import AuditEvent
+from app.models.site import Site
+from app.models.user import User
+from app.schemas.agenda_schema import (
+    AgendaEventsResponse,
+    AgendaOptionsResponse,
+    AppointmentCreateRequest,
+    AppointmentResponse,
+    AppointmentRescheduleRequest,
+    AppointmentTypeOptionResponse,
+    AppointmentUpdateRequest,
+    DentistOptionResponse,
+    PatientQuickCreateRequest,
+    PatientResponse,
+    SiteOptionResponse,
+)
+from app.services.auth_service import AuthContext, RequestMetadata
+
+
+ACTIVE_CONFLICT_STATES = {"Programada", "Confirmada"}
+TERMINAL_STATES = {"Atendida", "Cancelada", "No Asistió", "Reprogramada"}
+INITIAL_APPOINTMENT_TYPES = (
+    ("Valoración", 30),
+    ("Control", 30),
+    ("Limpieza", 45),
+    ("Tratamiento", 60),
+    ("Urgencia", 30),
+    ("Retiro de puntos", 15),
+    ("Impresión", 15),
+)
+
+
+class AgendaError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 400,
+        *,
+        conflicts: list[AppointmentResponse] | None = None,
+        can_overbook: bool = False,
+    ):
+        super().__init__(message)
+        self.status_code = status_code
+        self.conflicts = conflicts
+        self.can_overbook = can_overbook
+
+
+def _authorized_site_ids(session: Session, context: AuthContext) -> set[UUID]:
+    return set(
+        session.scalars(
+            select(UserSite.site_id).where(
+                UserSite.company_id == context.user.company_id,
+                UserSite.user_id == context.user.id,
+                UserSite.is_active.is_(True),
+            )
+        )
+    )
+
+
+def _require_site(
+    session: Session,
+    context: AuthContext,
+    site_id: UUID,
+) -> Site:
+    if site_id not in _authorized_site_ids(session, context):
+        raise AgendaError("No tienes acceso a la sede seleccionada.", 403)
+    site = session.scalar(
+        select(Site).where(
+            Site.id == site_id,
+            Site.company_id == context.user.company_id,
+            Site.is_active.is_(True),
+            Site.status == "Activa",
+        )
+    )
+    if site is None:
+        raise AgendaError("La sede seleccionada no está disponible.")
+    return site
+
+
+def _require_patient(
+    session: Session,
+    context: AuthContext,
+    patient_id: UUID,
+) -> Patient:
+    patient = session.scalar(
+        select(Patient).where(
+            Patient.id == patient_id,
+            Patient.company_id == context.user.company_id,
+            Patient.is_active.is_(True),
+        )
+    )
+    if patient is None:
+        raise AgendaError("El paciente no existe o no está disponible.")
+    return patient
+
+
+def _require_type(
+    session: Session,
+    context: AuthContext,
+    appointment_type_id: UUID,
+) -> AppointmentType:
+    appointment_type = session.scalar(
+        select(AppointmentType).where(
+            AppointmentType.id == appointment_type_id,
+            AppointmentType.company_id == context.user.company_id,
+            AppointmentType.is_active.is_(True),
+        )
+    )
+    if appointment_type is None:
+        raise AgendaError("El tipo de cita no existe o no está disponible.")
+    return appointment_type
+
+
+def _require_dentist_site(
+    session: Session,
+    context: AuthContext,
+    dentist_id: UUID,
+    site_id: UUID,
+) -> Dentist:
+    dentist = session.scalar(
+        select(Dentist)
+        .join(DentistSite, DentistSite.dentist_id == Dentist.id)
+        .where(
+            Dentist.id == dentist_id,
+            Dentist.company_id == context.user.company_id,
+            Dentist.is_active.is_(True),
+            Dentist.status == "Activo",
+            DentistSite.site_id == site_id,
+            DentistSite.is_active.is_(True),
+        )
+    )
+    if dentist is None:
+        raise AgendaError("El odontólogo no está asociado a la sede.")
+    return dentist
+
+
+def _appointment_row(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    *,
+    lock: bool = False,
+):
+    statement = (
+        select(Appointment, Patient, Dentist, Site, AppointmentType)
+        .join(Patient, Patient.id == Appointment.patient_id)
+        .join(Dentist, Dentist.id == Appointment.dentist_id)
+        .join(Site, Site.id == Appointment.site_id)
+        .join(
+            AppointmentType,
+            AppointmentType.id == Appointment.appointment_type_id,
+        )
+        .where(
+            Appointment.id == appointment_id,
+            Appointment.company_id == context.user.company_id,
+            Appointment.is_active.is_(True),
+        )
+    )
+    if lock:
+        statement = statement.with_for_update(of=Appointment)
+    row = session.execute(statement).one_or_none()
+    if row is None:
+        raise AgendaError("Cita no encontrada.", 404)
+    if row[0].site_id not in _authorized_site_ids(session, context):
+        raise AgendaError("No tienes acceso a esta cita.", 403)
+    return row
+
+
+def _to_response(row) -> AppointmentResponse:
+    appointment, patient, dentist, site, appointment_type = row
+    return AppointmentResponse(
+        id=appointment.id,
+        patient_id=patient.id,
+        patient_name=f"{patient.first_names} {patient.last_names}".strip(),
+        patient_mobile=patient.mobile,
+        dentist_id=dentist.id,
+        dentist_name=dentist.name,
+        site_id=site.id,
+        site_name=site.name,
+        appointment_type_id=appointment_type.id,
+        appointment_type_name=appointment_type.name,
+        origin_appointment_id=appointment.origin_appointment_id,
+        starts_at=appointment.starts_at,
+        ends_at=appointment.ends_at,
+        reason=appointment.reason,
+        notes=appointment.notes,
+        status=appointment.status,
+        is_overbook=appointment.is_overbook,
+        overbook_reason=appointment.overbook_reason,
+        confirmation_method=appointment.confirmation_method,
+        confirmed_at=appointment.confirmed_at,
+    )
+
+
+def _load_responses(
+    session: Session,
+    appointment_ids: list[UUID],
+) -> list[AppointmentResponse]:
+    if not appointment_ids:
+        return []
+    rows = session.execute(
+        select(Appointment, Patient, Dentist, Site, AppointmentType)
+        .join(Patient, Patient.id == Appointment.patient_id)
+        .join(Dentist, Dentist.id == Appointment.dentist_id)
+        .join(Site, Site.id == Appointment.site_id)
+        .join(
+            AppointmentType,
+            AppointmentType.id == Appointment.appointment_type_id,
+        )
+        .where(Appointment.id.in_(appointment_ids))
+        .order_by(Appointment.starts_at)
+    )
+    return [_to_response(row) for row in rows]
+
+
+def _find_conflicts(
+    session: Session,
+    *,
+    company_id: UUID,
+    patient_id: UUID,
+    dentist_id: UUID,
+    starts_at: datetime,
+    ends_at: datetime,
+    exclude_id: UUID | None = None,
+) -> tuple[list[UUID], list[UUID]]:
+    common = [
+        Appointment.company_id == company_id,
+        Appointment.is_active.is_(True),
+        Appointment.status.in_(ACTIVE_CONFLICT_STATES),
+        Appointment.starts_at < ends_at,
+        Appointment.ends_at > starts_at,
+    ]
+    if exclude_id:
+        common.append(Appointment.id != exclude_id)
+    dentist_ids = list(
+        session.scalars(
+            select(Appointment.id).where(
+                *common,
+                Appointment.dentist_id == dentist_id,
+            )
+        )
+    )
+    patient_ids = list(
+        session.scalars(
+            select(Appointment.id).where(
+                *common,
+                Appointment.patient_id == patient_id,
+            )
+        )
+    )
+    return dentist_ids, patient_ids
+
+
+def _validate_conflicts(
+    session: Session,
+    context: AuthContext,
+    *,
+    patient_id: UUID,
+    dentist_id: UUID,
+    starts_at: datetime,
+    ends_at: datetime,
+    is_overbook: bool,
+    appointment_type: AppointmentType,
+    exclude_id: UUID | None = None,
+) -> None:
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"agenda:{context.user.company_id}:{dentist_id}"},
+    )
+    dentist_ids, patient_ids = _find_conflicts(
+        session,
+        company_id=context.user.company_id,
+        patient_id=patient_id,
+        dentist_id=dentist_id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        exclude_id=exclude_id,
+    )
+    if patient_ids:
+        raise AgendaError(
+            "El paciente ya tiene una cita en ese horario.",
+            409,
+            conflicts=_load_responses(session, patient_ids),
+        )
+    if dentist_ids:
+        can_overbook = (
+            "appointments.overbook" in context.permissions
+            and appointment_type.allows_overbook
+        )
+        if not is_overbook:
+            raise AgendaError(
+                "El odontólogo ya tiene una cita en ese horario.",
+                409,
+                conflicts=_load_responses(session, dentist_ids),
+                can_overbook=can_overbook,
+            )
+        if not can_overbook:
+            raise AgendaError(
+                "No tienes permiso para crear sobrecupos.",
+                403,
+                conflicts=_load_responses(session, dentist_ids),
+            )
+    elif is_overbook:
+        raise AgendaError(
+            "Solo puedes marcar sobrecupo cuando existe un cruce de horario."
+        )
+
+
+def _audit(
+    session: Session,
+    context: AuthContext,
+    metadata: RequestMetadata,
+    *,
+    appointment_id: UUID,
+    action: str,
+    detail: dict | None = None,
+) -> None:
+    session.add(
+        AuditEvent(
+            company_id=context.user.company_id,
+            user_id=context.user.id,
+            session_id=context.auth_session.id,
+            entity="appointment",
+            entity_id=appointment_id,
+            action=action,
+            result="SUCCESS",
+            detail=detail,
+            ip_address=metadata.ip_address,
+            user_agent=metadata.user_agent,
+        )
+    )
+
+
+def _history(
+    session: Session,
+    context: AuthContext,
+    appointment: Appointment,
+    *,
+    previous_status: str | None,
+    new_status: str,
+    reason: str | None = None,
+    related_id: UUID | None = None,
+    previous_starts_at: datetime | None = None,
+    new_starts_at: datetime | None = None,
+) -> None:
+    session.add(
+        AppointmentHistory(
+            company_id=context.user.company_id,
+            appointment_id=appointment.id,
+            related_appointment_id=related_id,
+            previous_status=previous_status,
+            new_status=new_status,
+            previous_starts_at=previous_starts_at,
+            new_starts_at=new_starts_at,
+            reason=reason,
+            user_id=context.user.id,
+        )
+    )
+
+
+def create_quick_patient(
+    session: Session,
+    context: AuthContext,
+    payload: PatientQuickCreateRequest,
+    metadata: RequestMetadata,
+) -> PatientResponse:
+    patient = Patient(
+        company_id=context.user.company_id,
+        first_names=payload.first_names,
+        last_names=payload.last_names,
+        document=payload.document,
+        mobile=payload.mobile,
+        created_by=context.user.id,
+    )
+    session.add(patient)
+    session.add(
+        AuditEvent(
+            company_id=context.user.company_id,
+            user_id=context.user.id,
+            session_id=context.auth_session.id,
+            entity="patient",
+            entity_id=patient.id,
+            action="PATIENT_QUICK_CREATED",
+            result="SUCCESS",
+            detail={"document": payload.document},
+            ip_address=metadata.ip_address,
+            user_agent=metadata.user_agent,
+        )
+    )
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise AgendaError("Ya existe un paciente con ese documento.", 409)
+    return PatientResponse(
+        id=patient.id,
+        first_names=patient.first_names,
+        last_names=patient.last_names,
+        full_name=f"{patient.first_names} {patient.last_names}".strip(),
+        document=patient.document,
+        mobile=patient.mobile,
+    )
+
+
+def get_options(
+    session: Session,
+    context: AuthContext,
+) -> AgendaOptionsResponse:
+    site_ids = _authorized_site_ids(session, context)
+    sites = list(
+        session.scalars(
+            select(Site)
+            .where(
+                Site.company_id == context.user.company_id,
+                Site.id.in_(site_ids),
+                Site.is_active.is_(True),
+                Site.status == "Activa",
+            )
+            .order_by(Site.name)
+        )
+    )
+    dentist_rows = session.execute(
+        select(Dentist, DentistSite.site_id)
+        .join(DentistSite, DentistSite.dentist_id == Dentist.id)
+        .where(
+            Dentist.company_id == context.user.company_id,
+            Dentist.is_active.is_(True),
+            Dentist.status == "Activo",
+            DentistSite.site_id.in_(site_ids),
+            DentistSite.is_active.is_(True),
+        )
+        .order_by(Dentist.name)
+    )
+    dentists_by_id: dict[UUID, DentistOptionResponse] = {}
+    for dentist, site_id in dentist_rows:
+        option = dentists_by_id.get(dentist.id)
+        if option is None:
+            option = DentistOptionResponse(
+                id=dentist.id,
+                name=dentist.name,
+                site_ids=[],
+            )
+            dentists_by_id[dentist.id] = option
+        option.site_ids.append(site_id)
+    appointment_types = list(
+        session.scalars(
+            select(AppointmentType)
+            .where(
+                AppointmentType.company_id == context.user.company_id,
+                AppointmentType.is_active.is_(True),
+            )
+            .order_by(AppointmentType.name)
+        )
+    )
+    patients = list(
+        session.scalars(
+            select(Patient)
+            .where(
+                Patient.company_id == context.user.company_id,
+                Patient.is_active.is_(True),
+            )
+            .order_by(Patient.first_names, Patient.last_names)
+            .limit(500)
+        )
+    )
+    return AgendaOptionsResponse(
+        dentists=list(dentists_by_id.values()),
+        sites=[SiteOptionResponse(id=site.id, name=site.name) for site in sites],
+        appointment_types=[
+            AppointmentTypeOptionResponse(
+                id=item.id,
+                name=item.name,
+                suggested_duration_minutes=item.suggested_duration_minutes,
+            )
+            for item in appointment_types
+        ],
+        patients=[
+            PatientResponse(
+                id=patient.id,
+                first_names=patient.first_names,
+                last_names=patient.last_names,
+                full_name=f"{patient.first_names} {patient.last_names}".strip(),
+                document=patient.document,
+                mobile=patient.mobile,
+            )
+            for patient in patients
+        ],
+    )
+
+
+def get_events(
+    session: Session,
+    context: AuthContext,
+    *,
+    starts_at: datetime,
+    ends_at: datetime,
+    dentist_id: UUID | None,
+    site_id: UUID | None,
+) -> AgendaEventsResponse:
+    if starts_at.tzinfo is None or ends_at.tzinfo is None or ends_at <= starts_at:
+        raise AgendaError("El rango de consulta no es válido.")
+    site_ids = _authorized_site_ids(session, context)
+    if site_id:
+        _require_site(session, context, site_id)
+        site_ids = {site_id}
+    filters = [
+        Appointment.company_id == context.user.company_id,
+        Appointment.site_id.in_(site_ids),
+        Appointment.is_active.is_(True),
+        Appointment.starts_at < ends_at,
+        Appointment.ends_at > starts_at,
+    ]
+    if dentist_id:
+        filters.append(Appointment.dentist_id == dentist_id)
+    rows = session.execute(
+        select(Appointment, Patient, Dentist, Site, AppointmentType)
+        .join(Patient, Patient.id == Appointment.patient_id)
+        .join(Dentist, Dentist.id == Appointment.dentist_id)
+        .join(Site, Site.id == Appointment.site_id)
+        .join(
+            AppointmentType,
+            AppointmentType.id == Appointment.appointment_type_id,
+        )
+        .where(*filters)
+        .order_by(Appointment.starts_at)
+    )
+    return AgendaEventsResponse(items=[_to_response(row) for row in rows])
+
+
+def create_appointment(
+    session: Session,
+    context: AuthContext,
+    payload: AppointmentCreateRequest,
+    metadata: RequestMetadata,
+) -> AppointmentResponse:
+    _require_site(session, context, payload.site_id)
+    _require_patient(session, context, payload.patient_id)
+    appointment_type = _require_type(
+        session, context, payload.appointment_type_id
+    )
+    _require_dentist_site(
+        session, context, payload.dentist_id, payload.site_id
+    )
+    _validate_conflicts(
+        session,
+        context,
+        patient_id=payload.patient_id,
+        dentist_id=payload.dentist_id,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        is_overbook=payload.is_overbook,
+        appointment_type=appointment_type,
+    )
+    appointment = Appointment(
+        company_id=context.user.company_id,
+        patient_id=payload.patient_id,
+        dentist_id=payload.dentist_id,
+        site_id=payload.site_id,
+        appointment_type_id=payload.appointment_type_id,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        reason=payload.reason,
+        notes=payload.notes,
+        status="Programada",
+        is_overbook=payload.is_overbook,
+        overbook_reason=payload.overbook_reason,
+        created_by=context.user.id,
+        updated_by=context.user.id,
+    )
+    session.add(appointment)
+    session.flush()
+    _history(
+        session,
+        context,
+        appointment,
+        previous_status=None,
+        new_status="Programada",
+        new_starts_at=appointment.starts_at,
+    )
+    _audit(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action="APPOINTMENT_OVERBOOK_CREATED"
+        if appointment.is_overbook
+        else "APPOINTMENT_CREATED",
+    )
+    session.commit()
+    return _to_response(_appointment_row(session, context, appointment.id))
+
+
+def update_appointment(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    payload: AppointmentUpdateRequest,
+    metadata: RequestMetadata,
+) -> AppointmentResponse:
+    row = _appointment_row(session, context, appointment_id, lock=True)
+    appointment = row[0]
+    if appointment.status in TERMINAL_STATES:
+        raise AgendaError("No puedes editar una cita en estado terminal.", 409)
+    if payload.appointment_type_id is not None:
+        _require_type(session, context, payload.appointment_type_id)
+        appointment.appointment_type_id = payload.appointment_type_id
+    if payload.reason is not None:
+        appointment.reason = payload.reason
+    if "notes" in payload.model_fields_set:
+        appointment.notes = payload.notes
+    appointment.updated_by = context.user.id
+    _audit(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action="APPOINTMENT_UPDATED",
+    )
+    session.commit()
+    return _to_response(_appointment_row(session, context, appointment.id))
+
+
+def confirm_appointment(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    method: str,
+    metadata: RequestMetadata,
+) -> AppointmentResponse:
+    appointment = _appointment_row(
+        session, context, appointment_id, lock=True
+    )[0]
+    if appointment.status not in {"Programada", "Confirmada"}:
+        raise AgendaError("Esta cita no puede confirmarse.", 409)
+    previous = appointment.status
+    appointment.status = "Confirmada"
+    appointment.confirmation_method = method
+    appointment.confirmed_at = datetime.now(timezone.utc)
+    appointment.confirmed_by = context.user.id
+    appointment.updated_by = context.user.id
+    _history(
+        session,
+        context,
+        appointment,
+        previous_status=previous,
+        new_status="Confirmada",
+        reason=f"Confirmación por {method}",
+    )
+    _audit(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action="APPOINTMENT_CONFIRMED",
+        detail={"method": method},
+    )
+    session.commit()
+    return _to_response(_appointment_row(session, context, appointment.id))
+
+
+def cancel_appointment(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    reason: str,
+    metadata: RequestMetadata,
+) -> AppointmentResponse:
+    appointment = _appointment_row(
+        session, context, appointment_id, lock=True
+    )[0]
+    if appointment.status in TERMINAL_STATES:
+        raise AgendaError("Esta cita no puede cancelarse.", 409)
+    previous = appointment.status
+    appointment.status = "Cancelada"
+    appointment.updated_by = context.user.id
+    _history(
+        session,
+        context,
+        appointment,
+        previous_status=previous,
+        new_status="Cancelada",
+        reason=reason,
+    )
+    _audit(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action="APPOINTMENT_CANCELLED",
+        detail={"reason": reason},
+    )
+    session.commit()
+    return _to_response(_appointment_row(session, context, appointment.id))
+
+
+def reschedule_appointment(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    payload: AppointmentRescheduleRequest,
+    metadata: RequestMetadata,
+) -> AppointmentResponse:
+    old = _appointment_row(session, context, appointment_id, lock=True)[0]
+    if old.status in TERMINAL_STATES:
+        raise AgendaError("Esta cita no puede reprogramarse.", 409)
+    _require_site(session, context, payload.site_id)
+    _require_dentist_site(
+        session, context, payload.dentist_id, payload.site_id
+    )
+    appointment_type = _require_type(
+        session, context, old.appointment_type_id
+    )
+    _validate_conflicts(
+        session,
+        context,
+        patient_id=old.patient_id,
+        dentist_id=payload.dentist_id,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        is_overbook=payload.is_overbook,
+        appointment_type=appointment_type,
+        exclude_id=old.id,
+    )
+    new = Appointment(
+        company_id=old.company_id,
+        patient_id=old.patient_id,
+        dentist_id=payload.dentist_id,
+        site_id=payload.site_id,
+        appointment_type_id=old.appointment_type_id,
+        origin_appointment_id=old.id,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        reason=old.reason,
+        notes=old.notes,
+        status="Programada",
+        is_overbook=payload.is_overbook,
+        overbook_reason=payload.overbook_reason,
+        created_by=context.user.id,
+        updated_by=context.user.id,
+    )
+    session.add(new)
+    session.flush()
+    previous = old.status
+    old.status = "Reprogramada"
+    old.updated_by = context.user.id
+    _history(
+        session,
+        context,
+        old,
+        previous_status=previous,
+        new_status="Reprogramada",
+        reason=payload.reason,
+        related_id=new.id,
+        previous_starts_at=old.starts_at,
+        new_starts_at=new.starts_at,
+    )
+    _history(
+        session,
+        context,
+        new,
+        previous_status=None,
+        new_status="Programada",
+        reason=payload.reason,
+        related_id=old.id,
+        new_starts_at=new.starts_at,
+    )
+    _audit(
+        session,
+        context,
+        metadata,
+        appointment_id=old.id,
+        action="APPOINTMENT_RESCHEDULED",
+        detail={"new_appointment_id": str(new.id), "reason": payload.reason},
+    )
+    session.commit()
+    return _to_response(_appointment_row(session, context, new.id))
+
+
+def ensure_agenda_seed_data(
+    session: Session,
+    *,
+    company_id: UUID,
+    admin_user: User,
+    site: Site,
+) -> None:
+    for name, duration in INITIAL_APPOINTMENT_TYPES:
+        exists = session.scalar(
+            select(AppointmentType.id).where(
+                AppointmentType.company_id == company_id,
+                AppointmentType.name == name,
+            )
+        )
+        if exists is None:
+            session.add(
+                AppointmentType(
+                    company_id=company_id,
+                    name=name,
+                    suggested_duration_minutes=duration,
+                    allows_overbook=True,
+                    created_by=admin_user.id,
+                )
+            )
+    dentist = session.scalar(
+        select(Dentist).where(
+            Dentist.company_id == company_id,
+            Dentist.user_id == admin_user.id,
+        )
+    )
+    if dentist is None:
+        dentist = Dentist(
+            company_id=company_id,
+            user_id=admin_user.id,
+            name=admin_user.name,
+            status="Activo",
+            created_by=admin_user.id,
+        )
+        session.add(dentist)
+        session.flush()
+    association = session.scalar(
+        select(DentistSite).where(
+            DentistSite.dentist_id == dentist.id,
+            DentistSite.site_id == site.id,
+        )
+    )
+    if association is None:
+        session.add(
+            DentistSite(
+                company_id=company_id,
+                dentist_id=dentist.id,
+                site_id=site.id,
+                created_by=admin_user.id,
+            )
+        )

@@ -5,6 +5,7 @@ export class ApiError extends Error {
     message: string,
     public readonly status: number,
     public readonly detail?: string,
+    public readonly payload?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -26,9 +27,18 @@ async function parseResponse<T>(response: Response): Promise<T> {
   }
 
   let detail: string | undefined;
+  let payload: unknown;
   try {
-    const body = (await response.json()) as { detail?: string };
-    detail = body.detail;
+    const body = (await response.json()) as { detail?: unknown };
+    payload = body.detail;
+    detail =
+      typeof body.detail === "string"
+        ? body.detail
+        : body.detail &&
+            typeof body.detail === "object" &&
+            "message" in body.detail
+          ? String((body.detail as { message: unknown }).message)
+          : undefined;
   } catch {
     detail = undefined;
   }
@@ -37,6 +47,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
     detail ?? "No fue posible completar la solicitud.",
     response.status,
     detail,
+    payload,
   );
 }
 
