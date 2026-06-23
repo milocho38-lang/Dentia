@@ -53,12 +53,18 @@ export function Sidebar({
           </button>
         </div>
 
-        <div className="mt-10">
+        <div className="mt-10 space-y-7">
+          {(["Operación", "Configuración"] as const).map((section) => {
+            const sectionItems = visibleItems.filter(
+              (item) => item.section === section,
+            );
+            if (!sectionItems.length) return null;
+            return <div key={section}>
           <p className="px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
-            Navegación
+            {section}
           </p>
-          <nav className="mt-3 space-y-1" aria-label="Navegación principal">
-            {visibleItems.map((item) => {
+          <nav className="mt-3 space-y-1" aria-label={section}>
+            {sectionItems.map((item) => {
               const active = pathname === item.href;
               const isAgenda = item.href === "/agenda";
               return (
@@ -104,6 +110,8 @@ export function Sidebar({
               );
             })}
           </nav>
+            </div>;
+          })}
         </div>
 
         <div className="mt-auto rounded-2xl border border-green-100 bg-green-50/70 p-4">

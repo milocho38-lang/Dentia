@@ -16,15 +16,12 @@ from app.schemas.agenda_schema import (
     AppointmentResponse,
     AppointmentRescheduleRequest,
     AppointmentUpdateRequest,
-    PatientQuickCreateRequest,
-    PatientResponse,
 )
 from app.services.agenda_service import (
     AgendaError,
     cancel_appointment,
     confirm_appointment,
     create_appointment,
-    create_quick_patient,
     get_events,
     get_options,
     reschedule_appointment,
@@ -84,27 +81,6 @@ def agenda_options_endpoint(
     ],
 ) -> AgendaOptionsResponse:
     return get_options(session, context)
-
-
-@router.post(
-    "/api/patients/quick",
-    response_model=PatientResponse,
-    status_code=201,
-)
-def quick_patient_endpoint(
-    payload: PatientQuickCreateRequest,
-    request: Request,
-    session: Annotated[Session, Depends(get_db)],
-    context: Annotated[
-        AuthContext, Depends(require_permission("patients.create"))
-    ],
-) -> PatientResponse:
-    try:
-        return create_quick_patient(
-            session, context, payload, get_request_metadata(request)
-        )
-    except AgendaError as exc:
-        raise handle_agenda_error(exc)
 
 
 @router.post(

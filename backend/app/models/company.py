@@ -14,6 +14,32 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
 
     name: Mapped[str] = mapped_column("nombre", String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    company_type: Mapped[str | None] = mapped_column(
+        "tipo_empresa", String(50), nullable=True
+    )
+    tax_id: Mapped[str | None] = mapped_column("nit", String(50), nullable=True)
+    normalized_tax_id: Mapped[str | None] = mapped_column(
+        "nit_normalizado", String(50), nullable=True, index=True
+    )
+    phone: Mapped[str | None] = mapped_column(
+        "telefono", String(50), nullable=True
+    )
+    email: Mapped[str | None] = mapped_column(
+        "correo", String(200), nullable=True
+    )
+    address: Mapped[str | None] = mapped_column(
+        "direccion", String(300), nullable=True
+    )
+    city: Mapped[str | None] = mapped_column(
+        "ciudad", String(100), nullable=True
+    )
+    timezone: Mapped[str] = mapped_column(
+        "zona_horaria",
+        String(100),
+        nullable=False,
+        default="America/Bogota",
+        server_default="America/Bogota",
+    )
     status: Mapped[str] = mapped_column(
         "estado",
         String(20),

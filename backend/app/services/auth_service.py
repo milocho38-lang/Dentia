@@ -35,6 +35,12 @@ from app.repositories.auth_repository import (
     get_user_for_login,
 )
 from app.schemas.auth_schema import AuthUserResponse, TokenResponse
+from app.schemas.site_context_schema import AuthSiteResponse
+from app.services.site_access_service import (
+    authorized_sites,
+    first_authorized_site_id,
+    is_authorized_site,
+)
 
 
 GENERIC_LOGIN_ERROR = "Credenciales inválidas o acceso no disponible."
@@ -112,17 +118,39 @@ def _add_attempt(
 
 
 def _build_user_response(
+    session: Session,
     user: User,
     auth_session: AuthSession,
     roles: list[str],
     permissions: list[str],
 ) -> AuthUserResponse:
+    company = session.get(Company, user.company_id)
+    sites = authorized_sites(
+        session,
+        company_id=user.company_id,
+        user_id=user.id,
+        roles=roles,
+    )
+    active_site = next(
+        (site for site in sites if site.id == auth_session.active_site_id),
+        None,
+    )
     return AuthUserResponse(
         id=user.id,
         name=user.name,
         email=user.email,
         company_id=user.company_id,
         active_site_id=auth_session.active_site_id,
+        active_site_name=active_site.name if active_site else None,
+        sites=[
+            AuthSiteResponse(
+                id=site.id,
+                name=site.name,
+                city=site.city,
+                timezone=site.timezone or company.timezone,
+            )
+            for site in sites
+        ],
         roles=roles,
         permissions=permissions,
         must_change_password=user.must_change_password,
@@ -147,7 +175,9 @@ def _build_token_response(
     return TokenResponse(
         access_token=access_token,
         expires_in=settings.access_token_expire_minutes * 60,
-        user=_build_user_response(user, auth_session, roles, permissions),
+        user=_build_user_response(
+            session, user, auth_session, roles, permissions
+        ),
     )
 
 
@@ -272,9 +302,24 @@ def login(
         session.commit()
         raise AuthenticationError()
 
+    roles = get_active_role_codes(session, user.id)
     active_site_id = user.default_site_id
-    if get_active_site(session, active_site_id) is None:
-        active_site_id = get_first_active_user_site(session, user.id)
+    if (
+        active_site_id is None
+        or not is_authorized_site(
+            session,
+            company_id=user.company_id,
+            user_id=user.id,
+            roles=roles,
+            site_id=active_site_id,
+        )
+    ):
+        active_site_id = first_authorized_site_id(
+            session,
+            company_id=user.company_id,
+            user_id=user.id,
+            roles=roles,
+        )
     if active_site_id is None:
         _add_attempt(
             session,
@@ -451,6 +496,32 @@ def refresh(
         )
         session.commit()
         raise AuthenticationError()
+    roles = get_active_role_codes(session, user.id)
+    if (
+        auth_session.active_site_id is None
+        or not is_authorized_site(
+            session,
+            company_id=user.company_id,
+            user_id=user.id,
+            roles=roles,
+            site_id=auth_session.active_site_id,
+        )
+    ):
+        auth_session.revoked_at = now
+        auth_session.is_active = False
+        auth_session.revoke_reason = "SITE_UNAVAILABLE"
+        _add_audit(
+            session,
+            action="ACCESS_DENIED",
+            result="FAILURE",
+            metadata=metadata,
+            company_id=auth_session.company_id,
+            user_id=auth_session.user_id,
+            session_id=auth_session.id,
+            detail={"reason": "SITE_UNAVAILABLE"},
+        )
+        session.commit()
+        raise AuthenticationError()
 
     new_refresh_token = create_refresh_token(auth_session.id)
     auth_session.refresh_token_hash = hash_refresh_token(new_refresh_token)
@@ -616,6 +687,7 @@ def build_auth_context(
     auth_session = get_auth_session(session, session_id)
     company = session.get(Company, company_id)
     site = get_active_site(session, site_id)
+    roles = get_active_role_codes(session, user.id) if user else []
 
     if (
         user is None
@@ -634,6 +706,13 @@ def build_auth_context(
         or auth_session.revoked_at is not None
         or auth_session.expires_at <= utc_now()
         or site is None
+        or not is_authorized_site(
+            session,
+            company_id=company_id,
+            user_id=user_id,
+            roles=roles,
+            site_id=site_id,
+        )
     ):
         return None
 
@@ -645,6 +724,71 @@ def build_auth_context(
     return AuthContext(
         user=user,
         auth_session=auth_session,
-        roles=get_active_role_codes(session, user.id),
+        roles=roles,
         permissions=get_active_permission_codes(session, user.id),
     )
+
+
+def get_auth_sites(
+    session: Session,
+    context: AuthContext,
+) -> list[AuthSiteResponse]:
+    company = session.get(Company, context.user.company_id)
+    return [
+        AuthSiteResponse(
+            id=site.id,
+            name=site.name,
+            city=site.city,
+            timezone=site.timezone or company.timezone,
+        )
+        for site in authorized_sites(
+            session,
+            company_id=context.user.company_id,
+            user_id=context.user.id,
+            roles=context.roles,
+        )
+    ]
+
+
+def switch_site(
+    session: Session,
+    *,
+    context: AuthContext,
+    site_id: UUID,
+    metadata: RequestMetadata,
+) -> TokenResponse:
+    if not is_authorized_site(
+        session,
+        company_id=context.user.company_id,
+        user_id=context.user.id,
+        roles=context.roles,
+        site_id=site_id,
+    ):
+        raise AuthenticationError(
+            "La sede no está activa o no está autorizada.", 403
+        )
+    previous_site_id = context.auth_session.active_site_id
+    context.auth_session.active_site_id = site_id
+    context.auth_session.last_seen_at = utc_now()
+    _add_audit(
+        session,
+        action="SITE_CHANGED",
+        result="SUCCESS",
+        metadata=metadata,
+        company_id=context.user.company_id,
+        user_id=context.user.id,
+        session_id=context.auth_session.id,
+        entity="site",
+        entity_id=site_id,
+        detail={
+            "previous_site_id": (
+                str(previous_site_id) if previous_site_id else None
+            ),
+            "new_site_id": str(site_id),
+        },
+    )
+    response = _build_token_response(
+        session, context.user, context.auth_session
+    )
+    session.commit()
+    return response

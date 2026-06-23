@@ -7,27 +7,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 CONFIRMATION_METHODS = {"WhatsApp", "Llamada", "Presencial"}
 
 
-class PatientQuickCreateRequest(BaseModel):
-    first_names: str = Field(min_length=1, max_length=150)
-    last_names: str = Field(min_length=1, max_length=150)
-    document: str = Field(min_length=3, max_length=50)
-    mobile: str = Field(min_length=7, max_length=50)
-
-    @field_validator("first_names", "last_names", "document", "mobile")
-    @classmethod
-    def strip_fields(cls, value: str) -> str:
-        return value.strip()
-
-
-class PatientResponse(BaseModel):
-    id: UUID
-    first_names: str
-    last_names: str
-    full_name: str
-    document: str
-    mobile: str
-
-
 class DentistOptionResponse(BaseModel):
     id: UUID
     name: str
@@ -47,10 +26,10 @@ class AppointmentTypeOptionResponse(BaseModel):
 
 class AgendaOptionsResponse(BaseModel):
     timezone: str = "America/Bogota"
+    active_site_id: UUID | None = None
     dentists: list[DentistOptionResponse]
     sites: list[SiteOptionResponse]
     appointment_types: list[AppointmentTypeOptionResponse]
-    patients: list[PatientResponse]
 
 
 class AppointmentCreateRequest(BaseModel):

@@ -6,8 +6,10 @@ from app.models.agenda import (
     Dentist,
     DentistSite,
     Patient,
+    PatientResponsible,
 )
 from app.models.audit_event import AuditEvent
+from app.models.followup import AppointmentCare, FollowupManagement, PatientFollowup
 from app.models.auth_attempt import AuthAttempt
 from app.models.auth_session import AuthSession
 from app.models.company import Company
@@ -21,6 +23,7 @@ __all__ = [
     "Appointment",
     "AppointmentHistory",
     "AppointmentType",
+    "AppointmentCare",
     "AuthAttempt",
     "AuthSession",
     "Company",
@@ -28,6 +31,9 @@ __all__ = [
     "DentistSite",
     "Permission",
     "Patient",
+    "PatientResponsible",
+    "PatientFollowup",
+    "FollowupManagement",
     "Role",
     "RolePermission",
     "Site",

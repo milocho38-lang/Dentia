@@ -3,6 +3,7 @@
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { useSearchParams } from "next/navigation";
 import type { DateClickArg } from "@fullcalendar/interaction";
 import type {
   DatesSetArg,
@@ -16,6 +17,7 @@ import { Spinner } from "@/components/shared/Spinner";
 import { useAuth } from "@/hooks/useAuth";
 import {
   cancelAppointment,
+  completeAppointment,
   confirmAppointment,
   createAppointment,
   createQuickPatient,
@@ -24,6 +26,7 @@ import {
   rescheduleAppointment,
 } from "@/services/agendaService";
 import { ApiError } from "@/services/apiClient";
+import { getPatient, searchPatients } from "@/services/patientService";
 import type {
   AgendaOptions,
   Appointment,
@@ -123,7 +126,10 @@ function conflictFrom(error: unknown) {
 
 export function AgendaView() {
   const calendarRef = useRef<FullCalendar | null>(null);
-  const { hasPermission } = useAuth();
+  const searchParams = useSearchParams();
+  const preselectedPatientId = searchParams.get("patient_id");
+  const shouldOpenNewAppointment = searchParams.get("new") === "1";
+  const { hasPermission, user } = useAuth();
   const [date, setDate] = useState(bogotaDate());
   const [calendarView, setCalendarView] = useState<
     "timeGridDay" | "timeGridWeek"
@@ -140,6 +146,8 @@ export function AgendaView() {
   const [newOpen, setNewOpen] = useState(false);
   const [newStartTime, setNewStartTime] = useState("08:00");
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const [preselectedPatient, setPreselectedPatient] =
+    useState<PatientOption | null>(null);
 
   const loadEvents = useCallback(async () => {
     try {
@@ -161,16 +169,38 @@ export function AgendaView() {
   }, [dentistId, siteId, visibleRange.end, visibleRange.start]);
 
   useEffect(() => {
-    getAgendaOptions()
-      .then((loaded) => {
+    Promise.all([
+      getAgendaOptions(),
+      preselectedPatientId ? getPatient(preselectedPatientId) : null,
+    ])
+      .then(([loaded, patient]) => {
         setOptions(loaded);
+        setSiteId(loaded.active_site_id ?? "");
         if (loaded.dentists.length === 1) {
           setDentistId(loaded.dentists[0].id);
+        }
+        if (patient) {
+          setPreselectedPatient({
+            id: patient.id,
+            full_name: patient.full_name,
+            document_type: patient.document_type,
+            document: patient.document,
+            mobile: patient.mobile,
+          });
+          if (shouldOpenNewAppointment) {
+            setNewOpen(true);
+          }
         }
       })
       .catch(() => setError("No fue posible cargar las opciones de agenda."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [preselectedPatientId, shouldOpenNewAppointment]);
+
+  useEffect(() => {
+    if (user?.active_site_id) {
+      setSiteId(user.active_site_id);
+    }
+  }, [user?.active_site_id]);
 
   useEffect(() => {
     if (!options) return;
@@ -264,7 +294,7 @@ export function AgendaView() {
             Agenda
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Horario en America/Bogota · intervalos de 15 minutos
+            Horario en {options?.timezone ?? "America/Bogota"} · intervalos de 15 minutos
           </p>
         </div>
         {hasPermission("appointments.create") && (
@@ -407,7 +437,7 @@ export function AgendaView() {
                 slotLabelInterval="01:00"
                 height="auto"
                 locale="es"
-                timeZone="America/Bogota"
+                timeZone={options?.timezone ?? "America/Bogota"}
                 nowIndicator
                 editable={false}
                 selectable={hasPermission("appointments.create")}
@@ -434,6 +464,7 @@ export function AgendaView() {
           options={options}
           defaultDentistId={dentistId}
           defaultSiteId={siteId}
+          preselectedPatient={preselectedPatient}
           canOverbook={hasPermission("appointments.overbook")}
           onClose={() => setNewOpen(false)}
           onCreated={async () => {
@@ -451,6 +482,7 @@ export function AgendaView() {
           canUpdate={hasPermission("appointments.update")}
           canCancel={hasPermission("appointments.cancel")}
           canOverbook={hasPermission("appointments.overbook")}
+          canComplete={hasPermission("appointments.complete")}
           onClose={() => setSelected(null)}
           onChanged={async (appointment) => {
             setSelected(appointment);
@@ -469,6 +501,7 @@ function AppointmentForm({
   options,
   defaultDentistId,
   defaultSiteId,
+  preselectedPatient,
   canOverbook,
   onClose,
   onCreated,
@@ -479,11 +512,19 @@ function AppointmentForm({
   options: AgendaOptions;
   defaultDentistId: string;
   defaultSiteId: string;
+  preselectedPatient: PatientOption | null;
   canOverbook: boolean;
   onClose: () => void;
   onCreated: () => Promise<void>;
 }) {
-  const [patientId, setPatientId] = useState("");
+  const [patientId, setPatientId] = useState(preselectedPatient?.id ?? "");
+  const [patientSearch, setPatientSearch] = useState(
+    preselectedPatient?.full_name ?? "",
+  );
+  const [patients, setPatients] = useState<PatientOption[]>(
+    preselectedPatient ? [preselectedPatient] : [],
+  );
+  const [searchingPatients, setSearchingPatients] = useState(false);
   const [dentistId, setDentistId] = useState(defaultDentistId);
   const [siteId, setSiteId] = useState(defaultSiteId);
   const [typeId, setTypeId] = useState("");
@@ -496,7 +537,6 @@ function AppointmentForm({
   const [conflict, setConflict] = useState<ConflictPayload | null>(null);
   const [overbookReason, setOverbookReason] = useState("");
   const [quickPatient, setQuickPatient] = useState(false);
-  const [patients, setPatients] = useState(options.patients);
 
   useEffect(() => {
     if (!open) return;
@@ -504,11 +544,47 @@ function AppointmentForm({
     setTime(initialTime);
     setDentistId(defaultDentistId || options.dentists[0]?.id || "");
     setSiteId(defaultSiteId || options.sites[0]?.id || "");
+    if (preselectedPatient) {
+      setPatientId(preselectedPatient.id);
+      setPatientSearch(preselectedPatient.full_name);
+      setPatients([preselectedPatient]);
+    }
     if (!typeId && options.appointment_types[0]) {
       setTypeId(options.appointment_types[0].id);
       setDuration(options.appointment_types[0].suggested_duration_minutes);
     }
-  }, [date, defaultDentistId, defaultSiteId, initialTime, open, options, typeId]);
+  }, [
+    date,
+    defaultDentistId,
+    defaultSiteId,
+    initialTime,
+    open,
+    options,
+    preselectedPatient,
+    typeId,
+  ]);
+
+  useEffect(() => {
+    if (!open || patientSearch.trim().length < 2) return;
+    const timeout = window.setTimeout(async () => {
+      setSearchingPatients(true);
+      try {
+        const response = await searchPatients(patientSearch.trim());
+        setPatients(
+          response.items.map((patient) => ({
+            id: patient.id,
+            full_name: patient.full_name,
+            document_type: patient.document_type,
+            document: patient.document,
+            mobile: patient.mobile,
+          })),
+        );
+      } finally {
+        setSearchingPatients(false);
+      }
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [open, patientSearch]);
 
   const selectedDentist = options.dentists.find(
     (dentist) => dentist.id === dentistId,
@@ -581,18 +657,15 @@ function AppointmentForm({
             Paciente
           </span>
           <div className="flex gap-2">
-            <select
-              value={patientId}
-              onChange={(event) => setPatientId(event.target.value)}
-              className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3"
-            >
-              <option value="">Selecciona un paciente</option>
-              {patients.map((patient) => (
-                <option key={patient.id} value={patient.id}>
-                  {patient.full_name} · {patient.document}
-                </option>
-              ))}
-            </select>
+            <input
+              value={patientSearch}
+              onChange={(event) => {
+                setPatientSearch(event.target.value);
+                setPatientId("");
+              }}
+              placeholder="Busca por nombre, documento o celular"
+              className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-300 px-3"
+            />
             <button
               type="button"
               onClick={() => setQuickPatient((current) => !current)}
@@ -601,13 +674,47 @@ function AppointmentForm({
               + Nuevo
             </button>
           </div>
+          {searchingPatients && (
+            <p className="mt-2 text-xs text-slate-500">Buscando pacientes…</p>
+          )}
+          {!patientId && patients.length > 0 && (
+            <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              {patients.map((patient) => (
+                <button
+                  key={patient.id}
+                  type="button"
+                  onClick={() => {
+                    setPatientId(patient.id);
+                    setPatientSearch(patient.full_name);
+                  }}
+                  className="block w-full rounded-lg px-3 py-2 text-left hover:bg-slate-50"
+                >
+                  <span className="block text-sm font-bold text-slate-800">
+                    {patient.full_name}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {patient.document_type === "Sin documento"
+                      ? "Sin documento"
+                      : `${patient.document_type} ${patient.document ?? ""}`}{" "}
+                    · {patient.mobile}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {patientId && (
+            <p className="mt-2 text-xs font-bold text-green-700">
+              Paciente seleccionado
+            </p>
+          )}
         </label>
 
         {quickPatient && (
           <QuickPatientForm
             onCreated={(patient) => {
-              setPatients((current) => [...current, patient]);
+              setPatients([patient]);
               setPatientId(patient.id);
+              setPatientSearch(patient.full_name);
               setQuickPatient(false);
             }}
           />
@@ -760,6 +867,7 @@ function QuickPatientForm({
 }) {
   const [firstNames, setFirstNames] = useState("");
   const [lastNames, setLastNames] = useState("");
+  const [documentType, setDocumentType] = useState("Otro");
   const [document, setDocument] = useState("");
   const [mobile, setMobile] = useState("");
   const [saving, setSaving] = useState(false);
@@ -774,7 +882,8 @@ function QuickPatientForm({
         await createQuickPatient({
           first_names: firstNames,
           last_names: lastNames,
-          document,
+          document_type: documentType,
+          document: documentType === "Sin documento" ? null : document,
           mobile,
         }),
       );
@@ -797,8 +906,6 @@ function QuickPatientForm({
         {[
           ["Nombres", firstNames, setFirstNames],
           ["Apellidos", lastNames, setLastNames],
-          ["Documento", document, setDocument],
-          ["Celular", mobile, setMobile],
         ].map(([label, value, setter]) => (
           <label key={label as string}>
             <span className="mb-1 block text-xs font-bold text-slate-600">
@@ -813,6 +920,41 @@ function QuickPatientForm({
             />
           </label>
         ))}
+        <label>
+          <span className="mb-1 block text-xs font-bold text-slate-600">
+            Tipo de documento
+          </span>
+          <select
+            value={documentType}
+            onChange={(event) => setDocumentType(event.target.value)}
+            className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3"
+          >
+            {["CC", "TI", "RC", "CE", "Pasaporte", "Otro", "Sin documento"].map(
+              (type) => <option key={type}>{type}</option>,
+            )}
+          </select>
+        </label>
+        <label>
+          <span className="mb-1 block text-xs font-bold text-slate-600">
+            Documento
+          </span>
+          <input
+            value={document}
+            disabled={documentType === "Sin documento"}
+            onChange={(event) => setDocument(event.target.value)}
+            className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 disabled:bg-slate-100"
+          />
+        </label>
+        <label>
+          <span className="mb-1 block text-xs font-bold text-slate-600">
+            Celular
+          </span>
+          <input
+            value={mobile}
+            onChange={(event) => setMobile(event.target.value)}
+            className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3"
+          />
+        </label>
       </div>
       <button
         type="button"
@@ -832,6 +974,7 @@ function AppointmentDetail({
   canUpdate,
   canCancel,
   canOverbook,
+  canComplete,
   onClose,
   onChanged,
 }: {
@@ -840,10 +983,11 @@ function AppointmentDetail({
   canUpdate: boolean;
   canCancel: boolean;
   canOverbook: boolean;
+  canComplete: boolean;
   onClose: () => void;
   onChanged: (appointment: Appointment) => Promise<void>;
 }) {
-  const [action, setAction] = useState<"confirm" | "cancel" | "reschedule" | null>(null);
+  const [action, setAction] = useState<"confirm" | "cancel" | "reschedule" | "complete" | null>(null);
   const [method, setMethod] = useState("WhatsApp");
   const [reason, setReason] = useState("");
   const [date, setDate] = useState(bogotaDate(new Date(appointment.starts_at)));
@@ -854,6 +998,11 @@ function AppointmentDetail({
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictPayload | null>(null);
   const [overbookReason, setOverbookReason] = useState("");
+  const [attentionDescription, setAttentionDescription] = useState("");
+  const [medications, setMedications] = useState("");
+  const [requiresFollowup, setRequiresFollowup] = useState(false);
+  const [followupDate, setFollowupDate] = useState("");
+  const [followupReason, setFollowupReason] = useState("");
   const duration = Math.round(
     (new Date(appointment.ends_at).getTime() -
       new Date(appointment.starts_at).getTime()) /
@@ -871,6 +1020,15 @@ function AppointmentDetail({
         updated = await confirmAppointment(appointment.id, method);
       } else if (action === "cancel") {
         updated = await cancelAppointment(appointment.id, reason);
+      } else if (action === "complete") {
+        const completed = await completeAppointment(appointment.id, {
+          attention_description: attentionDescription,
+          prescribed_medications: medications.trim() || null,
+          requires_followup: requiresFollowup,
+          recommended_followup_date: requiresFollowup ? followupDate : null,
+          followup_reason: requiresFollowup ? followupReason : null,
+        });
+        updated = { ...appointment, status: completed.appointment_status };
       } else {
         updated = await rescheduleAppointment(appointment.id, {
           site_id: siteId,
@@ -953,6 +1111,11 @@ function AppointmentDetail({
                 Reprogramar
               </button>
             )}
+            {canComplete && (
+              <button onClick={() => setAction("complete")} className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white">
+                Finalizar atención
+              </button>
+            )}
             {canCancel && (
               <button onClick={() => setAction("cancel")} className="rounded-xl border border-red-200 px-4 py-2.5 text-sm font-bold text-red-700">
                 Cancelar cita
@@ -1014,6 +1177,48 @@ function AppointmentDetail({
               )}
               <button disabled={reason.trim().length < 2 || saving} onClick={() => run(false)} className="rounded-xl bg-dentia-primary px-4 py-2.5 font-bold text-white disabled:opacity-50">Reprogramar</button>
             </div>
+          </ActionBox>
+        )}
+
+        {action === "complete" && (
+          <ActionBox title="Finalizar atención">
+            <Alert tone="warning">
+              Este registro no reemplaza la historia clínica ni una fórmula médica formal.
+            </Alert>
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-slate-700">Descripción de la atención</span>
+              <textarea value={attentionDescription} onChange={(event) => setAttentionDescription(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-slate-700">Medicamentos formulados (informativo)</span>
+              <textarea value={medications} onChange={(event) => setMedications(event.target.value)} rows={3} className="w-full rounded-xl border border-slate-300 px-3 py-2" />
+            </label>
+            <label className="flex items-center gap-3 text-sm font-bold text-slate-700">
+              <input type="checkbox" checked={requiresFollowup} onChange={(event) => setRequiresFollowup(event.target.checked)} className="h-4 w-4 accent-green-600" />
+              Requiere próximo control
+            </label>
+            {requiresFollowup && (
+              <div className="grid gap-3">
+                <label>
+                  <span className="mb-2 block text-sm font-bold text-slate-700">Fecha recomendada</span>
+                  <input type="date" value={followupDate} onChange={(event) => setFollowupDate(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 px-3" />
+                </label>
+                <label>
+                  <span className="mb-2 block text-sm font-bold text-slate-700">Motivo del próximo control</span>
+                  <input value={followupReason} onChange={(event) => setFollowupReason(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 px-3" />
+                </label>
+              </div>
+            )}
+            <ActionButtons
+              saving={saving}
+              disabled={
+                attentionDescription.trim().length < 2 ||
+                (requiresFollowup && (!followupDate || followupReason.trim().length < 2))
+              }
+              onBack={() => setAction(null)}
+              onSave={() => run(false)}
+              label="Finalizar atención"
+            />
           </ActionBox>
         )}
       </div>

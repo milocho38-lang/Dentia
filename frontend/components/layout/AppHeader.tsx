@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
 
 export function AppHeader({ onMenuOpen }: { onMenuOpen: () => void }) {
-  const { user } = useAuth();
+  const { user, switchSite } = useAuth();
+  const [switching, setSwitching] = useState(false);
 
   return (
     <header className="sticky top-0 z-20 flex min-h-20 items-center justify-between border-b border-slate-200/80 bg-white/90 px-5 backdrop-blur-xl sm:px-7 lg:px-9">
@@ -24,13 +26,36 @@ export function AppHeader({ onMenuOpen }: { onMenuOpen: () => void }) {
             />
           </svg>
         </button>
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
             Espacio de trabajo
           </p>
-          <p className="mt-1 text-sm font-bold text-slate-800">
-            {user?.active_site_id ? "Sede activa" : "Dentia"}
-          </p>
+          {user && user.sites.length > 1 ? (
+            <select
+              aria-label="Sede activa"
+              value={user.active_site_id ?? ""}
+              disabled={switching}
+              onChange={async (event) => {
+                setSwitching(true);
+                try {
+                  await switchSite(event.target.value);
+                } finally {
+                  setSwitching(false);
+                }
+              }}
+              className="mt-1 max-w-[220px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-bold text-slate-800"
+            >
+              {user.sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="mt-1 truncate text-sm font-bold text-slate-800">
+              {user?.active_site_name ?? "Dentia"}
+            </p>
+          )}
         </div>
       </div>
       <UserMenu />

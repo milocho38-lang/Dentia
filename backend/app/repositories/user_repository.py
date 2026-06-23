@@ -76,10 +76,21 @@ def list_company_users(
         )
     if site_id:
         filters.append(
-            User.id.in_(
-                select(UserSite.user_id).where(
-                    UserSite.site_id == site_id,
-                    UserSite.is_active.is_(True),
+            or_(
+                User.id.in_(
+                    select(UserSite.user_id).where(
+                        UserSite.site_id == site_id,
+                        UserSite.is_active.is_(True),
+                    )
+                ),
+                User.id.in_(
+                    select(UserRole.user_id)
+                    .join(Role, Role.id == UserRole.role_id)
+                    .where(
+                        UserRole.is_active.is_(True),
+                        Role.is_active.is_(True),
+                        Role.code == "ADMINISTRATOR",
+                    )
                 )
             )
         )

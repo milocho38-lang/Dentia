@@ -1,9 +1,8 @@
 export interface PatientOption {
   id: string;
-  first_names: string;
-  last_names: string;
   full_name: string;
-  document: string;
+  document_type: string;
+  document: string | null;
   mobile: string;
 }
 
@@ -26,10 +25,10 @@ export interface AppointmentTypeOption {
 
 export interface AgendaOptions {
   timezone: string;
+  active_site_id: string | null;
   dentists: DentistOption[];
   sites: SiteOption[];
   appointment_types: AppointmentTypeOption[];
-  patients: PatientOption[];
 }
 
 export interface Appointment {

@@ -1,11 +1,20 @@
 export type AuthStatus = "initializing" | "authenticated" | "unauthenticated";
 
+export interface AuthSite {
+  id: string;
+  name: string;
+  city: string;
+  timezone: string;
+}
+
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
   company_id: string;
   active_site_id: string | null;
+  active_site_name: string | null;
+  sites: AuthSite[];
   roles: string[];
   permissions: string[];
   must_change_password: boolean;

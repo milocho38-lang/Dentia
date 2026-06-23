@@ -47,6 +47,7 @@ from app.schemas.user_schema import (
     UserUpdateRequest,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.site_access_service import authorized_sites
 
 
 class UserManagementError(RuntimeError):
@@ -101,17 +102,24 @@ def _generate_temporary_password() -> str:
 
 
 def _build_user_summary(session: Session, user: User) -> UserSummaryResponse:
+    role_rows = get_user_roles(session, user.id)
     roles = [
         UserRoleResponse(id=role.id, code=role.code, name=role.name)
-        for _, role in get_user_roles(session, user.id)
+        for _, role in role_rows
     ]
+    role_codes = [role.code for _, role in role_rows]
     sites = [
         UserSiteResponse(
             id=site.id,
             name=site.name,
-            is_default=assignment.is_default,
+            is_default=site.id == user.default_site_id,
         )
-        for assignment, site in get_user_sites(session, user.id)
+        for site in authorized_sites(
+            session,
+            company_id=user.company_id,
+            user_id=user.id,
+            roles=role_codes,
+        )
     ]
     default_site_name = next(
         (site.name for site in sites if site.id == user.default_site_id),
@@ -533,7 +541,13 @@ def change_status(
     if new_status != "Activo":
         _protect_last_admin(session, context, target)
     if new_status == "Activo":
-        if not get_user_roles(session, target.id) or not get_user_sites(session, target.id):
+        roles = get_user_roles(session, target.id)
+        is_administrator = any(
+            role.code == "ADMINISTRATOR" for _, role in roles
+        )
+        if not roles or (
+            not is_administrator and not get_user_sites(session, target.id)
+        ):
             raise UserManagementError(
                 "El usuario necesita al menos un rol y una sede para activarse.",
                 409,

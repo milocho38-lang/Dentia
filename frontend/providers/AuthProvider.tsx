@@ -31,6 +31,7 @@ interface AuthContextValue {
     new_password: string;
     confirm_password: string;
   }) => Promise<AuthUser>;
+  switchSite: (siteId: string) => Promise<AuthUser>;
   hasPermission: (permission: string) => boolean;
   hasAnyPermission: (permissions: string[]) => boolean;
 }
@@ -97,6 +98,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applySession],
   );
 
+  const switchSite = useCallback(async (siteId: string) => {
+    const session = await authService.switchSite(siteId);
+    applySession(session);
+    return session.user;
+  }, [applySession]);
+
   const permissionSet = useMemo(
     () => new Set(user?.permissions ?? []),
     [user?.permissions],
@@ -110,11 +117,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout,
       refresh,
       changePassword,
+      switchSite,
       hasPermission: (permission) => permissionSet.has(permission),
       hasAnyPermission: (permissions) =>
         permissions.some((permission) => permissionSet.has(permission)),
     }),
-    [changePassword, login, logout, permissionSet, refresh, status, user],
+    [
+      changePassword,
+      login,
+      logout,
+      permissionSet,
+      refresh,
+      status,
+      switchSite,
+      user,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

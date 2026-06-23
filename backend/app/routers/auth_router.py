@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -15,15 +16,18 @@ from app.schemas.auth_schema import (
     MeResponse,
     TokenResponse,
 )
+from app.schemas.site_context_schema import AuthSiteResponse, SwitchSiteRequest
 from app.schemas.user_schema import ChangePasswordRequest
 from app.services.auth_service import (
     AuthContext,
     AuthenticationError,
     change_password,
+    get_auth_sites,
     login,
     logout,
     register_access_denied,
     refresh,
+    switch_site,
 )
 
 
@@ -131,19 +135,56 @@ def logout_endpoint(
 
 @router.get("/me", response_model=MeResponse)
 def me_endpoint(
+    session: Annotated[Session, Depends(get_db)],
     context: Annotated[AuthContext, Depends(get_current_auth_context)],
 ) -> MeResponse:
+    sites = get_auth_sites(session, context)
     return MeResponse(
         id=context.user.id,
         name=context.user.name,
         email=context.user.email,
         company_id=context.user.company_id,
         active_site_id=context.auth_session.active_site_id,
+        active_site_name=next(
+            (
+                site.name
+                for site in sites
+                if site.id == context.auth_session.active_site_id
+            ),
+            None,
+        ),
+        sites=sites,
         roles=context.roles,
         permissions=context.permissions,
         must_change_password=context.user.must_change_password,
         session_id=context.auth_session.id,
     )
+
+
+@router.get("/sites", response_model=list[AuthSiteResponse])
+def sites_endpoint(
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(get_current_auth_context)],
+) -> list[AuthSiteResponse]:
+    return get_auth_sites(session, context)
+
+
+@router.post("/switch-site", response_model=TokenResponse)
+def switch_site_endpoint(
+    payload: SwitchSiteRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(get_current_auth_context)],
+) -> TokenResponse:
+    try:
+        return switch_site(
+            session,
+            context=context,
+            site_id=payload.site_id,
+            metadata=get_request_metadata(request),
+        )
+    except AuthenticationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
 @router.post("/change-password", response_model=TokenResponse)

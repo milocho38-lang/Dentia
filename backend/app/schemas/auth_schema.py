@@ -2,6 +2,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.site_context_schema import AuthSiteResponse
+
 
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
@@ -14,6 +16,8 @@ class AuthUserResponse(BaseModel):
     email: str
     company_id: UUID
     active_site_id: UUID | None
+    active_site_name: str | None
+    sites: list[AuthSiteResponse]
     roles: list[str]
     permissions: list[str]
     must_change_password: bool

@@ -1,8 +1,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models.agenda import (
@@ -13,8 +12,8 @@ from app.models.agenda import (
     DentistSite,
     Patient,
 )
-from app.models.associations import UserSite
 from app.models.audit_event import AuditEvent
+from app.models.company import Company
 from app.models.site import Site
 from app.models.user import User
 from app.schemas.agenda_schema import (
@@ -26,11 +25,10 @@ from app.schemas.agenda_schema import (
     AppointmentTypeOptionResponse,
     AppointmentUpdateRequest,
     DentistOptionResponse,
-    PatientQuickCreateRequest,
-    PatientResponse,
     SiteOptionResponse,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.site_access_service import authorized_site_ids
 
 
 ACTIVE_CONFLICT_STATES = {"Programada", "Confirmada"}
@@ -61,15 +59,18 @@ class AgendaError(RuntimeError):
         self.can_overbook = can_overbook
 
 
-def _authorized_site_ids(session: Session, context: AuthContext) -> set[UUID]:
-    return set(
-        session.scalars(
-            select(UserSite.site_id).where(
-                UserSite.company_id == context.user.company_id,
-                UserSite.user_id == context.user.id,
-                UserSite.is_active.is_(True),
-            )
-        )
+def _authorized_site_ids(
+    session: Session,
+    context: AuthContext,
+    *,
+    active_only: bool = False,
+) -> set[UUID]:
+    return authorized_site_ids(
+        session,
+        company_id=context.user.company_id,
+        user_id=context.user.id,
+        roles=context.roles,
+        active_only=active_only,
     )
 
 
@@ -78,7 +79,9 @@ def _require_site(
     context: AuthContext,
     site_id: UUID,
 ) -> Site:
-    if site_id not in _authorized_site_ids(session, context):
+    if site_id not in _authorized_site_ids(
+        session, context, active_only=True
+    ):
         raise AgendaError("No tienes acceso a la sede seleccionada.", 403)
     site = session.scalar(
         select(Site).where(
@@ -374,55 +377,11 @@ def _history(
     )
 
 
-def create_quick_patient(
-    session: Session,
-    context: AuthContext,
-    payload: PatientQuickCreateRequest,
-    metadata: RequestMetadata,
-) -> PatientResponse:
-    patient = Patient(
-        company_id=context.user.company_id,
-        first_names=payload.first_names,
-        last_names=payload.last_names,
-        document=payload.document,
-        mobile=payload.mobile,
-        created_by=context.user.id,
-    )
-    session.add(patient)
-    session.add(
-        AuditEvent(
-            company_id=context.user.company_id,
-            user_id=context.user.id,
-            session_id=context.auth_session.id,
-            entity="patient",
-            entity_id=patient.id,
-            action="PATIENT_QUICK_CREATED",
-            result="SUCCESS",
-            detail={"document": payload.document},
-            ip_address=metadata.ip_address,
-            user_agent=metadata.user_agent,
-        )
-    )
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise AgendaError("Ya existe un paciente con ese documento.", 409)
-    return PatientResponse(
-        id=patient.id,
-        first_names=patient.first_names,
-        last_names=patient.last_names,
-        full_name=f"{patient.first_names} {patient.last_names}".strip(),
-        document=patient.document,
-        mobile=patient.mobile,
-    )
-
-
 def get_options(
     session: Session,
     context: AuthContext,
 ) -> AgendaOptionsResponse:
-    site_ids = _authorized_site_ids(session, context)
+    site_ids = _authorized_site_ids(session, context, active_only=True)
     sites = list(
         session.scalars(
             select(Site)
@@ -468,18 +427,9 @@ def get_options(
             .order_by(AppointmentType.name)
         )
     )
-    patients = list(
-        session.scalars(
-            select(Patient)
-            .where(
-                Patient.company_id == context.user.company_id,
-                Patient.is_active.is_(True),
-            )
-            .order_by(Patient.first_names, Patient.last_names)
-            .limit(500)
-        )
-    )
     return AgendaOptionsResponse(
+        timezone=session.get(Company, context.user.company_id).timezone,
+        active_site_id=context.auth_session.active_site_id,
         dentists=list(dentists_by_id.values()),
         sites=[SiteOptionResponse(id=site.id, name=site.name) for site in sites],
         appointment_types=[
@@ -489,17 +439,6 @@ def get_options(
                 suggested_duration_minutes=item.suggested_duration_minutes,
             )
             for item in appointment_types
-        ],
-        patients=[
-            PatientResponse(
-                id=patient.id,
-                first_names=patient.first_names,
-                last_names=patient.last_names,
-                full_name=f"{patient.first_names} {patient.last_names}".strip(),
-                document=patient.document,
-                mobile=patient.mobile,
-            )
-            for patient in patients
         ],
     )
 
@@ -548,6 +487,8 @@ def create_appointment(
     context: AuthContext,
     payload: AppointmentCreateRequest,
     metadata: RequestMetadata,
+    *,
+    commit: bool = True,
 ) -> AppointmentResponse:
     _require_site(session, context, payload.site_id)
     _require_patient(session, context, payload.patient_id)
@@ -602,7 +543,8 @@ def create_appointment(
         if appointment.is_overbook
         else "APPOINTMENT_CREATED",
     )
-    session.commit()
+    if commit:
+        session.commit()
     return _to_response(_appointment_row(session, context, appointment.id))
 
 
@@ -688,6 +630,8 @@ def cancel_appointment(
         raise AgendaError("Esta cita no puede cancelarse.", 409)
     previous = appointment.status
     appointment.status = "Cancelada"
+    from app.services.followup_service import sync_cancelled_appointment
+    sync_cancelled_appointment(session, appointment.id)
     appointment.updated_by = context.user.id
     _history(
         session,
@@ -758,6 +702,8 @@ def reschedule_appointment(
     session.flush()
     previous = old.status
     old.status = "Reprogramada"
+    from app.services.followup_service import sync_rescheduled_appointment
+    sync_rescheduled_appointment(session, old.id, new.id)
     old.updated_by = context.user.id
     _history(
         session,

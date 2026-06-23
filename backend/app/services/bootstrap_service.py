@@ -113,6 +113,9 @@ def bootstrap_installation(
     site = Site(
         company_id=company.id,
         name=data.site_name,
+        normalized_name=data.site_name.strip().casefold(),
+        address="Por completar",
+        city="Por completar",
         status="Activa",
     )
     session.add(site)

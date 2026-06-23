@@ -1,4 +1,5 @@
 import { apiRequest } from "@/services/apiClient";
+export { completeAppointment } from "@/services/followupService";
 import type {
   AgendaOptions,
   Appointment,
@@ -32,7 +33,8 @@ export async function getAgendaEvents(
 export function createQuickPatient(data: {
   first_names: string;
   last_names: string;
-  document: string;
+  document_type: string;
+  document: string | null;
   mobile: string;
 }) {
   return apiRequest<PatientOption>("/api/patients/quick", {

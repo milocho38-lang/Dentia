@@ -51,3 +51,13 @@ export async function changePassword(data: {
   setAccessToken(response.access_token);
   return response;
 }
+
+export async function switchSite(siteId: string): Promise<TokenResponse> {
+  const response = await apiRequest<TokenResponse>("/api/auth/switch-site", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ site_id: siteId }),
+  });
+  setAccessToken(response.access_token);
+  return response;
+}

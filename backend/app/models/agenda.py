@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -23,11 +24,18 @@ from app.models.base import ActiveMixin, TimestampMixin, UUIDPrimaryKeyMixin
 class Patient(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
     __tablename__ = "pacientes"
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_pacientes_empresa_tipo_documento_normalizado",
             "empresa_id",
-            "documento",
-            name="uq_pacientes_empresa_documento",
+            "tipo_documento",
+            "documento_normalizado",
+            unique=True,
+            postgresql_where=(
+                "tipo_documento <> 'Sin documento' "
+                "AND documento_normalizado IS NOT NULL"
+            ),
         ),
+        Index("ix_pacientes_empresa_busqueda", "empresa_id", "texto_busqueda"),
     )
 
     company_id: Mapped[UUID] = mapped_column(
@@ -43,11 +51,146 @@ class Patient(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
     last_names: Mapped[str] = mapped_column(
         "apellidos", String(150), nullable=False
     )
-    document: Mapped[str] = mapped_column(
-        "documento", String(50), nullable=False
+    document_type: Mapped[str] = mapped_column(
+        "tipo_documento",
+        String(20),
+        nullable=False,
+        default="Sin documento",
+        server_default="Sin documento",
+    )
+    document: Mapped[str | None] = mapped_column(
+        "documento", String(50), nullable=True
+    )
+    normalized_document: Mapped[str | None] = mapped_column(
+        "documento_normalizado", String(50), nullable=True
     )
     mobile: Mapped[str] = mapped_column("celular", String(50), nullable=False)
+    normalized_mobile: Mapped[str] = mapped_column(
+        "celular_normalizado", String(50), nullable=False, default=""
+    )
+    birth_date: Mapped[date | None] = mapped_column(
+        "fecha_nacimiento", Date, nullable=True
+    )
+    sex: Mapped[str | None] = mapped_column(
+        "sexo", String(20), nullable=True
+    )
+    email: Mapped[str | None] = mapped_column(
+        "correo", String(200), nullable=True
+    )
+    normalized_email: Mapped[str | None] = mapped_column(
+        "correo_normalizado", String(200), nullable=True
+    )
+    alternate_phone: Mapped[str | None] = mapped_column(
+        "telefono_alternativo", String(50), nullable=True
+    )
+    address: Mapped[str | None] = mapped_column(
+        "direccion", String(300), nullable=True
+    )
+    city: Mapped[str | None] = mapped_column(
+        "ciudad", String(100), nullable=True
+    )
+    department: Mapped[str | None] = mapped_column(
+        "departamento", String(100), nullable=True
+    )
+    emergency_contact_name: Mapped[str | None] = mapped_column(
+        "contacto_emergencia_nombre", String(200), nullable=True
+    )
+    emergency_contact_mobile: Mapped[str | None] = mapped_column(
+        "contacto_emergencia_celular", String(50), nullable=True
+    )
+    administrative_notes: Mapped[str | None] = mapped_column(
+        "observaciones_administrativas", Text, nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        "estado",
+        String(20),
+        nullable=False,
+        default="Activo",
+        server_default="Activo",
+        index=True,
+    )
+    profile_complete: Mapped[bool] = mapped_column(
+        "perfil_completo",
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
+    search_text: Mapped[str] = mapped_column(
+        "texto_busqueda", Text, nullable=False, default=""
+    )
     created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    updated_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
+class PatientResponsible(
+    UUIDPrimaryKeyMixin,
+    TimestampMixin,
+    ActiveMixin,
+    Base,
+):
+    __tablename__ = "responsables_paciente"
+    __table_args__ = (
+        Index(
+            "uq_responsables_paciente_principal_activo",
+            "paciente_id",
+            unique=True,
+            postgresql_where="es_responsable_principal = true AND is_active = true",
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        "empresa_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("empresas.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    patient_id: Mapped[UUID] = mapped_column(
+        "paciente_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("pacientes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column("nombre", String(200), nullable=False)
+    document_type: Mapped[str] = mapped_column(
+        "tipo_documento", String(20), nullable=False
+    )
+    document: Mapped[str | None] = mapped_column(
+        "documento", String(50), nullable=True
+    )
+    normalized_document: Mapped[str | None] = mapped_column(
+        "documento_normalizado", String(50), nullable=True
+    )
+    relationship: Mapped[str] = mapped_column(
+        "parentesco", String(100), nullable=False
+    )
+    mobile: Mapped[str] = mapped_column("celular", String(50), nullable=False)
+    email: Mapped[str | None] = mapped_column(
+        "correo", String(200), nullable=True
+    )
+    is_primary: Mapped[bool] = mapped_column(
+        "es_responsable_principal",
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    updated_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("usuarios.id", ondelete="SET NULL"),
         nullable=True,

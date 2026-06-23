@@ -1,7 +1,11 @@
 "use client";
 
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Alert } from "@/components/shared/Alert";
 import { useAuth } from "@/hooks/useAuth";
+import { getFollowupDashboard } from "@/services/followupService";
+import type { FollowupDashboard } from "@/types/followup";
 
 const roleLabels: Record<string, string> = {
   ADMINISTRATOR: "Administrador",
@@ -52,7 +56,16 @@ const readinessItems = [
 ];
 
 export function WelcomeDashboard() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const [followups, setFollowups] = useState<FollowupDashboard | null>(null);
+
+  useEffect(() => {
+    if (hasPermission("followups.view")) {
+      getFollowupDashboard(user?.active_site_id ?? undefined)
+        .then(setFollowups)
+        .catch(() => setFollowups(null));
+    }
+  }, [hasPermission, user?.active_site_id]);
 
   if (!user) {
     return null;
@@ -88,6 +101,37 @@ export function WelcomeDashboard() {
             necesitas renovar tu credencial.
           </Alert>
         </div>
+      )}
+
+      {followups && (
+        <section className="mt-7">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
+                Seguimientos
+              </p>
+              <h2 className="mt-2 text-xl font-bold text-slate-900">
+                Controles de pacientes
+              </h2>
+            </div>
+            <Link href="/seguimientos" className="text-sm font-bold text-green-700">
+              Ver seguimientos →
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Pendientes", followups.pending, "text-sky-700"],
+              ["Próximos", followups.upcoming, "text-amber-700"],
+              ["Vencidos", followups.overdue, "text-red-700"],
+              ["Con cita", followups.scheduled, "text-green-700"],
+            ].map(([label, value, style]) => (
+              <article key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-sm font-bold text-slate-500">{label}</p>
+                <p className={`mt-2 text-3xl font-black ${style}`}>{value}</p>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
 
       <section className="mt-7 grid gap-4 md:grid-cols-3">
