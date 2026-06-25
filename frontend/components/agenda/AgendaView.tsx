@@ -308,8 +308,8 @@ export function AgendaView() {
       events.map((appointment) => ({
         id: appointment.id,
         title: appointment.patient_name,
-        start: appointment.starts_at,
-        end: appointment.ends_at,
+        start: appointment.starts_at_local,
+        end: appointment.ends_at_local,
         backgroundColor: appointment.is_overbook
           ? "#f97316"
           : EVENT_COLORS[appointment.status]?.background ?? "#334155",

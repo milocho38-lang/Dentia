@@ -47,6 +47,9 @@ export interface Appointment {
   origin_appointment_id: string | null;
   starts_at: string;
   ends_at: string;
+  starts_at_local: string;
+  ends_at_local: string;
+  timezone: string;
   reason: string;
   notes: string | null;
   status: string;

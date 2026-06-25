@@ -153,6 +153,9 @@ class AppointmentResponse(BaseModel):
     origin_appointment_id: UUID | None
     starts_at: datetime
     ends_at: datetime
+    starts_at_local: str
+    ends_at_local: str
+    timezone: str
     reason: str
     notes: str | None
     status: str

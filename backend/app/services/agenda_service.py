@@ -166,10 +166,11 @@ def _appointment_row(
     lock: bool = False,
 ):
     statement = (
-        select(Appointment, Patient, Dentist, Site, AppointmentType)
+        select(Appointment, Patient, Dentist, Site, AppointmentType, Company)
         .join(Patient, Patient.id == Appointment.patient_id)
         .join(Dentist, Dentist.id == Appointment.dentist_id)
         .join(Site, Site.id == Appointment.site_id)
+        .join(Company, Company.id == Appointment.company_id)
         .join(
             AppointmentType,
             AppointmentType.id == Appointment.appointment_type_id,
@@ -190,8 +191,21 @@ def _appointment_row(
     return row
 
 
+def _local_calendar_iso(value: datetime, timezone_name: str) -> str:
+    return (
+        value.astimezone(ZoneInfo(timezone_name))
+        .replace(tzinfo=None)
+        .isoformat(timespec="seconds")
+    )
+
+
 def _to_response(row) -> AppointmentResponse:
-    appointment, patient, dentist, site, appointment_type = row
+    if len(row) == 6:
+        appointment, patient, dentist, site, appointment_type, company = row
+    else:
+        appointment, patient, dentist, site, appointment_type = row
+        company = None
+    timezone_name = _effective_timezone(company, site)
     return AppointmentResponse(
         id=appointment.id,
         patient_id=patient.id,
@@ -206,6 +220,9 @@ def _to_response(row) -> AppointmentResponse:
         origin_appointment_id=appointment.origin_appointment_id,
         starts_at=appointment.starts_at,
         ends_at=appointment.ends_at,
+        starts_at_local=_local_calendar_iso(appointment.starts_at, timezone_name),
+        ends_at_local=_local_calendar_iso(appointment.ends_at, timezone_name),
+        timezone=timezone_name,
         reason=appointment.reason,
         notes=appointment.notes,
         status=appointment.status,
@@ -263,10 +280,11 @@ def _load_responses(
     if not appointment_ids:
         return []
     rows = session.execute(
-        select(Appointment, Patient, Dentist, Site, AppointmentType)
+        select(Appointment, Patient, Dentist, Site, AppointmentType, Company)
         .join(Patient, Patient.id == Appointment.patient_id)
         .join(Dentist, Dentist.id == Appointment.dentist_id)
         .join(Site, Site.id == Appointment.site_id)
+        .join(Company, Company.id == Appointment.company_id)
         .join(
             AppointmentType,
             AppointmentType.id == Appointment.appointment_type_id,
@@ -524,10 +542,11 @@ def get_events(
     if dentist_id:
         filters.append(Appointment.dentist_id == dentist_id)
     rows = session.execute(
-        select(Appointment, Patient, Dentist, Site, AppointmentType)
+        select(Appointment, Patient, Dentist, Site, AppointmentType, Company)
         .join(Patient, Patient.id == Appointment.patient_id)
         .join(Dentist, Dentist.id == Appointment.dentist_id)
         .join(Site, Site.id == Appointment.site_id)
+        .join(Company, Company.id == Appointment.company_id)
         .join(
             AppointmentType,
             AppointmentType.id == Appointment.appointment_type_id,
