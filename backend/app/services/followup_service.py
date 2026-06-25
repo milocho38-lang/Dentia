@@ -273,6 +273,45 @@ def get_followup(session, context, followup_id):
     return _response(session, context, _get(session, context, followup_id), True)
 
 
+def get_followup_by_patient_appointment(
+    session: Session,
+    context: AuthContext,
+    patient_id: UUID,
+    appointment_id: UUID,
+) -> FollowupResponse:
+    appointment = session.scalar(select(Appointment).where(
+        Appointment.id == appointment_id,
+        Appointment.company_id == context.user.company_id,
+        Appointment.patient_id == patient_id,
+        Appointment.site_id.in_(_site_ids(session, context)),
+        Appointment.is_active.is_(True),
+    ))
+    if not appointment:
+        raise FollowupError("Cita no encontrada.", 404)
+
+    dentist_id = _dentist_scope(session, context)
+    if dentist_id is not None and appointment.dentist_id != dentist_id:
+        raise FollowupError("No tiene acceso al seguimiento de esta cita.", 403)
+
+    statement = select(PatientFollowup).where(
+        PatientFollowup.company_id == context.user.company_id,
+        PatientFollowup.patient_id == patient_id,
+        PatientFollowup.site_id.in_(_site_ids(session, context)),
+        PatientFollowup.is_active.is_(True),
+        (
+            (PatientFollowup.origin_appointment_id == appointment_id)
+            | (PatientFollowup.scheduled_appointment_id == appointment_id)
+        ),
+    )
+    if dentist_id is not None:
+        statement = statement.where(PatientFollowup.dentist_id == dentist_id)
+
+    item = session.scalar(statement.order_by(PatientFollowup.created_at.desc()))
+    if not item:
+        raise FollowupError("Esta cita no tiene seguimiento asociado.", 404)
+    return _response(session, context, item, True)
+
+
 def register_contact(session: Session, context: AuthContext, followup_id: UUID,
                      payload: FollowupContactRequest, metadata: RequestMetadata):
     item = _get(session, context, followup_id, True)

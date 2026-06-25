@@ -16,8 +16,9 @@ from app.schemas.followup_schema import (
 from app.services.auth_service import AuthContext
 from app.services.followup_service import (
     FollowupError, close_followup, complete_appointment, dashboard,
-    get_followup, list_followups, register_contact, reopen_followup,
-    schedule_followup_appointment, whatsapp_link,
+    get_followup, get_followup_by_patient_appointment, list_followups,
+    register_contact, reopen_followup, schedule_followup_appointment,
+    whatsapp_link,
 )
 
 
@@ -78,6 +79,24 @@ def detail_endpoint(
 ):
     try:
         return get_followup(session, context, followup_id)
+    except FollowupError as exc:
+        raise handle(exc)
+
+
+@router.get(
+    "/api/patients/{patient_id}/appointments/{appointment_id}/followup",
+    response_model=FollowupResponse,
+)
+def patient_appointment_followup_endpoint(
+    patient_id: UUID,
+    appointment_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("followups.view"))],
+):
+    try:
+        return get_followup_by_patient_appointment(
+            session, context, patient_id, appointment_id
+        )
     except FollowupError as exc:
         raise handle(exc)
 

@@ -8,6 +8,7 @@ import { Spinner } from "@/components/shared/Spinner";
 import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/services/apiClient";
+import { getAppointmentFollowup } from "@/services/followupService";
 import {
   createResponsible,
   deactivatePatient,
@@ -23,6 +24,7 @@ import type {
   Responsible,
   ResponsibleInput,
 } from "@/types/patient";
+import type { Followup } from "@/types/followup";
 
 function formatDate(value: string | null, withTime = false) {
   if (!value) return "No registrado";
@@ -43,6 +45,11 @@ export function PatientDetail({ patientId }: { patientId: string }) {
     useState<Responsible | null>(null);
   const [confirmation, setConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] =
+    useState<PatientAppointment | null>(null);
+  const [followup, setFollowup] = useState<Followup | null>(null);
+  const [followupLoading, setFollowupLoading] = useState(false);
+  const [followupMessage, setFollowupMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +103,32 @@ export function PatientDetail({ patientId }: { patientId: string }) {
       setConfirmation(false);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function openFollowup(appointment: PatientAppointment) {
+    setSelectedAppointment(appointment);
+    setFollowup(null);
+    setFollowupMessage(null);
+    setFollowupLoading(true);
+    try {
+      const loadedFollowup = await getAppointmentFollowup(
+        patient.id,
+        appointment.id,
+      );
+      setFollowup(loadedFollowup);
+    } catch (followupError) {
+      if (followupError instanceof ApiError && followupError.status === 404) {
+        setFollowupMessage("Esta cita no tiene seguimiento asociado.");
+      } else {
+        setFollowupMessage(
+          followupError instanceof ApiError
+            ? followupError.detail ?? followupError.message
+            : "No fue posible cargar el seguimiento.",
+        );
+      }
+    } finally {
+      setFollowupLoading(false);
     }
   }
 
@@ -337,7 +370,14 @@ export function PatientDetail({ patientId }: { patientId: string }) {
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
               <tr>
-                {["Fecha", "Tipo", "Odontólogo", "Sede", "Estado"].map(
+                {[
+                  "Fecha",
+                  "Tipo",
+                  "Odontólogo",
+                  "Sede",
+                  "Estado",
+                  "Seguimiento",
+                ].map(
                   (heading) => (
                     <th
                       key={heading}
@@ -368,6 +408,21 @@ export function PatientDetail({ patientId }: { patientId: string }) {
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
                       {appointment.status}
                     </span>
+                  </td>
+                  <td className="px-5 py-4 text-sm">
+                    {hasPermission("followups.view") ? (
+                      <button
+                        type="button"
+                        onClick={() => openFollowup(appointment)}
+                        className="font-bold text-green-700 hover:underline"
+                      >
+                        Ver seguimiento
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-400">
+                        Sin permiso
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -420,6 +475,18 @@ export function PatientDetail({ patientId }: { patientId: string }) {
         onClose={() => setConfirmation(false)}
         onConfirm={changeStatus}
       />
+
+      <AppointmentFollowupDialog
+        appointment={selectedAppointment}
+        followup={followup}
+        loading={followupLoading}
+        message={followupMessage}
+        onClose={() => {
+          setSelectedAppointment(null);
+          setFollowup(null);
+          setFollowupMessage(null);
+        }}
+      />
     </div>
   );
 }
@@ -431,6 +498,162 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="mt-2 font-bold text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function AppointmentFollowupDialog({
+  appointment,
+  followup,
+  loading,
+  message,
+  onClose,
+}: {
+  appointment: PatientAppointment | null;
+  followup: Followup | null;
+  loading: boolean;
+  message: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <Modal open={Boolean(appointment)} title="Seguimiento de la cita" onClose={onClose}>
+      <div className="space-y-5">
+        {appointment && (
+          <div className="rounded-2xl bg-slate-50 p-4 text-sm">
+            <p className="font-bold text-slate-900">
+              {formatDate(appointment.starts_at, true)} ·{" "}
+              {appointment.appointment_type_name}
+            </p>
+            <p className="mt-1 text-slate-600">
+              {appointment.dentist_name} · {appointment.site_name} ·{" "}
+              {appointment.status}
+            </p>
+          </div>
+        )}
+
+        {loading && (
+          <div className="flex items-center justify-center gap-3 py-10 text-slate-500">
+            <Spinner className="h-6 w-6 text-dentia-primary" />
+            Cargando seguimiento…
+          </div>
+        )}
+
+        {!loading && message && <Alert tone="info">{message}</Alert>}
+
+        {!loading && followup && (
+          <div className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FollowupField label="Estado" value={followup.status} />
+              <FollowupField
+                label="Clasificación"
+                value={followup.classification}
+              />
+              <FollowupField
+                label="Control recomendado"
+                value={formatDate(followup.followup_date)}
+              />
+              <FollowupField
+                label="Contactar desde"
+                value={formatDate(followup.contact_from)}
+              />
+              <FollowupField
+                label="Último contacto"
+                value={formatDate(followup.last_contact_at, true)}
+              />
+              <FollowupField
+                label="Próximo contacto"
+                value={formatDate(followup.next_contact_at, true)}
+              />
+              <FollowupField label="Odontólogo" value={followup.dentist_name} />
+              <FollowupField label="Sede" value={followup.site_name} />
+            </div>
+
+            <section className="rounded-2xl border border-slate-200 p-4">
+              <h3 className="font-bold text-slate-900">
+                Motivo del seguimiento
+              </h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                {followup.reason}
+              </p>
+            </section>
+
+            {followup.scheduled_appointment_id && (
+              <Alert tone="info">
+                Cita futura vinculada:{" "}
+                {formatDate(followup.scheduled_appointment_at, true)}
+              </Alert>
+            )}
+
+            {(followup.attention_description ||
+              followup.prescribed_medications) && (
+              <section className="rounded-2xl border border-slate-200 p-4">
+                <h3 className="font-bold text-slate-900">
+                  Resumen de atención
+                </h3>
+                {followup.attention_description && (
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
+                    {followup.attention_description}
+                  </p>
+                )}
+                {followup.prescribed_medications && (
+                  <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">
+                    <span className="font-bold">Medicamentos: </span>
+                    {followup.prescribed_medications}
+                  </p>
+                )}
+              </section>
+            )}
+
+            <section>
+              <h3 className="font-bold text-slate-900">
+                Historial de gestiones/contactos
+              </h3>
+              <div className="mt-3 space-y-3">
+                {followup.managements.map((management) => (
+                  <div
+                    key={management.id}
+                    className="rounded-xl border border-slate-200 p-3 text-sm"
+                  >
+                    <p className="font-bold text-slate-900">
+                      {management.management_type} · {management.result}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatDate(management.occurred_at, true)}
+                    </p>
+                    {management.observation && (
+                      <p className="mt-2 whitespace-pre-wrap text-slate-700">
+                        {management.observation}
+                      </p>
+                    )}
+                    {management.next_contact_at && (
+                      <p className="mt-2 text-xs font-bold text-slate-500">
+                        Próximo contacto:{" "}
+                        {formatDate(management.next_contact_at, true)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {!followup.managements.length && (
+                  <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
+                    Sin gestiones registradas.
+                  </p>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function FollowupField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
     </div>
   );
 }

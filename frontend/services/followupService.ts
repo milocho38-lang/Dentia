@@ -37,6 +37,12 @@ export function getFollowup(id: string) {
   return apiRequest<Followup>(`/api/followups/${id}`);
 }
 
+export function getAppointmentFollowup(patientId: string, appointmentId: string) {
+  return apiRequest<Followup>(
+    `/api/patients/${patientId}/appointments/${appointmentId}/followup`,
+  );
+}
+
 export function getFollowupDashboard(siteId?: string) {
   const query = siteId ? `?site_id=${encodeURIComponent(siteId)}` : "";
   return apiRequest<FollowupDashboard>(`/api/followups/dashboard${query}`);
