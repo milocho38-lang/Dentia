@@ -159,3 +159,28 @@ class SiteActionResponse(BaseModel):
     site: SiteResponse
     sessions_revoked: int = 0
     defaults_reassigned: int = 0
+
+
+class DentistSiteOptionResponse(BaseModel):
+    id: UUID
+    name: str
+    address: str
+    timezone: str
+    assigned: bool
+
+
+class DentistSiteManagementResponse(BaseModel):
+    id: UUID
+    name: str
+    status: str
+    user_id: UUID | None
+    site_ids: list[UUID]
+    sites: list[DentistSiteOptionResponse]
+
+
+class DentistSiteListResponse(BaseModel):
+    items: list[DentistSiteManagementResponse]
+
+
+class DentistSiteUpdateRequest(BaseModel):
+    site_ids: list[UUID]

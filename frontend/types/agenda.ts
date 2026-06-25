@@ -15,6 +15,8 @@ export interface DentistOption {
 export interface SiteOption {
   id: string;
   name: string;
+  address: string;
+  timezone: string;
 }
 
 export interface AppointmentTypeOption {

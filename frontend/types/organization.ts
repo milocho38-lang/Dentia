@@ -52,6 +52,23 @@ export interface SiteInput {
   timezone: string | null;
 }
 
+export interface DentistSiteOption {
+  id: string;
+  name: string;
+  address: string;
+  timezone: string;
+  assigned: boolean;
+}
+
+export interface DentistSiteManagement {
+  id: string;
+  name: string;
+  status: string;
+  user_id: string | null;
+  site_ids: string[];
+  sites: DentistSiteOption[];
+}
+
 export interface SiteImpact {
   future_appointments: number;
   assigned_users: number;

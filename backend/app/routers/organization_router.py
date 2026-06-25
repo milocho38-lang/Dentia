@@ -9,6 +9,9 @@ from app.database.session import get_db
 from app.schemas.organization_schema import (
     CompanyResponse,
     CompanyUpdateRequest,
+    DentistSiteListResponse,
+    DentistSiteManagementResponse,
+    DentistSiteUpdateRequest,
     SiteActionRequest,
     SiteActionResponse,
     SiteCreateRequest,
@@ -24,10 +27,12 @@ from app.services.organization_service import (
     deactivate_site,
     get_company,
     get_site,
+    list_dentists_for_site_management,
     list_sites,
     reactivate_site,
     site_impact,
     update_company,
+    update_dentist_sites,
     update_site,
 )
 
@@ -166,6 +171,40 @@ def reactivate_endpoint(
             context,
             site_id,
             payload.reason,
+            get_request_metadata(request),
+        )
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.get("/api/dentists", response_model=DentistSiteListResponse)
+def dentists_endpoint(
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("sites.view"))],
+) -> DentistSiteListResponse:
+    try:
+        return list_dentists_for_site_management(session, context)
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.patch(
+    "/api/dentists/{dentist_id}/sites",
+    response_model=DentistSiteManagementResponse,
+)
+def update_dentist_sites_endpoint(
+    dentist_id: UUID,
+    payload: DentistSiteUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("sites.manage"))],
+) -> DentistSiteManagementResponse:
+    try:
+        return update_dentist_sites(
+            session,
+            context,
+            dentist_id,
+            payload,
             get_request_metadata(request),
         )
     except OrganizationError as exc:

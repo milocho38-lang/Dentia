@@ -7,7 +7,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.agenda import Appointment, DentistSite
+from app.models.agenda import Appointment, Dentist, DentistSite
 from app.models.associations import UserRole, UserSite
 from app.models.audit_event import AuditEvent
 from app.models.auth_session import AuthSession
@@ -19,6 +19,10 @@ from app.models.user import User
 from app.schemas.organization_schema import (
     CompanyResponse,
     CompanyUpdateRequest,
+    DentistSiteListResponse,
+    DentistSiteManagementResponse,
+    DentistSiteOptionResponse,
+    DentistSiteUpdateRequest,
     SiteActionResponse,
     SiteCreateRequest,
     SiteImpactResponse,
@@ -253,6 +257,51 @@ def _site_response(
         created_at=site.created_at,
         updated_at=site.updated_at,
         **counts,
+    )
+
+
+def _dentist_site_response(
+    session: Session,
+    context: AuthContext,
+    dentist: Dentist,
+) -> DentistSiteManagementResponse:
+    active_sites = list(
+        session.scalars(
+            select(Site)
+            .where(
+                Site.company_id == context.user.company_id,
+                Site.is_active.is_(True),
+                Site.status == "Activa",
+            )
+            .order_by(Site.name)
+        )
+    )
+    assigned_ids = set(
+        session.scalars(
+            select(DentistSite.site_id).where(
+                DentistSite.company_id == context.user.company_id,
+                DentistSite.dentist_id == dentist.id,
+                DentistSite.is_active.is_(True),
+            )
+        )
+    )
+    company = session.get(Company, context.user.company_id)
+    return DentistSiteManagementResponse(
+        id=dentist.id,
+        name=dentist.name,
+        status=dentist.status,
+        user_id=dentist.user_id,
+        site_ids=sorted(assigned_ids, key=str),
+        sites=[
+            DentistSiteOptionResponse(
+                id=site.id,
+                name=site.name,
+                address=site.address,
+                timezone=site.timezone or company.timezone,
+                assigned=site.id in assigned_ids,
+            )
+            for site in active_sites
+        ],
     )
 
 
@@ -680,3 +729,99 @@ def reactivate_site(
             session, session.get(Company, context.user.company_id), site
         ),
     )
+
+
+def list_dentists_for_site_management(
+    session: Session,
+    context: AuthContext,
+) -> DentistSiteListResponse:
+    dentists = list(
+        session.scalars(
+            select(Dentist)
+            .where(
+                Dentist.company_id == context.user.company_id,
+                Dentist.is_active.is_(True),
+                Dentist.status == "Activo",
+            )
+            .order_by(Dentist.name)
+        )
+    )
+    return DentistSiteListResponse(
+        items=[
+            _dentist_site_response(session, context, dentist)
+            for dentist in dentists
+        ]
+    )
+
+
+def update_dentist_sites(
+    session: Session,
+    context: AuthContext,
+    dentist_id: UUID,
+    payload: DentistSiteUpdateRequest,
+    metadata: RequestMetadata,
+) -> DentistSiteManagementResponse:
+    dentist = session.scalar(
+        select(Dentist)
+        .where(
+            Dentist.id == dentist_id,
+            Dentist.company_id == context.user.company_id,
+            Dentist.is_active.is_(True),
+            Dentist.status == "Activo",
+        )
+        .with_for_update()
+    )
+    if dentist is None:
+        raise OrganizationError("Odontólogo no encontrado.", 404)
+    requested_ids = set(payload.site_ids)
+    valid_ids = set(
+        session.scalars(
+            select(Site.id).where(
+                Site.company_id == context.user.company_id,
+                Site.id.in_(requested_ids) if requested_ids else True,
+                Site.is_active.is_(True),
+                Site.status == "Activa",
+            )
+        )
+    )
+    if valid_ids != requested_ids:
+        raise OrganizationError("Una o más sedes no están activas.", 400)
+    existing = {
+        assignment.site_id: assignment
+        for assignment in session.scalars(
+            select(DentistSite)
+            .where(
+                DentistSite.company_id == context.user.company_id,
+                DentistSite.dentist_id == dentist.id,
+            )
+            .with_for_update()
+        )
+    }
+    before = sorted(
+        str(site_id)
+        for site_id, assignment in existing.items()
+        if assignment.is_active
+    )
+    for site_id, assignment in existing.items():
+        assignment.is_active = site_id in requested_ids
+    for site_id in requested_ids - existing.keys():
+        session.add(
+            DentistSite(
+                company_id=context.user.company_id,
+                dentist_id=dentist.id,
+                site_id=site_id,
+                created_by=context.user.id,
+            )
+        )
+    after = sorted(str(site_id) for site_id in requested_ids)
+    _audit(
+        session,
+        context,
+        metadata,
+        entity="dentist",
+        entity_id=dentist.id,
+        action="DENTIST_SITES_UPDATED",
+        detail={"before": before, "after": after},
+    )
+    session.commit()
+    return _dentist_site_response(session, context, dentist)

@@ -16,9 +16,11 @@ from app.schemas.agenda_schema import (
     AppointmentResponse,
     AppointmentRescheduleRequest,
     AppointmentUpdateRequest,
+    AppointmentWhatsAppLinkResponse,
 )
 from app.services.agenda_service import (
     AgendaError,
+    appointment_whatsapp_link,
     cancel_appointment,
     confirm_appointment,
     create_appointment,
@@ -68,6 +70,29 @@ def agenda_events_endpoint(
             ends_at=ends_at,
             dentist_id=dentist_id,
             site_id=site_id,
+        )
+    except AgendaError as exc:
+        raise handle_agenda_error(exc)
+
+
+@router.post(
+    "/api/appointments/{appointment_id}/whatsapp-link",
+    response_model=AppointmentWhatsAppLinkResponse,
+)
+def appointment_whatsapp_endpoint(
+    appointment_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("appointments.update"))
+    ],
+) -> AppointmentWhatsAppLinkResponse:
+    try:
+        return appointment_whatsapp_link(
+            session,
+            context,
+            appointment_id,
+            get_request_metadata(request),
         )
     except AgendaError as exc:
         raise handle_agenda_error(exc)

@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
+from urllib.parse import quote
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -11,6 +13,7 @@ from app.models.agenda import (
     Dentist,
     DentistSite,
     Patient,
+    PatientResponsible,
 )
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
@@ -24,6 +27,7 @@ from app.schemas.agenda_schema import (
     AppointmentRescheduleRequest,
     AppointmentTypeOptionResponse,
     AppointmentUpdateRequest,
+    AppointmentWhatsAppLinkResponse,
     DentistOptionResponse,
     SiteOptionResponse,
 )
@@ -42,6 +46,7 @@ INITIAL_APPOINTMENT_TYPES = (
     ("Retiro de puntos", 15),
     ("Impresión", 15),
 )
+FALLBACK_TIMEZONE = "America/Bogota"
 
 
 class AgendaError(RuntimeError):
@@ -209,6 +214,46 @@ def _to_response(row) -> AppointmentResponse:
         confirmation_method=appointment.confirmation_method,
         confirmed_at=appointment.confirmed_at,
     )
+
+
+def _effective_timezone(company: Company | None, site: Site | None) -> str:
+    return (
+        (site.timezone if site else None)
+        or (company.timezone if company else None)
+        or FALLBACK_TIMEZONE
+    )
+
+
+def _patient_contact_mobile(session: Session, patient: Patient) -> str:
+    if patient.birth_date:
+        today = datetime.now(ZoneInfo(FALLBACK_TIMEZONE)).date()
+        age = today.year - patient.birth_date.year - (
+            (today.month, today.day)
+            < (patient.birth_date.month, patient.birth_date.day)
+        )
+        if age < 18:
+            responsible = session.scalar(
+                select(PatientResponsible).where(
+                    PatientResponsible.patient_id == patient.id,
+                    PatientResponsible.is_active.is_(True),
+                    PatientResponsible.is_primary.is_(True),
+                )
+            )
+            if responsible:
+                return responsible.mobile
+    return patient.mobile
+
+
+def _normalize_phone(value: str) -> str:
+    phone = "".join(filter(str.isdigit, value))
+    if len(phone) == 10:
+        phone = f"57{phone}"
+    return phone
+
+
+def _format_local_appointment(value: datetime, timezone_name: str) -> tuple[str, str]:
+    local_value = value.astimezone(ZoneInfo(timezone_name))
+    return local_value.strftime("%d/%m/%Y"), local_value.strftime("%H:%M")
 
 
 def _load_responses(
@@ -427,11 +472,22 @@ def get_options(
             .order_by(AppointmentType.name)
         )
     )
+    company = session.get(Company, context.user.company_id)
+    site_by_id = {site.id: site for site in sites}
+    active_site = site_by_id.get(context.auth_session.active_site_id)
     return AgendaOptionsResponse(
-        timezone=session.get(Company, context.user.company_id).timezone,
+        timezone=_effective_timezone(company, active_site),
         active_site_id=context.auth_session.active_site_id,
         dentists=list(dentists_by_id.values()),
-        sites=[SiteOptionResponse(id=site.id, name=site.name) for site in sites],
+        sites=[
+            SiteOptionResponse(
+                id=site.id,
+                name=site.name,
+                address=site.address,
+                timezone=_effective_timezone(company, site),
+            )
+            for site in sites
+        ],
         appointment_types=[
             AppointmentTypeOptionResponse(
                 id=item.id,
@@ -614,6 +670,45 @@ def confirm_appointment(
     )
     session.commit()
     return _to_response(_appointment_row(session, context, appointment.id))
+
+
+def appointment_whatsapp_link(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    metadata: RequestMetadata,
+) -> AppointmentWhatsAppLinkResponse:
+    row = _appointment_row(session, context, appointment_id)
+    appointment, patient, dentist, site, _appointment_type = row
+    company = session.get(Company, context.user.company_id)
+    phone = _normalize_phone(_patient_contact_mobile(session, patient))
+    if len(phone) < 10:
+        raise AgendaError("El paciente no tiene un celular válido.", 409)
+    timezone_name = _effective_timezone(company, site)
+    date_text, time_text = _format_local_appointment(
+        appointment.starts_at,
+        timezone_name,
+    )
+    patient_name = f"{patient.first_names} {patient.last_names}".strip()
+    message = (
+        f"Hola, {patient_name}. ¿Nos confirmas tu asistencia a la cita "
+        f"odontológica con {dentist.name} en {site.name}, ubicada en "
+        f"{site.address}, el {date_text} a las {time_text}?"
+    )
+    _audit(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action="APPOINTMENT_WHATSAPP_LINK_GENERATED",
+        detail={"phone": phone, "message": message},
+    )
+    session.commit()
+    return AppointmentWhatsAppLinkResponse(
+        url=f"https://wa.me/{phone}?text={quote(message)}",
+        phone=phone,
+        message=message,
+    )
 
 
 def cancel_appointment(

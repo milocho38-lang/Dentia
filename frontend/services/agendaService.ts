@@ -63,6 +63,13 @@ export function confirmAppointment(appointmentId: string, method: string) {
   );
 }
 
+export function generateAppointmentWhatsApp(appointmentId: string) {
+  return apiRequest<{ url: string; phone: string; message: string }>(
+    `/api/appointments/${appointmentId}/whatsapp-link`,
+    { method: "POST" },
+  );
+}
+
 export function cancelAppointment(appointmentId: string, reason: string) {
   return apiRequest<Appointment>(
     `/api/appointments/${appointmentId}/cancel`,

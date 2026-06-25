@@ -16,6 +16,8 @@ class DentistOptionResponse(BaseModel):
 class SiteOptionResponse(BaseModel):
     id: UUID
     name: str
+    address: str
+    timezone: str
 
 
 class AppointmentTypeOptionResponse(BaseModel):
@@ -162,3 +164,9 @@ class AppointmentResponse(BaseModel):
 
 class AgendaEventsResponse(BaseModel):
     items: list[AppointmentResponse]
+
+
+class AppointmentWhatsAppLinkResponse(BaseModel):
+    url: str
+    phone: str
+    message: str

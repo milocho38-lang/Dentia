@@ -16,6 +16,7 @@ from app.models.agenda import (
 )
 from app.models.audit_event import AuditEvent
 from app.models.followup import AppointmentCare, FollowupManagement, PatientFollowup
+from app.models.company import Company
 from app.models.site import Site
 from app.schemas.agenda_schema import AppointmentCreateRequest
 from app.schemas.followup_schema import (
@@ -296,15 +297,22 @@ def register_contact(session: Session, context: AuthContext, followup_id: UUID,
 def whatsapp_link(session: Session, context: AuthContext, followup_id: UUID, metadata: RequestMetadata):
     item = _get(session, context, followup_id, True)
     patient = session.get(Patient, item.patient_id)
+    dentist = session.get(Dentist, item.dentist_id)
+    site = session.get(Site, item.site_id)
+    company = session.get(Company, context.user.company_id)
     phone = "".join(filter(str.isdigit, _contact_mobile(session, patient)))
     if len(phone) == 10:
         phone = f"57{phone}"
     if len(phone) < 10:
         raise FollowupError("El paciente no tiene un celular válido.", 409)
+    patient_name = f"{patient.first_names} {patient.last_names}".strip()
+    company_name = company.name if company else "Dentia"
     message = (
-        f"Hola, {patient.first_names}. En Dentia queremos recordarte que tienes "
-        f"un control odontológico recomendado para {item.followup_date.isoformat()}, "
-        f"relacionado con {item.reason}. ¿Deseas que programemos tu cita?"
+        f"Hola, {patient_name}. En {company_name} queremos recordarte que "
+        f"tienes un control recomendado con {dentist.name}. Puedes agendarlo "
+        f"en {site.name}, ubicada en {site.address}. Fecha recomendada: "
+        f"{item.followup_date.isoformat()}. Motivo: {item.reason}. "
+        "¿Deseas que programemos tu cita?"
     )
     now = datetime.now(timezone.utc)
     session.add(FollowupManagement(

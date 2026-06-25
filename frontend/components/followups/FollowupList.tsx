@@ -15,7 +15,44 @@ import {
 import type { AgendaOptions } from "@/types/agenda";
 import type { Followup, FollowupDashboard } from "@/types/followup";
 
-const OFFSET = "-05:00";
+const FALLBACK_TIMEZONE = "America/Bogota";
+
+function getTimeZoneOffset(timeZone: string, date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const asUtc = Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour === 24 ? 0 : values.hour,
+    values.minute,
+    values.second,
+  );
+  return asUtc - date.getTime();
+}
+
+function zonedDateTimeToIso(date: string, time: string, timeZone: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const firstOffset = getTimeZoneOffset(timeZone, utcGuess);
+  const firstUtc = new Date(utcGuess.getTime() - firstOffset);
+  const secondOffset = getTimeZoneOffset(timeZone, firstUtc);
+  return new Date(utcGuess.getTime() - secondOffset).toISOString();
+}
 
 function formatDate(value: string | null, time = false) {
   if (!value) return "—";
@@ -158,6 +195,9 @@ function FollowupDetail({ item, onClose, onChanged }: { item: Followup; onClose:
   const [timeValue, setTimeValue] = useState("09:00");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const availableDentists = (options?.dentists ?? []).filter(
+    (dentist) => !siteId || dentist.site_ids.includes(siteId),
+  );
 
   useEffect(() => {
     if (action === "schedule" && !options) {
@@ -177,7 +217,15 @@ function FollowupDetail({ item, onClose, onChanged }: { item: Followup; onClose:
           next_contact_at: nextContact ? new Date(nextContact).toISOString() : null,
         });
       } else if (action === "schedule") {
-        const starts = `${dateValue}T${timeValue}:00${OFFSET}`;
+        const selectedSiteTimezone =
+          options?.sites.find((site) => site.id === siteId)?.timezone ??
+          options?.timezone ??
+          FALLBACK_TIMEZONE;
+        const starts = zonedDateTimeToIso(
+          dateValue,
+          timeValue,
+          selectedSiteTimezone,
+        );
         const duration = options?.appointment_types.find((item) => item.id === typeId)
           ?.suggested_duration_minutes ?? 30;
         const end = new Date(starts); end.setMinutes(end.getMinutes() + duration);
@@ -231,7 +279,7 @@ function FollowupDetail({ item, onClose, onChanged }: { item: Followup; onClose:
         )}
         {action === "contact" && <Action title="Registrar contacto"><Select label="Medio" value={type} onChange={setType} values={["WhatsApp", "Llamada", "Presencial"]}/><Select label="Resultado" value={result} onChange={setResult} values={["Contactado", "No respondió", "Número inválido", "Contactar después", "No desea continuar"]}/><Input label="Observación" value={observation} onChange={setObservation}/><label><span className="mb-1 block text-sm font-bold">Próximo contacto</span><input type="datetime-local" value={nextContact} onChange={(event) => setNextContact(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 px-3"/></label><Buttons busy={busy} onCancel={() => setAction(null)} onSave={run}/></Action>}
         {action === "close" && <Action title="Cerrar seguimiento"><Select label="Resultado" value={closeStatus} onChange={setCloseStatus} values={["Cerrado sin cita", "No desea continuar"]}/><Input label="Motivo" value={observation} onChange={setObservation}/><Buttons busy={busy} disabled={observation.trim().length < 2} onCancel={() => setAction(null)} onSave={run}/></Action>}
-        {action === "schedule" && options && <Action title="Programar cita"><Select label="Odontólogo" value={dentistId} onChange={setDentistId} options={options.dentists.map((x) => ({value:x.id,label:x.name}))}/><Select label="Sede" value={siteId} onChange={setSiteId} options={options.sites.map((x) => ({value:x.id,label:x.name}))}/><Select label="Tipo" value={typeId} onChange={setTypeId} options={options.appointment_types.map((x) => ({value:x.id,label:x.name}))}/><div className="grid gap-3 sm:grid-cols-2"><label><span className="mb-1 block text-sm font-bold">Fecha</span><input type="date" value={dateValue} onChange={(event) => setDateValue(event.target.value)} className="min-h-11 w-full rounded-xl border px-3"/></label><label><span className="mb-1 block text-sm font-bold">Hora</span><input type="time" step={900} value={timeValue} onChange={(event) => setTimeValue(event.target.value)} className="min-h-11 w-full rounded-xl border px-3"/></label></div><Buttons busy={busy} disabled={!dateValue || !typeId} onCancel={() => setAction(null)} onSave={run}/></Action>}
+        {action === "schedule" && options && <Action title="Programar cita"><Select label="Sede" value={siteId} onChange={(value)=>{setSiteId(value); const dentist=options.dentists.find((x)=>x.id===dentistId); if (dentist && !dentist.site_ids.includes(value)) setDentistId("");}} options={options.sites.map((x) => ({value:x.id,label:`${x.name} · ${x.address}`}))}/><Select label="Odontólogo" value={dentistId} onChange={setDentistId} options={availableDentists.map((x) => ({value:x.id,label:x.name}))}/>{siteId && availableDentists.length === 0 && <Alert tone="warning">No hay odontólogos asociados a esta sede.</Alert>}<Select label="Tipo" value={typeId} onChange={setTypeId} options={options.appointment_types.map((x) => ({value:x.id,label:x.name}))}/><div className="grid gap-3 sm:grid-cols-2"><label><span className="mb-1 block text-sm font-bold">Fecha</span><input type="date" value={dateValue} onChange={(event) => setDateValue(event.target.value)} className="min-h-11 w-full rounded-xl border px-3"/></label><label><span className="mb-1 block text-sm font-bold">Hora</span><input type="time" step={900} value={timeValue} onChange={(event) => setTimeValue(event.target.value)} className="min-h-11 w-full rounded-xl border px-3"/></label></div><Buttons busy={busy} disabled={!dateValue || !typeId || !siteId || !dentistId} onCancel={() => setAction(null)} onSave={run}/></Action>}
         <div><h4 className="font-bold">Historial de gestiones</h4>{item.managements.map((management) => <div key={management.id} className="mt-2 rounded-xl border p-3 text-sm"><strong>{management.management_type} · {management.result}</strong><p className="text-xs text-slate-500">{formatDate(management.occurred_at, true)}</p>{management.observation && <p className="mt-1">{management.observation}</p>}</div>)}{!item.managements.length && <p className="mt-2 text-sm text-slate-500">Sin gestiones registradas.</p>}</div>
       </div>
     </Modal>

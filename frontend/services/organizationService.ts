@@ -2,6 +2,7 @@ import { apiRequest } from "@/services/apiClient";
 import type {
   Company,
   CompanyInput,
+  DentistSiteManagement,
   Site,
   SiteImpact,
   SiteInput,
@@ -71,4 +72,16 @@ export function reactivateSite(id: string, reason: string) {
       body: JSON.stringify({ reason }),
     },
   );
+}
+
+export function listDentists() {
+  return apiRequest<{ items: DentistSiteManagement[] }>("/api/dentists");
+}
+
+export function updateDentistSites(id: string, siteIds: string[]) {
+  return apiRequest<DentistSiteManagement>(`/api/dentists/${id}/sites`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ site_ids: siteIds }),
+  });
 }

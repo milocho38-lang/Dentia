@@ -43,6 +43,12 @@ export const navigationItems: NavigationItem[] = [
     section: "Configuración",
   },
   {
+    label: "Odontólogos",
+    href: "/configuracion/odontologos",
+    permission: "sites.view",
+    section: "Configuración",
+  },
+  {
     label: "Usuarios",
     href: "/configuracion/usuarios",
     permission: "users.view",

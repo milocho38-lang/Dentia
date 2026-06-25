@@ -2,6 +2,7 @@
 
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
+import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { useSearchParams } from "next/navigation";
 import type { DateClickArg } from "@fullcalendar/interaction";
@@ -21,6 +22,7 @@ import {
   confirmAppointment,
   createAppointment,
   createQuickPatient,
+  generateAppointmentWhatsApp,
   getAgendaEvents,
   getAgendaOptions,
   rescheduleAppointment,
@@ -34,7 +36,7 @@ import type {
   PatientOption,
 } from "@/types/agenda";
 
-const BOGOTA_OFFSET = "-05:00";
+const FALLBACK_TIMEZONE = "America/Bogota";
 const TERMINAL_STATES = new Set([
   "Atendida",
   "Cancelada",
@@ -42,56 +44,138 @@ const TERMINAL_STATES = new Set([
   "Reprogramada",
 ]);
 
-function bogotaDate(date = new Date()) {
+const EVENT_COLORS: Record<string, { background: string; border: string }> = {
+  Programada: { background: "#0284c7", border: "#0369a1" },
+  Confirmada: { background: "#16a34a", border: "#15803d" },
+  Atendida: { background: "#7c3aed", border: "#6d28d9" },
+  Cancelada: { background: "#dc2626", border: "#b91c1c" },
+  Reprogramada: { background: "#f59e0b", border: "#d97706" },
+  "No Asistió": { background: "#64748b", border: "#475569" },
+};
+
+type CalendarViewType = "timeGridDay" | "timeGridWeek" | "dayGridMonth";
+
+function dateInTimeZone(date = new Date(), timeZone = FALLBACK_TIMEZONE) {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Bogota",
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(date);
 }
 
-function dayRange(date: string) {
-  const start = `${date}T00:00:00${BOGOTA_OFFSET}`;
-  const next = new Date(`${date}T12:00:00${BOGOTA_OFFSET}`);
-  next.setUTCDate(next.getUTCDate() + 1);
+function getTimeZoneOffset(timeZone: string, date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)]),
+  );
+  const asUtc = Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour === 24 ? 0 : values.hour,
+    values.minute,
+    values.second,
+  );
+  return asUtc - date.getTime();
+}
+
+function zonedDateTimeToIso(
+  date: string,
+  time: string,
+  timeZone = FALLBACK_TIMEZONE,
+) {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const firstOffset = getTimeZoneOffset(timeZone, utcGuess);
+  const firstUtc = new Date(utcGuess.getTime() - firstOffset);
+  const secondOffset = getTimeZoneOffset(timeZone, firstUtc);
+  return new Date(utcGuess.getTime() - secondOffset).toISOString();
+}
+
+function addCalendarDays(date: string, days: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0));
+  return value.toISOString().slice(0, 10);
+}
+
+function dayRange(date: string, timeZone = FALLBACK_TIMEZONE) {
+  const start = zonedDateTimeToIso(date, "00:00", timeZone);
   return {
     start,
-    end: `${bogotaDate(next)}T00:00:00${BOGOTA_OFFSET}`,
+    end: zonedDateTimeToIso(addCalendarDays(date, 1), "00:00", timeZone),
   };
 }
 
-function calendarRange(start: string, end: string) {
+function calendarRange(start: string, end: string, timeZone = FALLBACK_TIMEZONE) {
   const startDate = start.slice(0, 10);
   const endDate = end.slice(0, 10);
   return {
-    start: `${startDate}T00:00:00${BOGOTA_OFFSET}`,
-    end: `${endDate}T00:00:00${BOGOTA_OFFSET}`,
+    start: zonedDateTimeToIso(startDate, "00:00", timeZone),
+    end: zonedDateTimeToIso(endDate, "00:00", timeZone),
   };
 }
 
-function toIso(date: string, time: string) {
-  return `${date}T${time}:00${BOGOTA_OFFSET}`;
+function wallClockFieldsFromCalendarBoundary(value: string) {
+  const date = value.slice(0, 10);
+  const time = value.includes("T")
+    ? value.slice(11, 16)
+    : "00:00";
+  return { date, time };
 }
 
-function addMinutes(date: string, time: string, minutes: number) {
-  const value = new Date(toIso(date, time));
-  value.setMinutes(value.getMinutes() + minutes);
+function calendarBoundaryToIso(value: string, timeZone = FALLBACK_TIMEZONE) {
+  const { date, time } = wallClockFieldsFromCalendarBoundary(value);
+  return zonedDateTimeToIso(date, time, timeZone);
+}
+
+function isValidRange(range: { start: string; end: string }) {
+  const start = Date.parse(range.start);
+  const end = Date.parse(range.end);
+  return Number.isFinite(start) && Number.isFinite(end) && end > start;
+}
+
+function addMinutes(
+  date: string,
+  time: string,
+  minutes: number,
+  timeZone = FALLBACK_TIMEZONE,
+) {
+  const value = new Date(zonedDateTimeToIso(date, time, timeZone));
+  value.setUTCMinutes(value.getUTCMinutes() + minutes);
   return value.toISOString();
 }
 
-function localTime(value: string) {
+function dateTimeFieldsFromCalendar(value: string, fallbackTime = "08:00") {
+  const date = value.slice(0, 10);
+  const match = value.match(/T(\d{2}:\d{2})/);
+  return { date, time: match?.[1] ?? fallbackTime };
+}
+
+function localTime(value: string, timeZone = FALLBACK_TIMEZONE) {
   return new Intl.DateTimeFormat("es-CO", {
-    timeZone: "America/Bogota",
+    timeZone,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(new Date(value));
 }
 
-function localDate(value: string) {
+function localDate(value: string, timeZone = FALLBACK_TIMEZONE) {
   return new Intl.DateTimeFormat("es-CO", {
-    timeZone: "America/Bogota",
+    timeZone,
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -130,12 +214,11 @@ export function AgendaView() {
   const preselectedPatientId = searchParams.get("patient_id");
   const shouldOpenNewAppointment = searchParams.get("new") === "1";
   const { hasPermission, user } = useAuth();
-  const [date, setDate] = useState(bogotaDate());
-  const [calendarView, setCalendarView] = useState<
-    "timeGridDay" | "timeGridWeek"
-  >("timeGridDay");
+  const [date, setDate] = useState(dateInTimeZone());
+  const [calendarView, setCalendarView] =
+    useState<CalendarViewType>("timeGridDay");
   const [visibleRange, setVisibleRange] = useState(() =>
-    dayRange(bogotaDate()),
+    dayRange(dateInTimeZone()),
   );
   const [options, setOptions] = useState<AgendaOptions | null>(null);
   const [events, setEvents] = useState<Appointment[]>([]);
@@ -148,13 +231,26 @@ export function AgendaView() {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [preselectedPatient, setPreselectedPatient] =
     useState<PatientOption | null>(null);
+  const activeTimeZone = useMemo(() => {
+    const selectedSite = options?.sites.find((site) => site.id === siteId);
+    return selectedSite?.timezone ?? options?.timezone ?? FALLBACK_TIMEZONE;
+  }, [options, siteId]);
 
   const loadEvents = useCallback(async () => {
+    const range = {
+      start: visibleRange.start,
+      end: visibleRange.end,
+    };
+    if (!isValidRange(range)) {
+      setError("El rango de consulta no es válido.");
+      setEvents([]);
+      return;
+    }
     try {
       setError(null);
       const items = await getAgendaEvents(
-        visibleRange.start,
-        visibleRange.end,
+        range.start,
+        range.end,
         dentistId || undefined,
         siteId || undefined,
       );
@@ -214,8 +310,12 @@ export function AgendaView() {
         title: appointment.patient_name,
         start: appointment.starts_at,
         end: appointment.ends_at,
-        backgroundColor: appointment.is_overbook ? "#f97316" : "#16a34a",
-        borderColor: appointment.is_overbook ? "#ea580c" : "#15803d",
+        backgroundColor: appointment.is_overbook
+          ? "#f97316"
+          : EVENT_COLORS[appointment.status]?.background ?? "#334155",
+        borderColor: appointment.is_overbook
+          ? "#ea580c"
+          : EVENT_COLORS[appointment.status]?.border ?? "#1e293b",
         textColor: "#ffffff",
         extendedProps: { appointment },
       })),
@@ -224,17 +324,29 @@ export function AgendaView() {
 
   function openAtTime(arg: DateClickArg) {
     if (!hasPermission("appointments.create")) return;
-    setDate(bogotaDate(arg.date));
-    setNewStartTime(localTime(arg.date.toISOString()));
+    const selected = dateTimeFieldsFromCalendar(arg.dateStr);
+    setDate(selected.date);
+    setNewStartTime(selected.time);
     setNewOpen(true);
   }
 
   function handleDatesSet(arg: DatesSetArg) {
-    const range = calendarRange(arg.startStr, arg.endStr);
+    const range = {
+      start: calendarBoundaryToIso(arg.startStr, activeTimeZone),
+      end: calendarBoundaryToIso(arg.endStr, activeTimeZone),
+    };
     setCalendarView(
-      arg.view.type === "timeGridWeek" ? "timeGridWeek" : "timeGridDay",
+      arg.view.type === "dayGridMonth"
+        ? "dayGridMonth"
+        : arg.view.type === "timeGridWeek"
+          ? "timeGridWeek"
+          : "timeGridDay",
     );
-    setDate(bogotaDate(arg.view.calendar.getDate()));
+    setDate(dateInTimeZone(arg.view.calendar.getDate(), activeTimeZone));
+    if (!isValidRange(range)) {
+      setError("El rango de consulta no es válido.");
+      return;
+    }
     setVisibleRange((current) => {
       if (current.start === range.start && current.end === range.end) {
         return current;
@@ -243,7 +355,7 @@ export function AgendaView() {
     });
   }
 
-  function changeView(view: "timeGridDay" | "timeGridWeek") {
+  function changeView(view: CalendarViewType) {
     calendarRef.current?.getApi().changeView(view);
   }
 
@@ -259,12 +371,20 @@ export function AgendaView() {
   function renderEvent(arg: EventContentArg) {
     const appointment = arg.event.extendedProps
       .appointment as Appointment;
+    const showSite = siteId === "";
     return (
       <div className="overflow-hidden px-1 py-0.5 text-xs leading-tight">
-        <div className="truncate font-bold">{appointment.patient_name}</div>
-        <div className="mt-0.5 truncate opacity-90">
-          {appointment.appointment_type_name} · {appointment.site_name}
+        <div className="truncate font-bold">
+          {showSite ? `[${appointment.site_name}] ` : ""}
+          {appointment.patient_name}
         </div>
+        <div className="mt-0.5 truncate opacity-90">
+          {appointment.appointment_type_name}
+          {!showSite && ` · ${appointment.site_name}`}
+        </div>
+        <span className="mt-1 inline-flex rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-slate-800">
+          {appointment.status}
+        </span>
         {appointment.is_overbook && (
           <span className="mt-1 inline-flex rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-orange-700">
             Sobrecupo
@@ -294,7 +414,7 @@ export function AgendaView() {
             Agenda
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Horario en {options?.timezone ?? "America/Bogota"} · intervalos de 15 minutos
+            Horario en {activeTimeZone} · intervalos de 15 minutos
           </p>
         </div>
         {hasPermission("appointments.create") && (
@@ -340,6 +460,18 @@ export function AgendaView() {
                 }`}
               >
                 Semana
+              </button>
+              <button
+                type="button"
+                onClick={() => changeView("dayGridMonth")}
+                aria-pressed={calendarView === "dayGridMonth"}
+                className={`min-h-10 rounded-lg px-4 text-sm font-bold transition ${
+                  calendarView === "dayGridMonth"
+                    ? "bg-white text-green-800 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Mes
               </button>
             </div>
 
@@ -426,7 +558,7 @@ export function AgendaView() {
             <div className="min-w-[680px]">
               <FullCalendar
                 ref={calendarRef}
-                plugins={[timeGridPlugin, interactionPlugin]}
+                plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
                 initialView="timeGridDay"
                 initialDate={date}
                 headerToolbar={false}
@@ -437,7 +569,7 @@ export function AgendaView() {
                 slotLabelInterval="01:00"
                 height="auto"
                 locale="es"
-                timeZone={options?.timezone ?? "America/Bogota"}
+                timeZone={activeTimeZone}
                 nowIndicator
                 editable={false}
                 selectable={hasPermission("appointments.create")}
@@ -466,6 +598,7 @@ export function AgendaView() {
           defaultSiteId={siteId}
           preselectedPatient={preselectedPatient}
           canOverbook={hasPermission("appointments.overbook")}
+          timeZone={activeTimeZone}
           onClose={() => setNewOpen(false)}
           onCreated={async () => {
             setNewOpen(false);
@@ -483,6 +616,7 @@ export function AgendaView() {
           canCancel={hasPermission("appointments.cancel")}
           canOverbook={hasPermission("appointments.overbook")}
           canComplete={hasPermission("appointments.complete")}
+          timeZone={activeTimeZone}
           onClose={() => setSelected(null)}
           onChanged={async (appointment) => {
             setSelected(appointment);
@@ -503,6 +637,7 @@ function AppointmentForm({
   defaultSiteId,
   preselectedPatient,
   canOverbook,
+  timeZone,
   onClose,
   onCreated,
 }: {
@@ -514,6 +649,7 @@ function AppointmentForm({
   defaultSiteId: string;
   preselectedPatient: PatientOption | null;
   canOverbook: boolean;
+  timeZone: string;
   onClose: () => void;
   onCreated: () => Promise<void>;
 }) {
@@ -542,6 +678,9 @@ function AppointmentForm({
     if (!open) return;
     setAppointmentDate(date);
     setTime(initialTime);
+    setError(null);
+    setConflict(null);
+    setOverbookReason("");
     setDentistId(defaultDentistId || options.dentists[0]?.id || "");
     setSiteId(defaultSiteId || options.sites[0]?.id || "");
     if (preselectedPatient) {
@@ -586,12 +725,11 @@ function AppointmentForm({
     return () => window.clearTimeout(timeout);
   }, [open, patientSearch]);
 
-  const selectedDentist = options.dentists.find(
-    (dentist) => dentist.id === dentistId,
+  const availableDentists = options.dentists.filter(
+    (dentist) => !siteId || dentist.site_ids.includes(siteId),
   );
-  const availableSites = options.sites.filter(
-    (site) => !selectedDentist || selectedDentist.site_ids.includes(site.id),
-  );
+  const selectedSiteTimezone =
+    options.sites.find((site) => site.id === siteId)?.timezone ?? timeZone;
 
   async function save(isOverbook = false) {
     setError(null);
@@ -607,8 +745,17 @@ function AppointmentForm({
         dentist_id: dentistId,
         site_id: siteId,
         appointment_type_id: typeId,
-        starts_at: toIso(appointmentDate, time),
-        ends_at: addMinutes(appointmentDate, time, duration),
+        starts_at: zonedDateTimeToIso(
+          appointmentDate,
+          time,
+          selectedSiteTimezone,
+        ),
+        ends_at: addMinutes(
+          appointmentDate,
+          time,
+          duration,
+          selectedSiteTimezone,
+        ),
         reason: reason.trim(),
         is_overbook: isOverbook,
         overbook_reason: isOverbook ? overbookReason.trim() : null,
@@ -645,7 +792,8 @@ function AppointmentForm({
             <p className="font-bold">{conflict.message}</p>
             {conflict.conflicts.map((item) => (
               <p key={item.id} className="mt-1 text-xs">
-                {localTime(item.starts_at)}–{localTime(item.ends_at)} ·{" "}
+                {localTime(item.starts_at, selectedSiteTimezone)}–
+                {localTime(item.ends_at, selectedSiteTimezone)} ·{" "}
                 {item.patient_name}
               </p>
             ))}
@@ -726,12 +874,8 @@ function AppointmentForm({
             value={dentistId}
             onChange={(value) => {
               setDentistId(value);
-              const dentist = options.dentists.find((item) => item.id === value);
-              if (dentist && !dentist.site_ids.includes(siteId)) {
-                setSiteId(dentist.site_ids[0] ?? "");
-              }
             }}
-            options={options.dentists.map((item) => ({
+            options={availableDentists.map((item) => ({
               value: item.id,
               label: item.name,
             }))}
@@ -739,12 +883,25 @@ function AppointmentForm({
           <FieldSelect
             label="Sede"
             value={siteId}
-            onChange={setSiteId}
-            options={availableSites.map((item) => ({
+            onChange={(value) => {
+              setSiteId(value);
+              const dentist = options.dentists.find(
+                (item) => item.id === dentistId,
+              );
+              if (dentist && !dentist.site_ids.includes(value)) {
+                setDentistId("");
+              }
+            }}
+            options={options.sites.map((item) => ({
               value: item.id,
-              label: item.name,
+              label: `${item.name} · ${item.address}`,
             }))}
           />
+          {siteId && availableDentists.length === 0 && (
+            <div className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800 sm:col-span-2">
+              No hay odontólogos asociados a esta sede.
+            </div>
+          )}
           <label>
             <span className="mb-2 block text-sm font-bold text-slate-700">
               Fecha
@@ -975,6 +1132,7 @@ function AppointmentDetail({
   canCancel,
   canOverbook,
   canComplete,
+  timeZone,
   onClose,
   onChanged,
 }: {
@@ -984,18 +1142,28 @@ function AppointmentDetail({
   canCancel: boolean;
   canOverbook: boolean;
   canComplete: boolean;
+  timeZone: string;
   onClose: () => void;
   onChanged: (appointment: Appointment) => Promise<void>;
 }) {
   const [action, setAction] = useState<"confirm" | "cancel" | "reschedule" | "complete" | null>(null);
   const [method, setMethod] = useState("WhatsApp");
   const [reason, setReason] = useState("");
-  const [date, setDate] = useState(bogotaDate(new Date(appointment.starts_at)));
-  const [time, setTime] = useState(localTime(appointment.starts_at));
+  const appointmentTimeZone =
+    options.sites.find((site) => site.id === appointment.site_id)?.timezone ??
+    timeZone;
+  const [date, setDate] = useState(
+    dateInTimeZone(new Date(appointment.starts_at), appointmentTimeZone),
+  );
+  const [time, setTime] = useState(
+    localTime(appointment.starts_at, appointmentTimeZone),
+  );
   const [siteId, setSiteId] = useState(appointment.site_id);
   const [dentistId, setDentistId] = useState(appointment.dentist_id);
   const [saving, setSaving] = useState(false);
+  const [whatsappBusy, setWhatsappBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictPayload | null>(null);
   const [overbookReason, setOverbookReason] = useState("");
   const [attentionDescription, setAttentionDescription] = useState("");
@@ -1009,10 +1177,17 @@ function AppointmentDetail({
       60000,
   );
   const terminal = TERMINAL_STATES.has(appointment.status);
+  const rescheduleTimeZone =
+    options.sites.find((site) => site.id === siteId)?.timezone ??
+    appointmentTimeZone;
+  const availableDentists = options.dentists.filter(
+    (dentist) => !siteId || dentist.site_ids.includes(siteId),
+  );
 
   async function run(isOverbook = false) {
     setSaving(true);
     setError(null);
+    setInfo(null);
     setConflict(null);
     try {
       let updated: Appointment;
@@ -1033,8 +1208,8 @@ function AppointmentDetail({
         updated = await rescheduleAppointment(appointment.id, {
           site_id: siteId,
           dentist_id: dentistId,
-          starts_at: toIso(date, time),
-          ends_at: addMinutes(date, time, duration),
+          starts_at: zonedDateTimeToIso(date, time, rescheduleTimeZone),
+          ends_at: addMinutes(date, time, duration, rescheduleTimeZone),
           reason,
           is_overbook: isOverbook,
           overbook_reason: isOverbook ? overbookReason : null,
@@ -1057,16 +1232,38 @@ function AppointmentDetail({
     }
   }
 
+  async function sendConfirmationWhatsApp() {
+    setWhatsappBusy(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const response = await generateAppointmentWhatsApp(appointment.id);
+      window.open(response.url, "_blank", "noopener,noreferrer");
+      setInfo(
+        "Enlace de WhatsApp generado. La cita conserva su estado hasta que confirmes manualmente en Dentia.",
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.detail ?? caught.message
+          : "No fue posible generar WhatsApp.",
+      );
+    } finally {
+      setWhatsappBusy(false);
+    }
+  }
+
   return (
     <Modal open title="Detalle de la cita" onClose={onClose}>
       <div className="space-y-5">
         {error && <Alert tone="error">{error}</Alert>}
+        {info && <Alert tone="info">{info}</Alert>}
         {conflict && (
           <Alert tone="warning">
             <strong>{conflict.message}</strong>
             {conflict.conflicts.map((item) => (
               <p key={item.id} className="mt-1 text-xs">
-                {localTime(item.starts_at)} · {item.patient_name}
+                {localTime(item.starts_at, appointmentTimeZone)} · {item.patient_name}
               </p>
             ))}
           </Alert>
@@ -1086,10 +1283,11 @@ function AppointmentDetail({
             )}
           </div>
           <p className="mt-3 text-sm capitalize text-slate-600">
-            {localDate(appointment.starts_at)}
+            {localDate(appointment.starts_at, appointmentTimeZone)}
           </p>
           <p className="mt-1 font-bold text-slate-800">
-            {localTime(appointment.starts_at)}–{localTime(appointment.ends_at)}
+            {localTime(appointment.starts_at, appointmentTimeZone)}–
+            {localTime(appointment.ends_at, appointmentTimeZone)}
           </p>
         </div>
         <dl className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
@@ -1102,9 +1300,18 @@ function AppointmentDetail({
         {!terminal && !action && (
           <div className="flex flex-wrap gap-2">
             {canUpdate && appointment.status === "Programada" && (
-              <button onClick={() => setAction("confirm")} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white">
-                Confirmar
-              </button>
+              <>
+                <button
+                  disabled={whatsappBusy}
+                  onClick={sendConfirmationWhatsApp}
+                  className="rounded-xl bg-green-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {whatsappBusy ? "Generando…" : "Enviar WhatsApp de confirmación"}
+                </button>
+                <button onClick={() => setAction("confirm")} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white">
+                  Confirmar cita
+                </button>
+              </>
             )}
             {canUpdate && (
               <button onClick={() => setAction("reschedule")} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700">
@@ -1157,8 +1364,17 @@ function AppointmentDetail({
                 <span className="mb-2 block text-sm font-bold text-slate-700">Hora</span>
                 <input type="time" step={900} value={time} onChange={(event) => setTime(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 px-3" />
               </label>
-              <FieldSelect label="Odontólogo" value={dentistId} onChange={setDentistId} options={options.dentists.map((item) => ({ value: item.id, label: item.name }))} />
-              <FieldSelect label="Sede" value={siteId} onChange={setSiteId} options={options.sites.filter((site) => options.dentists.find((item) => item.id === dentistId)?.site_ids.includes(site.id)).map((item) => ({ value: item.id, label: item.name }))} />
+              <FieldSelect label="Sede" value={siteId} onChange={(value) => {
+                setSiteId(value);
+                const dentist = options.dentists.find((item) => item.id === dentistId);
+                if (dentist && !dentist.site_ids.includes(value)) setDentistId("");
+              }} options={options.sites.map((item) => ({ value: item.id, label: `${item.name} · ${item.address}` }))} />
+              <FieldSelect label="Odontólogo" value={dentistId} onChange={setDentistId} options={availableDentists.map((item) => ({ value: item.id, label: item.name }))} />
+              {siteId && availableDentists.length === 0 && (
+                <div className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-800 sm:col-span-2">
+                  No hay odontólogos asociados a esta sede.
+                </div>
+              )}
             </div>
             <label className="block">
               <span className="mb-2 block text-sm font-bold text-slate-700">Motivo de reprogramación</span>
