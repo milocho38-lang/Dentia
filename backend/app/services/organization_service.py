@@ -97,6 +97,7 @@ def _company_response(company: Company) -> CompanyResponse:
         email=company.email,
         address=company.address,
         city=company.city,
+        country=company.country,
         timezone=company.timezone,
         status=company.status,
         profile_complete=all(
@@ -107,6 +108,7 @@ def _company_response(company: Company) -> CompanyResponse:
                 company.email,
                 company.address,
                 company.city,
+                company.country,
                 company.timezone,
             ]
         ),
@@ -143,6 +145,7 @@ def update_company(
         "email": company.email,
         "address": company.address,
         "city": company.city,
+        "country": company.country,
         "timezone": company.timezone,
     }
     company.name = payload.name
@@ -153,6 +156,7 @@ def update_company(
     company.email = payload.email
     company.address = payload.address
     company.city = payload.city
+    company.country = payload.country
     company.timezone = payload.timezone
     after = {
         "name": company.name,
@@ -162,6 +166,7 @@ def update_company(
         "email": company.email,
         "address": company.address,
         "city": company.city,
+        "country": company.country,
         "timezone": company.timezone,
     }
     changes = {

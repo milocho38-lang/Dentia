@@ -8,6 +8,7 @@ export interface Company {
   email: string | null;
   address: string | null;
   city: string | null;
+  country: string | null;
   timezone: string;
   status: string;
   profile_complete: boolean;
@@ -23,6 +24,7 @@ export interface CompanyInput {
   email: string | null;
   address: string | null;
   city: string | null;
+  country: string | null;
   timezone: string;
 }
 

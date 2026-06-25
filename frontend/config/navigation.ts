@@ -31,6 +31,12 @@ export const navigationItems: NavigationItem[] = [
     section: "Operación",
   },
   {
+    label: "Empresas",
+    href: "/configuracion/empresas",
+    permission: "platform.companies.view",
+    section: "Configuración",
+  },
+  {
     label: "Empresa",
     href: "/configuracion/empresa",
     permission: "company.view",

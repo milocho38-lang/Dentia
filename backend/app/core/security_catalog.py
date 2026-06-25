@@ -71,9 +71,18 @@ PERMISSIONS = (
     PermissionDefinition("documents.view", "Ver documentos", "documents", "Consultar documentos autorizados."),
     PermissionDefinition("documents.manage", "Administrar documentos", "documents", "Generar y gestionar documentos."),
     PermissionDefinition("reports.view", "Ver reportes", "reports", "Consultar reportes autorizados."),
+    PermissionDefinition("platform.companies.view", "Ver empresas de plataforma", "platform", "Consultar empresas administradas por la plataforma."),
+    PermissionDefinition("platform.companies.manage", "Administrar empresas de plataforma", "platform", "Crear, activar e inactivar empresas desde plataforma."),
 )
 
 ALL_PERMISSION_CODES = frozenset(permission.code for permission in PERMISSIONS)
+PLATFORM_PERMISSION_CODES = frozenset(
+    {
+        "platform.companies.view",
+        "platform.companies.manage",
+    }
+)
+CLINIC_ADMIN_PERMISSION_CODES = ALL_PERMISSION_CODES - PLATFORM_PERMISSION_CODES
 
 SECRETARY_PERMISSIONS = frozenset(
     {
@@ -153,7 +162,13 @@ ROLES = (
         "ADMINISTRATOR",
         "Administrador",
         "Administración completa de la empresa y sus sedes.",
-        ALL_PERMISSION_CODES,
+        CLINIC_ADMIN_PERMISSION_CODES,
+    ),
+    RoleDefinition(
+        "PLATFORM_ADMIN",
+        "Administrador de plataforma",
+        "Administración de empresas y clínicas de la plataforma.",
+        PLATFORM_PERMISSION_CODES,
     ),
     RoleDefinition(
         "SECRETARY",

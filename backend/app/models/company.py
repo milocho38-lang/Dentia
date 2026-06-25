@@ -33,6 +33,9 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
     city: Mapped[str | None] = mapped_column(
         "ciudad", String(100), nullable=True
     )
+    country: Mapped[str | None] = mapped_column(
+        "pais", String(100), nullable=True
+    )
     timezone: Mapped[str] = mapped_column(
         "zona_horaria",
         String(100),

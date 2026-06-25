@@ -29,6 +29,7 @@ class CompanyResponse(BaseModel):
     email: str | None
     address: str | None
     city: str | None
+    country: str | None
     timezone: str
     status: str
     profile_complete: bool
@@ -46,6 +47,7 @@ class CompanyUpdateRequest(BaseModel):
     email: str | None = Field(default=None, max_length=200)
     address: str | None = Field(default=None, max_length=300)
     city: str | None = Field(default=None, max_length=100)
+    country: str | None = Field(default=None, max_length=100)
     timezone: str = Field(default="America/Bogota", max_length=100)
 
     @field_validator("name")
@@ -54,7 +56,7 @@ class CompanyUpdateRequest(BaseModel):
         return value.strip()
 
     @field_validator(
-        "company_type", "tax_id", "phone", "email", "address", "city"
+        "company_type", "tax_id", "phone", "email", "address", "city", "country"
     )
     @classmethod
     def strip_optional(cls, value: str | None) -> str | None:

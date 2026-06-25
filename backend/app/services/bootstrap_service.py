@@ -123,14 +123,23 @@ def bootstrap_installation(
 
     permissions_by_code: dict[str, Permission] = {}
     for definition in PERMISSIONS:
-        permission = Permission(
-            code=definition.code,
-            name=definition.name,
-            module=definition.module,
-            description=definition.description,
+        permission = session.scalar(
+            select(Permission).where(Permission.code == definition.code)
         )
+        if permission is None:
+            permission = Permission(
+                code=definition.code,
+                name=definition.name,
+                module=definition.module,
+                description=definition.description,
+            )
+            session.add(permission)
+        else:
+            permission.name = definition.name
+            permission.module = definition.module
+            permission.description = definition.description
+            permission.is_active = True
         permissions_by_code[definition.code] = permission
-        session.add(permission)
     session.flush()
 
     roles_by_code: dict[str, Role] = {}
@@ -171,6 +180,14 @@ def bootstrap_installation(
             company_id=company.id,
             user_id=admin.id,
             role_id=roles_by_code["ADMINISTRATOR"].id,
+            created_by=admin.id,
+        )
+    )
+    session.add(
+        UserRole(
+            company_id=company.id,
+            user_id=admin.id,
+            role_id=roles_by_code["PLATFORM_ADMIN"].id,
             created_by=admin.id,
         )
     )
