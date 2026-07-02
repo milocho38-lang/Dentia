@@ -226,6 +226,7 @@ export function AgendaView() {
   const [events, setEvents] = useState<Appointment[]>([]);
   const [dentistId, setDentistId] = useState("");
   const [siteId, setSiteId] = useState("");
+  const [compactDay, setCompactDay] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -323,6 +324,15 @@ export function AgendaView() {
       })),
     [events],
   );
+  const compactDayAppointments = useMemo(
+    () =>
+      [...events].sort(
+        (first, second) =>
+          Date.parse(first.starts_at) - Date.parse(second.starts_at),
+      ),
+    [events],
+  );
+  const isCompactDayVisible = calendarView === "timeGridDay" && compactDay;
 
   function openAtTime(arg: DateClickArg) {
     if (!hasPermission("appointments.create")) return;
@@ -358,16 +368,39 @@ export function AgendaView() {
   }
 
   function changeView(view: CalendarViewType) {
-    calendarRef.current?.getApi().changeView(view);
+    const calendarApi = calendarRef.current?.getApi();
+    if (calendarApi) {
+      calendarApi.changeView(view);
+      return;
+    }
+    setCalendarView(view);
   }
 
   function navigateCalendar(action: "today" | "prev" | "next") {
-    calendarRef.current?.getApi()[action]();
+    const calendarApi = calendarRef.current?.getApi();
+    if (calendarApi) {
+      calendarApi[action]();
+      return;
+    }
+    if (calendarView !== "timeGridDay") return;
+    const nextDate =
+      action === "today"
+        ? dateInTimeZone(new Date(), activeTimeZone)
+        : addCalendarDays(date, action === "next" ? 1 : -1);
+    setDate(nextDate);
+    setVisibleRange(dayRange(nextDate, activeTimeZone));
   }
 
   function goToDate(value: string) {
     setDate(value);
-    calendarRef.current?.getApi().gotoDate(value);
+    const calendarApi = calendarRef.current?.getApi();
+    if (calendarApi) {
+      calendarApi.gotoDate(value);
+      return;
+    }
+    if (calendarView === "timeGridDay") {
+      setVisibleRange(dayRange(value, activeTimeZone));
+    }
   }
 
   async function handleEventDrop(arg: EventDropArg) {
@@ -531,6 +564,20 @@ export function AgendaView() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {calendarView === "timeGridDay" && (
+                <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={compactDay}
+                    onChange={(event) => setCompactDay(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-dentia-primary focus:ring-dentia-primary"
+                  />
+                  <span>Compactar agenda</span>
+                  <span className="hidden text-xs font-medium text-slate-400 xl:inline">
+                    Oculta espacios libres
+                  </span>
+                </label>
+              )}
               <button
                 type="button"
                 onClick={() => navigateCalendar("today")}
@@ -608,13 +655,21 @@ export function AgendaView() {
           <Alert tone="warning">
             No hay un perfil de odontólogo asociado a tus sedes.
           </Alert>
+        ) : isCompactDayVisible ? (
+          <CompactDayList
+            appointments={compactDayAppointments}
+            showSite={siteId === ""}
+            canCreate={hasPermission("appointments.create")}
+            onCreate={() => setNewOpen(true)}
+            onSelect={setSelected}
+          />
         ) : (
           <div className="dentia-calendar min-w-0 overflow-x-auto">
             <div className="min-w-[680px]">
               <FullCalendar
                 ref={calendarRef}
                 plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
-                initialView="timeGridDay"
+                initialView={calendarView}
                 initialDate={date}
                 headerToolbar={false}
                 allDaySlot={false}
@@ -681,6 +736,136 @@ export function AgendaView() {
             await loadEvents();
           }}
         />
+      )}
+    </div>
+  );
+}
+
+function CompactDayList({
+  appointments,
+  showSite,
+  canCreate,
+  onCreate,
+  onSelect,
+}: {
+  appointments: Appointment[];
+  showSite: boolean;
+  canCreate: boolean;
+  onCreate: () => void;
+  onSelect: (appointment: Appointment) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 rounded-2xl border border-green-100 bg-green-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-black text-green-950">
+            Agenda compacta del día
+          </h2>
+          <p className="mt-1 text-sm text-green-800">
+            Solo muestra las citas agendadas; vuelve a desactivar el modo para
+            crear desde espacios libres o arrastrar citas.
+          </p>
+        </div>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={onCreate}
+            className="min-h-11 rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white shadow-sm hover:bg-green-700"
+          >
+            + Nueva cita
+          </button>
+        )}
+      </div>
+
+      {appointments.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+          <p className="text-sm font-bold text-slate-700">
+            No hay citas para este día.
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            Puedes crear una cita manualmente o volver a la agenda normal.
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {appointments.map((appointment) => {
+            const color = appointment.is_overbook
+              ? { background: "#fff7ed", border: "#f97316" }
+              : {
+                  background:
+                    EVENT_COLORS[appointment.status]?.background ?? "#334155",
+                  border: EVENT_COLORS[appointment.status]?.border ?? "#1e293b",
+                };
+            return (
+              <button
+                key={appointment.id}
+                type="button"
+                onClick={() => onSelect(appointment)}
+                style={{ borderLeftColor: color.border }}
+                className="block w-full border-l-4 px-4 py-4 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-dentia-primary"
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-black text-white">
+                        {localTime(
+                          appointment.starts_at,
+                          appointment.timezone,
+                        )}
+                        {" – "}
+                        {localTime(appointment.ends_at, appointment.timezone)}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-black ${statusClasses(
+                          appointment.status,
+                        )}`}
+                      >
+                        {appointment.status}
+                      </span>
+                      {appointment.is_overbook && (
+                        <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-black text-orange-800">
+                          Sobrecupo
+                        </span>
+                      )}
+                      {showSite && (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
+                          {appointment.site_name}
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="mt-3 truncate text-lg font-black text-slate-900">
+                      {appointment.patient_name}
+                    </h3>
+                    <p className="mt-1 text-sm font-semibold text-slate-600">
+                      {appointment.appointment_type_name}
+                      {appointment.reason ? ` · ${appointment.reason}` : ""}
+                    </p>
+                  </div>
+
+                  <div className="min-w-[220px] rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+                    <p>
+                      <span className="font-bold text-slate-800">
+                        Odontólogo:
+                      </span>{" "}
+                      {appointment.dentist_name}
+                    </p>
+                    <p className="mt-1">
+                      <span className="font-bold text-slate-800">Sede:</span>{" "}
+                      {appointment.site_name}
+                    </p>
+                    {appointment.is_overbook && appointment.overbook_reason && (
+                      <p className="mt-1 text-orange-700">
+                        <span className="font-bold">Motivo sobrecupo:</span>{" "}
+                        {appointment.overbook_reason}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
