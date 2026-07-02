@@ -5,6 +5,7 @@ import type {
   Appointment,
   AppointmentCreateInput,
   AppointmentRescheduleInput,
+  AppointmentTimeAdjustInput,
   PatientOption,
 } from "@/types/agenda";
 
@@ -87,6 +88,20 @@ export function rescheduleAppointment(
 ) {
   return apiRequest<Appointment>(
     `/api/appointments/${appointmentId}/reschedule`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export function adjustAppointmentTime(
+  appointmentId: string,
+  data: AppointmentTimeAdjustInput,
+) {
+  return apiRequest<Appointment>(
+    `/api/appointments/${appointmentId}/adjust-time`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

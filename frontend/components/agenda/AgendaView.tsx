@@ -10,6 +10,7 @@ import type {
   DatesSetArg,
   EventClickArg,
   EventContentArg,
+  EventDropArg,
 } from "@fullcalendar/core";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert } from "@/components/shared/Alert";
@@ -17,6 +18,7 @@ import { Modal } from "@/components/shared/Modal";
 import { Spinner } from "@/components/shared/Spinner";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  adjustAppointmentTime,
   cancelAppointment,
   completeAppointment,
   confirmAppointment,
@@ -368,6 +370,59 @@ export function AgendaView() {
     calendarRef.current?.getApi().gotoDate(value);
   }
 
+  async function handleEventDrop(arg: EventDropArg) {
+    const appointment = arg.event.extendedProps.appointment as Appointment;
+    if (!hasPermission("appointments.update")) {
+      arg.revert();
+      return;
+    }
+    if (TERMINAL_STATES.has(appointment.status)) {
+      setError("Esta cita no permite corrección administrativa de hora.");
+      arg.revert();
+      return;
+    }
+    const confirmed = window.confirm(
+      "¿Deseas corregir la hora de esta cita sin marcarla como reprogramada?",
+    );
+    if (!confirmed) {
+      arg.revert();
+      return;
+    }
+    const targetTimeZone =
+      options?.sites.find((site) => site.id === appointment.site_id)?.timezone ??
+      appointment.timezone ??
+      activeTimeZone;
+    const start = dateTimeFieldsFromCalendar(arg.event.startStr);
+    const duration = Math.round(
+      (new Date(appointment.ends_at).getTime() -
+        new Date(appointment.starts_at).getTime()) /
+        60000,
+    );
+    try {
+      setError(null);
+      await adjustAppointmentTime(appointment.id, {
+        site_id: appointment.site_id,
+        dentist_id: appointment.dentist_id,
+        starts_at: zonedDateTimeToIso(start.date, start.time, targetTimeZone),
+        ends_at: addMinutes(start.date, start.time, duration, targetTimeZone),
+        reason: "Corrección de error de agenda",
+        is_overbook: appointment.is_overbook,
+        overbook_reason: appointment.overbook_reason,
+      });
+      await loadEvents();
+    } catch (dropError) {
+      const foundConflict = conflictFrom(dropError);
+      setError(
+        foundConflict
+          ? foundConflict.message
+          : dropError instanceof ApiError
+            ? dropError.detail ?? dropError.message
+            : "No fue posible corregir la hora.",
+      );
+      arg.revert();
+    }
+  }
+
   function renderEvent(arg: EventContentArg) {
     const appointment = arg.event.extendedProps
       .appointment as Appointment;
@@ -571,7 +626,9 @@ export function AgendaView() {
                 locale="es"
                 timeZone={activeTimeZone}
                 nowIndicator
-                editable={false}
+                editable={hasPermission("appointments.update")}
+                eventStartEditable={hasPermission("appointments.update")}
+                eventDurationEditable={false}
                 selectable={hasPermission("appointments.create")}
                 events={calendarEvents}
                 dateClick={openAtTime}
@@ -581,6 +638,7 @@ export function AgendaView() {
                   )
                 }
                 eventContent={renderEvent}
+                eventDrop={handleEventDrop}
                 datesSet={handleDatesSet}
               />
             </div>
@@ -1146,7 +1204,7 @@ function AppointmentDetail({
   onClose: () => void;
   onChanged: (appointment: Appointment) => Promise<void>;
 }) {
-  const [action, setAction] = useState<"confirm" | "cancel" | "reschedule" | "complete" | null>(null);
+  const [action, setAction] = useState<"confirm" | "cancel" | "reschedule" | "adjust" | "complete" | null>(null);
   const [method, setMethod] = useState("WhatsApp");
   const [reason, setReason] = useState("");
   const appointmentTimeZone =
@@ -1204,6 +1262,16 @@ function AppointmentDetail({
           followup_reason: requiresFollowup ? followupReason : null,
         });
         updated = { ...appointment, status: completed.appointment_status };
+      } else if (action === "adjust") {
+        updated = await adjustAppointmentTime(appointment.id, {
+          site_id: siteId,
+          dentist_id: dentistId,
+          starts_at: zonedDateTimeToIso(date, time, rescheduleTimeZone),
+          ends_at: addMinutes(date, time, duration, rescheduleTimeZone),
+          reason: reason.trim() || "Corrección de error de agenda",
+          is_overbook: isOverbook,
+          overbook_reason: isOverbook ? overbookReason : null,
+        });
       } else {
         updated = await rescheduleAppointment(appointment.id, {
           site_id: siteId,
@@ -1314,7 +1382,12 @@ function AppointmentDetail({
               </>
             )}
             {canUpdate && (
-              <button onClick={() => setAction("reschedule")} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700">
+              <button onClick={() => { setConflict(null); setReason(""); setAction("adjust"); }} className="rounded-xl border border-sky-200 px-4 py-2.5 text-sm font-bold text-sky-700">
+                Corregir cita
+              </button>
+            )}
+            {canUpdate && (
+              <button onClick={() => { setConflict(null); setReason(""); setAction("reschedule"); }} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700">
                 Reprogramar
               </button>
             )}
@@ -1353,8 +1426,15 @@ function AppointmentDetail({
           </ActionBox>
         )}
 
-        {action === "reschedule" && (
-          <ActionBox title="Nueva fecha y hora">
+        {(action === "reschedule" || action === "adjust") && (
+          <ActionBox title={action === "adjust" ? "Corregir cita" : "Nueva fecha y hora"}>
+            {action === "adjust" && (
+              <Alert tone="warning">
+                Esta acción corrige la cita sin marcarla como reprogramada.
+                {appointment.status === "Confirmada" &&
+                  " La cita ya está confirmada. Si cambias la hora, debes avisar al paciente."}
+              </Alert>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <label>
                 <span className="mb-2 block text-sm font-bold text-slate-700">Fecha</span>
@@ -1377,8 +1457,17 @@ function AppointmentDetail({
               )}
             </div>
             <label className="block">
-              <span className="mb-2 block text-sm font-bold text-slate-700">Motivo de reprogramación</span>
-              <input value={reason} onChange={(event) => setReason(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 px-3" />
+              <span className="mb-2 block text-sm font-bold text-slate-700">
+                {action === "adjust"
+                  ? "Motivo de corrección (opcional)"
+                  : "Motivo de reprogramación"}
+              </span>
+              <input
+                value={reason}
+                placeholder={action === "adjust" ? "Corrección de error de agenda" : ""}
+                onChange={(event) => setReason(event.target.value)}
+                className="min-h-11 w-full rounded-xl border border-slate-300 px-3"
+              />
             </label>
             {conflict?.can_overbook && canOverbook && (
               <label className="block">
@@ -1389,9 +1478,17 @@ function AppointmentDetail({
             <div className="flex flex-wrap justify-end gap-2">
               <button onClick={() => setAction(null)} className="rounded-xl border border-slate-300 px-4 py-2.5 font-bold text-slate-700">Volver</button>
               {conflict?.can_overbook && canOverbook && (
-                <button disabled={!overbookReason.trim() || saving} onClick={() => run(true)} className="rounded-xl bg-orange-600 px-4 py-2.5 font-bold text-white disabled:opacity-50">Reprogramar como sobrecupo</button>
+                <button disabled={!overbookReason.trim() || saving} onClick={() => run(true)} className="rounded-xl bg-orange-600 px-4 py-2.5 font-bold text-white disabled:opacity-50">
+                  {action === "adjust" ? "Corregir como sobrecupo" : "Reprogramar como sobrecupo"}
+                </button>
               )}
-              <button disabled={reason.trim().length < 2 || saving} onClick={() => run(false)} className="rounded-xl bg-dentia-primary px-4 py-2.5 font-bold text-white disabled:opacity-50">Reprogramar</button>
+              <button
+                disabled={(action === "reschedule" && reason.trim().length < 2) || saving}
+                onClick={() => run(false)}
+                className="rounded-xl bg-dentia-primary px-4 py-2.5 font-bold text-white disabled:opacity-50"
+              >
+                {action === "adjust" ? "Guardar corrección" : "Reprogramar"}
+              </button>
             </div>
           </ActionBox>
         )}

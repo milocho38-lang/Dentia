@@ -139,6 +139,36 @@ class AppointmentRescheduleRequest(BaseModel):
         return self
 
 
+class AppointmentTimeAdjustRequest(BaseModel):
+    site_id: UUID
+    dentist_id: UUID
+    starts_at: datetime
+    ends_at: datetime
+    reason: str | None = Field(
+        default="Corrección de error de agenda",
+        max_length=300,
+    )
+    is_overbook: bool = False
+    overbook_reason: str | None = Field(default=None, max_length=300)
+
+    @field_validator("reason", "overbook_reason")
+    @classmethod
+    def strip_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.starts_at.tzinfo is None or self.ends_at.tzinfo is None:
+            raise ValueError("Las fechas deben incluir zona horaria.")
+        if self.ends_at <= self.starts_at:
+            raise ValueError("La hora de fin debe ser posterior al inicio.")
+        if self.is_overbook and not self.overbook_reason:
+            raise ValueError("Debes justificar el sobrecupo.")
+        return self
+
+
 class AppointmentResponse(BaseModel):
     id: UUID
     patient_id: UUID

@@ -15,11 +15,13 @@ from app.schemas.agenda_schema import (
     AppointmentCreateRequest,
     AppointmentResponse,
     AppointmentRescheduleRequest,
+    AppointmentTimeAdjustRequest,
     AppointmentUpdateRequest,
     AppointmentWhatsAppLinkResponse,
 )
 from app.services.agenda_service import (
     AgendaError,
+    adjust_appointment_time,
     appointment_whatsapp_link,
     cancel_appointment,
     confirm_appointment,
@@ -198,6 +200,31 @@ def cancel_appointment_endpoint(
             context,
             appointment_id,
             payload.reason,
+            get_request_metadata(request),
+        )
+    except AgendaError as exc:
+        raise handle_agenda_error(exc)
+
+
+@router.post(
+    "/api/appointments/{appointment_id}/adjust-time",
+    response_model=AppointmentResponse,
+)
+def adjust_appointment_time_endpoint(
+    appointment_id: UUID,
+    payload: AppointmentTimeAdjustRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("appointments.update"))
+    ],
+) -> AppointmentResponse:
+    try:
+        return adjust_appointment_time(
+            session,
+            context,
+            appointment_id,
+            payload,
             get_request_metadata(request),
         )
     except AgendaError as exc:

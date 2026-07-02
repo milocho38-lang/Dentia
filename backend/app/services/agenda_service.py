@@ -25,6 +25,7 @@ from app.schemas.agenda_schema import (
     AppointmentCreateRequest,
     AppointmentResponse,
     AppointmentRescheduleRequest,
+    AppointmentTimeAdjustRequest,
     AppointmentTypeOptionResponse,
     AppointmentUpdateRequest,
     AppointmentWhatsAppLinkResponse,
@@ -850,6 +851,71 @@ def reschedule_appointment(
     )
     session.commit()
     return _to_response(_appointment_row(session, context, new.id))
+
+
+def adjust_appointment_time(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    payload: AppointmentTimeAdjustRequest,
+    metadata: RequestMetadata,
+) -> AppointmentResponse:
+    row = _appointment_row(session, context, appointment_id, lock=True)
+    appointment = row[0]
+    if appointment.status not in {"Programada", "Confirmada"}:
+        raise AgendaError("Esta cita no permite corrección administrativa de hora.", 409)
+    _require_site(session, context, payload.site_id)
+    _require_dentist_site(
+        session, context, payload.dentist_id, payload.site_id
+    )
+    appointment_type = _require_type(
+        session, context, appointment.appointment_type_id
+    )
+    _validate_conflicts(
+        session,
+        context,
+        patient_id=appointment.patient_id,
+        dentist_id=payload.dentist_id,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        is_overbook=payload.is_overbook,
+        appointment_type=appointment_type,
+        exclude_id=appointment.id,
+    )
+    previous = {
+        "site_id": str(appointment.site_id),
+        "dentist_id": str(appointment.dentist_id),
+        "starts_at": appointment.starts_at.isoformat(),
+        "ends_at": appointment.ends_at.isoformat(),
+        "status": appointment.status,
+    }
+    appointment.site_id = payload.site_id
+    appointment.dentist_id = payload.dentist_id
+    appointment.starts_at = payload.starts_at
+    appointment.ends_at = payload.ends_at
+    appointment.is_overbook = payload.is_overbook
+    appointment.overbook_reason = payload.overbook_reason
+    appointment.updated_by = context.user.id
+    _audit(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action="APPOINTMENT_TIME_ADJUSTED",
+        detail={
+            "previous": previous,
+            "new": {
+                "site_id": str(appointment.site_id),
+                "dentist_id": str(appointment.dentist_id),
+                "starts_at": appointment.starts_at.isoformat(),
+                "ends_at": appointment.ends_at.isoformat(),
+                "status": appointment.status,
+            },
+            "reason": payload.reason or "Corrección de error de agenda",
+        },
+    )
+    session.commit()
+    return _to_response(_appointment_row(session, context, appointment.id))
 
 
 def ensure_agenda_seed_data(

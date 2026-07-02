@@ -82,6 +82,8 @@ export interface AppointmentRescheduleInput {
   overbook_reason?: string | null;
 }
 
+export interface AppointmentTimeAdjustInput extends AppointmentRescheduleInput {}
+
 export interface ConflictPayload {
   message: string;
   conflicts: Appointment[];
