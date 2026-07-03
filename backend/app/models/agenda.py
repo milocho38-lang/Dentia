@@ -359,6 +359,25 @@ class Appointment(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
         nullable=False,
         index=True,
     )
+    treatment_id: Mapped[UUID | None] = mapped_column(
+        "tratamiento_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("tratamientos.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    treatment_procedure_id: Mapped[UUID | None] = mapped_column(
+        "procedimiento_tratamiento_id",
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "tratamiento_procedimientos.id",
+            name="fk_citas_procedimiento_tratamiento_id",
+            ondelete="SET NULL",
+            use_alter=True,
+        ),
+        nullable=True,
+        index=True,
+    )
     origin_appointment_id: Mapped[UUID | None] = mapped_column(
         "cita_origen_id",
         PGUUID(as_uuid=True),

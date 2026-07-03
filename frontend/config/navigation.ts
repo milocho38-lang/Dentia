@@ -31,6 +31,18 @@ export const navigationItems: NavigationItem[] = [
     section: "Operación",
   },
   {
+    label: "Tratamientos",
+    href: "/tratamientos",
+    permission: "treatments.view",
+    section: "Operación",
+  },
+  {
+    label: "Finanzas",
+    href: "/finanzas",
+    permission: "finance.dashboard.view",
+    section: "Operación",
+  },
+  {
     label: "Empresas",
     href: "/configuracion/empresas",
     permission: "platform.companies.view",

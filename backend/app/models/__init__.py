@@ -16,6 +16,14 @@ from app.models.company import Company
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.site import Site
+from app.models.treatment import (
+    Budget,
+    BudgetDetail,
+    Treatment,
+    TreatmentEvent,
+    TreatmentPayment,
+    TreatmentProcedure,
+)
 from app.models.user import User
 
 __all__ = [
@@ -37,6 +45,12 @@ __all__ = [
     "Role",
     "RolePermission",
     "Site",
+    "Budget",
+    "BudgetDetail",
+    "Treatment",
+    "TreatmentEvent",
+    "TreatmentPayment",
+    "TreatmentProcedure",
     "User",
     "UserRole",
     "UserSite",

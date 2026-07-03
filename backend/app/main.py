@@ -9,6 +9,7 @@ from app.routers.organization_router import router as organization_router
 from app.routers.followup_router import router as followup_router
 from app.routers.patient_router import router as patient_router
 from app.routers.platform_router import router as platform_router
+from app.routers.treatment_router import router as treatment_router
 from app.routers.user_router import router as user_router
 
 
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(patient_router)
     app.include_router(followup_router)
     app.include_router(platform_router)
+    app.include_router(treatment_router)
 
     return app
 
