@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -193,6 +193,10 @@ class AppointmentResponse(BaseModel):
     overbook_reason: str | None
     confirmation_method: str | None
     confirmed_at: datetime | None
+    clinical_record_exists: bool = False
+    clinical_evolution_id: UUID | None = None
+    clinical_evolution_status: str | None = None
+    clinical_evolution_version: int | None = None
 
 
 class AgendaEventsResponse(BaseModel):
@@ -203,3 +207,65 @@ class AppointmentWhatsAppLinkResponse(BaseModel):
     url: str
     phone: str
     message: str
+
+
+class AppointmentClinicalTreatmentResponse(BaseModel):
+    id: UUID
+    name: str
+    status: str
+
+
+class AppointmentClinicalProcedureResponse(BaseModel):
+    id: UUID
+    treatment_id: UUID
+    treatment_name: str | None = None
+    name: str
+    status: str
+    scope_label: str
+    clinical_action: str | None = None
+
+
+class AppointmentClinicalContextResponse(BaseModel):
+    appointment: AppointmentResponse
+    clinical_record_exists: bool
+    clinical_record_id: UUID | None = None
+    clinical_evolution_id: UUID | None = None
+    clinical_evolution_status: str | None = None
+    clinical_evolution_version: int | None = None
+    terminology: dict[str, str]
+    treatments: list[AppointmentClinicalTreatmentResponse] = Field(default_factory=list)
+    procedures: list[AppointmentClinicalProcedureResponse] = Field(default_factory=list)
+    permissions: dict[str, bool] = Field(default_factory=dict)
+
+
+class ClinicalCareFollowupPayload(BaseModel):
+    attention_description: str = Field(min_length=2, max_length=10000)
+    prescribed_medications: str | None = Field(default=None, max_length=5000)
+    requires_followup: bool = False
+    recommended_followup_date: date | None = None
+    followup_reason: str | None = Field(default=None, max_length=500)
+
+
+class ClinicalCareCompletionRequest(BaseModel):
+    complete_appointment: bool = True
+    sign_evolution: bool = False
+    evolution_id: UUID | None = None
+    evolution_version: int | None = Field(default=None, ge=1)
+    mark_procedure_ids_done: list[UUID] = Field(default_factory=list)
+    followup_payload: ClinicalCareFollowupPayload | None = None
+    control_appointment_payload: AppointmentCreateRequest | None = None
+
+
+class ClinicalCareActionResult(BaseModel):
+    success: bool
+    message: str
+    entity_id: UUID | None = None
+
+
+class ClinicalCareCompletionResponse(BaseModel):
+    appointment: ClinicalCareActionResult | None = None
+    evolution: ClinicalCareActionResult | None = None
+    procedures: list[ClinicalCareActionResult] = Field(default_factory=list)
+    followup: ClinicalCareActionResult | None = None
+    control_appointment: ClinicalCareActionResult | None = None
+    partial_failure: bool = False

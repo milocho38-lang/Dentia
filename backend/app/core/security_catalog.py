@@ -89,6 +89,11 @@ PERMISSIONS = (
     PermissionDefinition("documents.view", "Ver documentos", "documents", "Consultar documentos autorizados."),
     PermissionDefinition("documents.manage", "Administrar documentos", "documents", "Generar y gestionar documentos."),
     PermissionDefinition("reports.view", "Ver reportes", "reports", "Consultar reportes autorizados."),
+    PermissionDefinition("reports.operational", "Ver reportes operativos", "reports", "Consultar métricas operativas de agenda, pacientes y seguimientos."),
+    PermissionDefinition("reports.financial", "Ver reportes financieros", "reports", "Consultar ingresos, producción clínica, ventas aprobadas y cartera."),
+    PermissionDefinition("reports.clinical_aggregate", "Ver agregados clínicos", "reports", "Consultar métricas clínicas agregadas sin contenido sensible individual."),
+    PermissionDefinition("reports.cross_site", "Ver reportes multisede", "reports", "Consultar reportes de todas las sedes autorizadas."),
+    PermissionDefinition("reports.own_scope", "Ver reportes propios", "reports", "Consultar reportes limitados al alcance propio del usuario."),
     PermissionDefinition("platform.companies.view", "Ver empresas de plataforma", "platform", "Consultar empresas administradas por la plataforma."),
     PermissionDefinition("platform.companies.manage", "Administrar empresas de plataforma", "platform", "Crear, activar e inactivar empresas desde plataforma."),
 )
@@ -143,6 +148,8 @@ SECRETARY_PERMISSIONS = frozenset(
         "cash.close",
         "documents.view",
         "clinical_records.view",
+        "reports.view",
+        "reports.operational",
         "sessions.view_own",
         "sessions.revoke_own",
     }
@@ -184,6 +191,10 @@ DENTIST_PERMISSIONS = frozenset(
         "procedure_catalog.view",
         "documents.view",
         "documents.manage",
+        "reports.view",
+        "reports.operational",
+        "reports.clinical_aggregate",
+        "reports.own_scope",
         "sessions.view_own",
         "sessions.revoke_own",
     }
@@ -218,6 +229,10 @@ DENTIST_ADMIN_PERMISSIONS = SECRETARY_PERMISSIONS | DENTIST_PERMISSIONS | frozen
         "procedure_catalog.manage",
         "payments.reverse",
         "reports.view",
+        "reports.operational",
+        "reports.financial",
+        "reports.clinical_aggregate",
+        "reports.cross_site",
     }
 )
 

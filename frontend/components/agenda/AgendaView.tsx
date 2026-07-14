@@ -20,20 +20,23 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   adjustAppointmentTime,
   cancelAppointment,
-  completeAppointment,
+  completeClinicalCare,
   confirmAppointment,
   createAppointment,
   createQuickPatient,
   generateAppointmentWhatsApp,
   getAgendaEvents,
   getAgendaOptions,
+  getAppointmentClinicalContext,
   rescheduleAppointment,
 } from "@/services/agendaService";
 import { ApiError } from "@/services/apiClient";
+import { createClinicalEvolution } from "@/services/clinicalRecordService";
 import { getPatient, searchPatients } from "@/services/patientService";
 import type {
   AgendaOptions,
   Appointment,
+  AppointmentClinicalContext,
   ConflictPayload,
   PatientOption,
 } from "@/types/agenda";
@@ -194,6 +197,20 @@ function statusClasses(status: string) {
     Reprogramada: "bg-amber-100 text-amber-800",
   };
   return styles[status] ?? "bg-slate-100 text-slate-700";
+}
+
+function clinicalStatusLabel(appointment: Appointment) {
+  if (!appointment.clinical_record_exists) return "Sin historia";
+  if (appointment.clinical_evolution_status === "SIGNED") return "Evolución firmada";
+  if (appointment.clinical_evolution_status === "DRAFT") return "Evolución en borrador";
+  return "Sin evolución";
+}
+
+function clinicalStatusClasses(appointment: Appointment) {
+  if (!appointment.clinical_record_exists) return "bg-slate-100 text-slate-700";
+  if (appointment.clinical_evolution_status === "SIGNED") return "bg-emerald-100 text-emerald-800";
+  if (appointment.clinical_evolution_status === "DRAFT") return "bg-amber-100 text-amber-800";
+  return "bg-indigo-100 text-indigo-800";
 }
 
 function conflictFrom(error: unknown) {
@@ -472,6 +489,9 @@ export function AgendaView() {
         </div>
         <span className="mt-1 inline-flex rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-slate-800">
           {appointment.status}
+        </span>
+        <span className="mt-1 inline-flex rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-indigo-800">
+          {clinicalStatusLabel(appointment)}
         </span>
         {appointment.is_overbook && (
           <span className="mt-1 inline-flex rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-orange-700">
@@ -821,6 +841,13 @@ function CompactDayList({
                         )}`}
                       >
                         {appointment.status}
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-black ${clinicalStatusClasses(
+                          appointment,
+                        )}`}
+                      >
+                        {clinicalStatusLabel(appointment)}
                       </span>
                       {appointment.is_overbook && (
                         <span className="rounded-full bg-orange-100 px-2.5 py-1 text-xs font-black text-orange-800">
@@ -1414,6 +1441,17 @@ function AppointmentDetail({
   const [requiresFollowup, setRequiresFollowup] = useState(false);
   const [followupDate, setFollowupDate] = useState("");
   const [followupReason, setFollowupReason] = useState("");
+  const [clinicalContext, setClinicalContext] =
+    useState<AppointmentClinicalContext | null>(null);
+  const [clinicalLoading, setClinicalLoading] = useState(false);
+  const [clinicalBusy, setClinicalBusy] = useState(false);
+  const [signEvolution, setSignEvolution] = useState(false);
+  const [selectedProcedureIds, setSelectedProcedureIds] = useState<string[]>([]);
+  const [createControl, setCreateControl] = useState(false);
+  const [controlDate, setControlDate] = useState("");
+  const [controlTime, setControlTime] = useState("");
+  const [controlTypeId, setControlTypeId] = useState("");
+  const [controlReason, setControlReason] = useState("Control odontológico");
   const duration = Math.round(
     (new Date(appointment.ends_at).getTime() -
       new Date(appointment.starts_at).getTime()) /
@@ -1426,6 +1464,81 @@ function AppointmentDetail({
   const availableDentists = options.dentists.filter(
     (dentist) => !siteId || dentist.site_ids.includes(siteId),
   );
+  const performedClinicalProcedures =
+    clinicalContext?.procedures.filter(
+      (procedure) =>
+        procedure.clinical_action === "PERFORMED" &&
+        procedure.status !== "Realizado",
+    ) ?? [];
+
+  const clinicalPageUrl = `/pacientes/${appointment.patient_id}/historia-clinica`;
+
+  const loadClinicalContext = useCallback(async () => {
+    setClinicalLoading(true);
+    try {
+      const context = await getAppointmentClinicalContext(appointment.id);
+      setClinicalContext(context);
+      setSignEvolution(false);
+      setSelectedProcedureIds(
+        context.procedures
+          .filter(
+            (procedure) =>
+              procedure.clinical_action === "PERFORMED" &&
+              procedure.status !== "Realizado",
+          )
+          .map((procedure) => procedure.id),
+      );
+    } catch {
+      setClinicalContext(null);
+    } finally {
+      setClinicalLoading(false);
+    }
+  }, [appointment.id]);
+
+  useEffect(() => {
+    void loadClinicalContext();
+  }, [loadClinicalContext]);
+
+  useEffect(() => {
+    const firstType = options.appointment_types[0];
+    if (!controlTypeId && firstType) setControlTypeId(firstType.id);
+    if (!controlDate) setControlDate(date);
+    if (!controlTime) setControlTime(time);
+  }, [controlDate, controlTime, controlTypeId, date, options.appointment_types, time]);
+
+  async function createEvolutionFromAppointment() {
+    if (!clinicalContext?.clinical_record_exists) {
+      window.location.href = clinicalPageUrl;
+      return;
+    }
+    setClinicalBusy(true);
+    setError(null);
+    try {
+      const evolution = await createClinicalEvolution(appointment.patient_id, {
+        appointment_id: appointment.id,
+        site_id: appointment.site_id,
+        dentist_id: appointment.dentist_id,
+        attended_at: appointment.starts_at,
+        reason: appointment.reason,
+        procedures: [],
+      });
+      setInfo(
+        evolution.status === "DRAFT"
+          ? "Evolución en borrador lista para continuar."
+          : "La cita ya tenía evolución clínica.",
+      );
+      await loadClinicalContext();
+      window.location.href = clinicalPageUrl;
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError
+          ? caught.detail ?? caught.message
+          : "No fue posible crear la evolución.",
+      );
+    } finally {
+      setClinicalBusy(false);
+    }
+  }
 
   async function run(isOverbook = false) {
     setSaving(true);
@@ -1439,14 +1552,66 @@ function AppointmentDetail({
       } else if (action === "cancel") {
         updated = await cancelAppointment(appointment.id, reason);
       } else if (action === "complete") {
-        const completed = await completeAppointment(appointment.id, {
-          attention_description: attentionDescription,
-          prescribed_medications: medications.trim() || null,
-          requires_followup: requiresFollowup,
-          recommended_followup_date: requiresFollowup ? followupDate : null,
-          followup_reason: requiresFollowup ? followupReason : null,
+        const controlPayload =
+          createControl && controlDate && controlTime && controlTypeId
+            ? {
+                patient_id: appointment.patient_id,
+                dentist_id: appointment.dentist_id,
+                site_id: appointment.site_id,
+                appointment_type_id: controlTypeId,
+                starts_at: zonedDateTimeToIso(
+                  controlDate,
+                  controlTime,
+                  appointmentTimeZone,
+                ),
+                ends_at: addMinutes(
+                  controlDate,
+                  controlTime,
+                  options.appointment_types.find((item) => item.id === controlTypeId)
+                    ?.suggested_duration_minutes ?? 30,
+                  appointmentTimeZone,
+                ),
+                reason: controlReason.trim() || "Control odontológico",
+                notes: "Cita de control creada desde finalización clínica.",
+              }
+            : null;
+        const completed = await completeClinicalCare(appointment.id, {
+          complete_appointment: true,
+          sign_evolution: signEvolution,
+          evolution_id: clinicalContext?.clinical_evolution_id ?? null,
+          evolution_version: clinicalContext?.clinical_evolution_version ?? null,
+          mark_procedure_ids_done: selectedProcedureIds,
+          followup_payload: {
+            attention_description: attentionDescription,
+            prescribed_medications: medications.trim() || null,
+            requires_followup: requiresFollowup,
+            recommended_followup_date: requiresFollowup ? followupDate : null,
+            followup_reason: requiresFollowup ? followupReason : null,
+          },
+          control_appointment_payload: controlPayload,
         });
-        updated = { ...appointment, status: completed.appointment_status };
+        updated = {
+          ...appointment,
+          status: completed.appointment?.success
+            ? "Atendida"
+            : appointment.status,
+        };
+        const summary = [
+          completed.evolution,
+          completed.appointment,
+          ...completed.procedures,
+          completed.followup,
+          completed.control_appointment,
+        ]
+          .filter(Boolean)
+          .map((item) => `${item?.success ? "✓" : "⚠"} ${item?.message}`)
+          .join(" ");
+        setInfo(
+          completed.partial_failure
+            ? `Finalización con novedades: ${summary}`
+            : `Finalización clínica completada. ${summary}`,
+        );
+        await loadClinicalContext();
       } else if (action === "adjust") {
         updated = await adjustAppointmentTime(appointment.id, {
           site_id: siteId,
@@ -1549,6 +1714,93 @@ function AppointmentDetail({
           <div><dt className="text-slate-500">Odontólogo</dt><dd className="font-bold">{appointment.dentist_name}</dd></div>
           <div><dt className="text-slate-500">Motivo</dt><dd className="font-bold">{appointment.reason}</dd></div>
         </dl>
+
+        <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-indigo-700">
+                Contexto clínico
+              </p>
+              <h4 className="mt-1 text-base font-black text-slate-900">
+                {clinicalLoading
+                  ? "Consultando contexto…"
+                  : clinicalContext?.terminology.record ?? "Historia Clínica"}
+              </h4>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-black ${clinicalStatusClasses(
+                    clinicalContext?.appointment ?? appointment,
+                  )}`}
+                >
+                  {clinicalStatusLabel(clinicalContext?.appointment ?? appointment)}
+                </span>
+                {clinicalContext?.clinical_record_exists && (
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-indigo-800">
+                    Expediente abierto
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!clinicalLoading &&
+                clinicalContext &&
+                !clinicalContext.clinical_record_exists &&
+                clinicalContext.permissions.can_create_record && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href = clinicalPageUrl;
+                    }}
+                    className="rounded-xl bg-indigo-700 px-4 py-2 text-sm font-bold text-white"
+                  >
+                    {clinicalContext.terminology.open_record}
+                  </button>
+                )}
+              {clinicalContext?.clinical_record_exists &&
+                !clinicalContext.clinical_evolution_id &&
+                clinicalContext.permissions.can_create_evolution && (
+                  <button
+                    type="button"
+                    disabled={clinicalBusy}
+                    onClick={createEvolutionFromAppointment}
+                    className="rounded-xl bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+                  >
+                    {clinicalBusy ? "Creando…" : "Crear evolución"}
+                  </button>
+                )}
+              {clinicalContext?.clinical_evolution_status === "DRAFT" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = clinicalPageUrl;
+                  }}
+                  className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white"
+                >
+                  Continuar evolución
+                </button>
+              )}
+              {clinicalContext?.clinical_evolution_status === "SIGNED" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = clinicalPageUrl;
+                  }}
+                  className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white"
+                >
+                  Ver evolución firmada
+                </button>
+              )}
+            </div>
+          </div>
+          {!clinicalLoading &&
+            clinicalContext &&
+            !clinicalContext.permissions.can_view_sensitive && (
+              <p className="mt-3 rounded-xl bg-white/80 p-3 text-sm font-semibold text-slate-600">
+                Tu usuario puede ver el estado operativo clínico, pero no el
+                contenido sensible de la evolución.
+              </p>
+            )}
+        </section>
 
         {!terminal && !action && (
           <div className="flex flex-wrap gap-2">
@@ -1681,10 +1933,95 @@ function AppointmentDetail({
         {action === "complete" && (
           <ActionBox title="Finalizar atención">
             <Alert tone="warning">
-              Este registro no reemplaza la historia clínica ni una fórmula médica formal.
+              Revisa cada decisión antes de finalizar. La firma clínica, los
+              procedimientos, el seguimiento y el control se ejecutan como
+              acciones separadas y se reportarán individualmente.
             </Alert>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+                1. Evolución clínica
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-700">
+                {clinicalContext?.clinical_evolution_status === "SIGNED"
+                  ? "La evolución de esta cita ya está firmada."
+                  : clinicalContext?.clinical_evolution_status === "DRAFT"
+                    ? "Existe una evolución en borrador para esta cita."
+                    : "Esta cita no tiene evolución vinculada."}
+              </p>
+              {clinicalContext?.clinical_evolution_status === "DRAFT" &&
+                clinicalContext.permissions.can_sign_evolution && (
+                  <label className="mt-3 flex items-start gap-3 text-sm font-bold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={signEvolution}
+                      onChange={(event) => setSignEvolution(event.target.checked)}
+                      className="mt-1 h-4 w-4 accent-indigo-600"
+                    />
+                    <span>
+                      Firmar y cerrar la evolución ahora. Después de firmarla,
+                      las correcciones deberán registrarse mediante adenda.
+                    </span>
+                  </label>
+                )}
+              {clinicalContext?.clinical_evolution_status === "DRAFT" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = clinicalPageUrl;
+                  }}
+                  className="mt-3 rounded-xl border border-indigo-200 px-4 py-2 text-sm font-bold text-indigo-700"
+                >
+                  Continuar borrador antes de finalizar
+                </button>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+                2. Procedimientos
+              </p>
+              {performedClinicalProcedures.length === 0 ? (
+                <p className="mt-1 text-sm font-semibold text-slate-600">
+                  No hay procedimientos vinculados como realizados pendientes
+                  por marcar en Tratamientos.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm text-slate-600">
+                    Selecciona cuáles deseas marcar como realizados en
+                    Tratamientos.
+                  </p>
+                  {performedClinicalProcedures.map((procedure) => (
+                    <label
+                      key={procedure.id}
+                      className="flex items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedProcedureIds.includes(procedure.id)}
+                        onChange={(event) =>
+                          setSelectedProcedureIds((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, procedure.id])]
+                              : current.filter((item) => item !== procedure.id),
+                          )
+                        }
+                        className="mt-1 h-4 w-4 accent-indigo-600"
+                      />
+                      <span>
+                        <strong>{procedure.name}</strong>
+                        <span className="block text-xs font-semibold text-slate-500">
+                          {procedure.scope_label} · {procedure.treatment_name ?? "Tratamiento"}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <label className="block">
-              <span className="mb-2 block text-sm font-bold text-slate-700">Descripción de la atención</span>
+              <span className="mb-2 block text-sm font-bold text-slate-700">3. Descripción operativa de la atención</span>
               <textarea value={attentionDescription} onChange={(event) => setAttentionDescription(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2" />
             </label>
             <label className="block">
@@ -1707,11 +2044,48 @@ function AppointmentDetail({
                 </label>
               </div>
             )}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <label className="flex items-center gap-3 text-sm font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={createControl}
+                  onChange={(event) => setCreateControl(event.target.checked)}
+                  className="h-4 w-4 accent-green-600"
+                />
+                Crear cita futura de control
+              </label>
+              {createControl && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label>
+                    <span className="mb-2 block text-sm font-bold text-slate-700">Fecha</span>
+                    <input type="date" value={controlDate} onChange={(event) => setControlDate(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 px-3" />
+                  </label>
+                  <label>
+                    <span className="mb-2 block text-sm font-bold text-slate-700">Hora</span>
+                    <input type="time" step={900} value={controlTime} onChange={(event) => setControlTime(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 px-3" />
+                  </label>
+                  <FieldSelect
+                    label="Tipo de cita"
+                    value={controlTypeId}
+                    onChange={setControlTypeId}
+                    options={options.appointment_types.map((item) => ({
+                      value: item.id,
+                      label: `${item.name} · ${item.suggested_duration_minutes} min`,
+                    }))}
+                  />
+                  <label>
+                    <span className="mb-2 block text-sm font-bold text-slate-700">Motivo</span>
+                    <input value={controlReason} onChange={(event) => setControlReason(event.target.value)} className="min-h-11 w-full rounded-xl border border-slate-300 px-3" />
+                  </label>
+                </div>
+              )}
+            </div>
             <ActionButtons
               saving={saving}
               disabled={
                 attentionDescription.trim().length < 2 ||
-                (requiresFollowup && (!followupDate || followupReason.trim().length < 2))
+                (requiresFollowup && (!followupDate || followupReason.trim().length < 2)) ||
+                (createControl && (!controlDate || !controlTime || !controlTypeId || controlReason.trim().length < 2))
               }
               onBack={() => setAction(null)}
               onSave={() => run(false)}

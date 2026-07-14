@@ -10,6 +10,7 @@ from app.database.session import get_db
 from app.schemas.agenda_schema import (
     AgendaEventsResponse,
     AgendaOptionsResponse,
+    AppointmentClinicalContextResponse,
     AppointmentCancelRequest,
     AppointmentConfirmRequest,
     AppointmentCreateRequest,
@@ -18,14 +19,18 @@ from app.schemas.agenda_schema import (
     AppointmentTimeAdjustRequest,
     AppointmentUpdateRequest,
     AppointmentWhatsAppLinkResponse,
+    ClinicalCareCompletionRequest,
+    ClinicalCareCompletionResponse,
 )
 from app.services.agenda_service import (
     AgendaError,
     adjust_appointment_time,
     appointment_whatsapp_link,
     cancel_appointment,
+    complete_clinical_care,
     confirm_appointment,
     create_appointment,
+    get_appointment_clinical_context,
     get_events,
     get_options,
     reschedule_appointment,
@@ -94,6 +99,54 @@ def appointment_whatsapp_endpoint(
             session,
             context,
             appointment_id,
+            get_request_metadata(request),
+        )
+    except AgendaError as exc:
+        raise handle_agenda_error(exc)
+
+
+@router.get(
+    "/api/appointments/{appointment_id}/clinical-context",
+    response_model=AppointmentClinicalContextResponse,
+)
+def appointment_clinical_context_endpoint(
+    appointment_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("appointments.view"))
+    ],
+) -> AppointmentClinicalContextResponse:
+    try:
+        return get_appointment_clinical_context(
+            session,
+            context,
+            appointment_id,
+            get_request_metadata(request),
+        )
+    except AgendaError as exc:
+        raise handle_agenda_error(exc)
+
+
+@router.post(
+    "/api/appointments/{appointment_id}/complete-clinical-care",
+    response_model=ClinicalCareCompletionResponse,
+)
+def complete_clinical_care_endpoint(
+    appointment_id: UUID,
+    payload: ClinicalCareCompletionRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("appointments.complete"))
+    ],
+) -> ClinicalCareCompletionResponse:
+    try:
+        return complete_clinical_care(
+            session,
+            context,
+            appointment_id,
+            payload,
             get_request_metadata(request),
         )
     except AgendaError as exc:

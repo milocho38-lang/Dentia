@@ -16,12 +16,21 @@ from app.models.agenda import (
     PatientResponsible,
 )
 from app.models.audit_event import AuditEvent
+from app.models.clinical_record import (
+    ClinicalEvolution,
+    ClinicalEvolutionProcedure,
+    ClinicalRecord,
+)
 from app.models.company import Company
 from app.models.site import Site
+from app.models.treatment import Treatment, TreatmentProcedure
 from app.models.user import User
 from app.schemas.agenda_schema import (
     AgendaEventsResponse,
     AgendaOptionsResponse,
+    AppointmentClinicalContextResponse,
+    AppointmentClinicalProcedureResponse,
+    AppointmentClinicalTreatmentResponse,
     AppointmentCreateRequest,
     AppointmentResponse,
     AppointmentRescheduleRequest,
@@ -29,9 +38,14 @@ from app.schemas.agenda_schema import (
     AppointmentTypeOptionResponse,
     AppointmentUpdateRequest,
     AppointmentWhatsAppLinkResponse,
+    ClinicalCareActionResult,
+    ClinicalCareCompletionRequest,
+    ClinicalCareCompletionResponse,
     DentistOptionResponse,
     SiteOptionResponse,
 )
+from app.schemas.clinical_record_schema import ClinicalEvolutionSignRequest
+from app.schemas.followup_schema import CompleteAppointmentRequest
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.site_access_service import authorized_site_ids
 
@@ -48,6 +62,26 @@ INITIAL_APPOINTMENT_TYPES = (
     ("Impresión", 15),
 )
 FALLBACK_TIMEZONE = "America/Bogota"
+ZONE_LABELS = {
+    "UPPER_ARCH": "Arcada superior",
+    "LOWER_ARCH": "Arcada inferior",
+    "FULL_MOUTH": "Boca completa",
+    "QUADRANT_1": "Cuadrante 1",
+    "QUADRANT_2": "Cuadrante 2",
+    "QUADRANT_3": "Cuadrante 3",
+    "QUADRANT_4": "Cuadrante 4",
+    "ANTERIOR": "Anterior",
+    "POSTERIOR": "Posterior",
+}
+SURFACE_LABELS = {
+    "VESTIBULAR": "Vestibular",
+    "LINGUAL": "Lingual",
+    "PALATAL": "Palatal",
+    "MESIAL": "Mesial",
+    "DISTAL": "Distal",
+    "OCCLUSAL": "Oclusal",
+    "INCISAL": "Incisal",
+}
 
 
 class AgendaError(RuntimeError):
@@ -200,13 +234,52 @@ def _local_calendar_iso(value: datetime, timezone_name: str) -> str:
     )
 
 
-def _to_response(row) -> AppointmentResponse:
+def _clinical_record_for_appointment(
+    session: Session,
+    appointment: Appointment,
+) -> ClinicalRecord | None:
+    return session.scalar(
+        select(ClinicalRecord).where(
+            ClinicalRecord.company_id == appointment.company_id,
+            ClinicalRecord.patient_id == appointment.patient_id,
+        )
+    )
+
+
+def _clinical_evolution_for_appointment(
+    session: Session,
+    appointment: Appointment,
+) -> ClinicalEvolution | None:
+    return session.scalar(
+        select(ClinicalEvolution).where(
+            ClinicalEvolution.company_id == appointment.company_id,
+            ClinicalEvolution.appointment_id == appointment.id,
+        )
+    )
+
+
+def _clinical_fields(
+    session: Session,
+    appointment: Appointment,
+) -> dict:
+    record = _clinical_record_for_appointment(session, appointment)
+    evolution = _clinical_evolution_for_appointment(session, appointment)
+    return {
+        "clinical_record_exists": record is not None,
+        "clinical_evolution_id": evolution.id if evolution else None,
+        "clinical_evolution_status": evolution.status if evolution else None,
+        "clinical_evolution_version": evolution.version if evolution else None,
+    }
+
+
+def _to_response(session: Session, row) -> AppointmentResponse:
     if len(row) == 6:
         appointment, patient, dentist, site, appointment_type, company = row
     else:
         appointment, patient, dentist, site, appointment_type = row
         company = None
     timezone_name = _effective_timezone(company, site)
+    clinical = _clinical_fields(session, appointment)
     return AppointmentResponse(
         id=appointment.id,
         patient_id=patient.id,
@@ -231,6 +304,7 @@ def _to_response(row) -> AppointmentResponse:
         overbook_reason=appointment.overbook_reason,
         confirmation_method=appointment.confirmation_method,
         confirmed_at=appointment.confirmed_at,
+        **clinical,
     )
 
 
@@ -293,7 +367,7 @@ def _load_responses(
         .where(Appointment.id.in_(appointment_ids))
         .order_by(Appointment.starts_at)
     )
-    return [_to_response(row) for row in rows]
+    return [_to_response(session, row) for row in rows]
 
 
 def _find_conflicts(
@@ -412,6 +486,381 @@ def _audit(
             user_agent=metadata.user_agent,
         )
     )
+
+
+def _audit_result(
+    session: Session,
+    context: AuthContext,
+    metadata: RequestMetadata,
+    *,
+    appointment_id: UUID,
+    action: str,
+    result: str,
+    detail: dict | None = None,
+) -> None:
+    session.add(
+        AuditEvent(
+            company_id=context.user.company_id,
+            user_id=context.user.id,
+            session_id=context.auth_session.id,
+            entity="appointment",
+            entity_id=appointment_id,
+            action=action,
+            result=result,
+            detail=detail,
+            ip_address=metadata.ip_address,
+            user_agent=metadata.user_agent,
+        )
+    )
+
+
+def _scope_label(procedure: TreatmentProcedure) -> str:
+    scope_type = (procedure.scope_type or "GENERAL").upper()
+    if scope_type == "ZONE":
+        return ZONE_LABELS.get(procedure.zone or "", procedure.zone or "Zona")
+    if scope_type == "TOOTH":
+        return f"Diente {procedure.tooth}" if procedure.tooth else "Diente"
+    if scope_type == "TOOTH_SURFACE":
+        surfaces = ", ".join(
+            SURFACE_LABELS.get(surface, surface.title())
+            for surface in (procedure.surfaces or [])
+        )
+        return f"Diente {procedure.tooth} — {surfaces}" if surfaces else f"Diente {procedure.tooth}"
+    return "General"
+
+
+def _clinical_permissions(context: AuthContext) -> dict[str, bool]:
+    codes = {
+        "can_view_record": "clinical_records.view",
+        "can_create_record": "clinical_records.create",
+        "can_view_sensitive": "clinical_records.view_sensitive",
+        "can_view_evolution": "clinical_evolutions.view",
+        "can_create_evolution": "clinical_evolutions.create",
+        "can_update_evolution": "clinical_evolutions.update_draft",
+        "can_sign_evolution": "clinical_evolutions.sign",
+        "can_update_treatments": "treatments.update",
+        "can_create_followup": "followups.manage",
+        "can_create_appointment": "appointments.create",
+        "can_complete_appointment": "appointments.complete",
+    }
+    return {name: code in context.permissions for name, code in codes.items()}
+
+
+def get_appointment_clinical_context(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    metadata: RequestMetadata,
+) -> AppointmentClinicalContextResponse:
+    row = _appointment_row(session, context, appointment_id)
+    appointment = row[0]
+    company = row[5] if len(row) == 6 else session.get(Company, context.user.company_id)
+    record = _clinical_record_for_appointment(session, appointment)
+    evolution = _clinical_evolution_for_appointment(session, appointment)
+    permissions = _clinical_permissions(context)
+
+    from app.services.clinical_record_service import terminology_for_country
+
+    treatments: list[AppointmentClinicalTreatmentResponse] = []
+    procedures: list[AppointmentClinicalProcedureResponse] = []
+    if permissions["can_view_sensitive"] and permissions["can_view_evolution"]:
+        treatment_items = list(
+            session.scalars(
+                select(Treatment)
+                .where(
+                    Treatment.company_id == context.user.company_id,
+                    Treatment.patient_id == appointment.patient_id,
+                    Treatment.status != "Cancelado",
+                )
+                .order_by(Treatment.created_at.desc())
+            )
+        )
+        treatment_names = {item.id: item.name for item in treatment_items}
+        treatments = [
+            AppointmentClinicalTreatmentResponse(
+                id=item.id,
+                name=item.name,
+                status=item.status,
+            )
+            for item in treatment_items
+        ]
+        procedure_items = list(
+            session.scalars(
+                select(TreatmentProcedure)
+                .where(
+                    TreatmentProcedure.company_id == context.user.company_id,
+                    TreatmentProcedure.patient_id == appointment.patient_id,
+                    TreatmentProcedure.status != "Cancelado",
+                )
+                .order_by(TreatmentProcedure.created_at.desc())
+            )
+        )
+        evolution_actions: dict[UUID, str] = {}
+        if evolution is not None:
+            for link in session.scalars(
+                select(ClinicalEvolutionProcedure).where(
+                    ClinicalEvolutionProcedure.evolution_id == evolution.id
+                )
+            ):
+                evolution_actions[link.procedure_id] = link.action
+        procedures = [
+            AppointmentClinicalProcedureResponse(
+                id=item.id,
+                treatment_id=item.treatment_id,
+                treatment_name=treatment_names.get(item.treatment_id),
+                name=item.name,
+                status=item.status,
+                scope_label=_scope_label(item),
+                clinical_action=evolution_actions.get(item.id),
+            )
+            for item in procedure_items
+        ]
+
+    _audit(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action="APPOINTMENT_CLINICAL_CONTEXT_VIEWED",
+    )
+    session.commit()
+    return AppointmentClinicalContextResponse(
+        appointment=_to_response(session, row),
+        clinical_record_exists=record is not None,
+        clinical_record_id=record.id if record else None,
+        clinical_evolution_id=evolution.id if evolution else None,
+        clinical_evolution_status=evolution.status if evolution else None,
+        clinical_evolution_version=evolution.version if evolution else None,
+        terminology=terminology_for_country(company.country if company else None),
+        treatments=treatments,
+        procedures=procedures,
+        permissions=permissions,
+    )
+
+
+def _action_success(message: str, entity_id: UUID | None = None) -> ClinicalCareActionResult:
+    return ClinicalCareActionResult(success=True, message=message, entity_id=entity_id)
+
+
+def _action_failure(message: str, entity_id: UUID | None = None) -> ClinicalCareActionResult:
+    return ClinicalCareActionResult(success=False, message=message, entity_id=entity_id)
+
+
+def complete_clinical_care(
+    session: Session,
+    context: AuthContext,
+    appointment_id: UUID,
+    payload: ClinicalCareCompletionRequest,
+    metadata: RequestMetadata,
+) -> ClinicalCareCompletionResponse:
+    row = _appointment_row(session, context, appointment_id)
+    appointment = row[0]
+    permissions = _clinical_permissions(context)
+    result = ClinicalCareCompletionResponse()
+
+    _audit_result(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action="CLINICAL_CARE_COMPLETION_STARTED",
+        result="SUCCESS",
+        detail={
+            "sign_evolution": payload.sign_evolution,
+            "mark_procedure_ids_done": [str(item) for item in payload.mark_procedure_ids_done],
+            "complete_appointment": payload.complete_appointment,
+            "create_followup": bool(payload.followup_payload and payload.followup_payload.requires_followup),
+            "create_control_appointment": payload.control_appointment_payload is not None,
+        },
+    )
+    session.commit()
+
+    if payload.sign_evolution:
+        if not permissions["can_sign_evolution"]:
+            result.evolution = _action_failure("No tienes permiso para firmar la evolución.")
+            result.partial_failure = True
+        elif payload.evolution_id is None or payload.evolution_version is None:
+            result.evolution = _action_failure("Selecciona una evolución en borrador para firmar.")
+            result.partial_failure = True
+        else:
+            try:
+                from app.services.clinical_record_service import sign_clinical_evolution
+
+                signed = sign_clinical_evolution(
+                    session,
+                    context,
+                    payload.evolution_id,
+                    ClinicalEvolutionSignRequest(
+                        version=payload.evolution_version,
+                        confirm_complete=True,
+                    ),
+                    metadata,
+                )
+                result.evolution = _action_success("Evolución firmada.", signed.id)
+            except Exception as exc:  # noqa: BLE001 - se reporta fallo parcial al usuario
+                session.rollback()
+                result.evolution = _action_failure(str(exc), payload.evolution_id)
+                result.partial_failure = True
+
+    if payload.mark_procedure_ids_done:
+        if "treatments.update" not in context.permissions:
+            result.procedures = [
+                _action_failure("No tienes permiso para marcar procedimientos realizados.", item)
+                for item in payload.mark_procedure_ids_done
+            ]
+            result.partial_failure = True
+        else:
+            from app.services.treatment_service import mark_procedure_done
+
+            for procedure_id in payload.mark_procedure_ids_done:
+                procedure = session.get(TreatmentProcedure, procedure_id)
+                if (
+                    procedure is None
+                    or procedure.company_id != context.user.company_id
+                    or procedure.patient_id != appointment.patient_id
+                ):
+                    result.procedures.append(
+                        _action_failure("Procedimiento no disponible para esta atención.", procedure_id)
+                    )
+                    result.partial_failure = True
+                    continue
+                if procedure.status == "Realizado":
+                    result.procedures.append(
+                        _action_success("El procedimiento ya estaba realizado.", procedure.id)
+                    )
+                    continue
+                try:
+                    updated = mark_procedure_done(
+                        session,
+                        context,
+                        procedure.treatment_id,
+                        procedure.id,
+                        metadata,
+                    )
+                    _audit(
+                        session,
+                        context,
+                        metadata,
+                        appointment_id=appointment.id,
+                        action="TREATMENT_PROCEDURE_MARKED_DONE_FROM_CLINICAL_CARE",
+                        detail={"procedure_id": str(updated.id)},
+                    )
+                    session.commit()
+                    result.procedures.append(
+                        _action_success("Procedimiento marcado como realizado.", updated.id)
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    session.rollback()
+                    result.procedures.append(_action_failure(str(exc), procedure_id))
+                    result.partial_failure = True
+
+    if payload.complete_appointment:
+        if not permissions["can_complete_appointment"]:
+            result.appointment = _action_failure("No tienes permiso para finalizar la cita.", appointment.id)
+            result.partial_failure = True
+        else:
+            try:
+                from app.services.followup_service import complete_appointment
+
+                followup_payload = payload.followup_payload
+                completed = complete_appointment(
+                    session,
+                    context,
+                    appointment.id,
+                    CompleteAppointmentRequest(
+                        attention_description=(
+                            followup_payload.attention_description
+                            if followup_payload
+                            else "Atención finalizada desde flujo clínico."
+                        ),
+                        prescribed_medications=(
+                            followup_payload.prescribed_medications
+                            if followup_payload
+                            else None
+                        ),
+                        requires_followup=(
+                            followup_payload.requires_followup
+                            if followup_payload
+                            else False
+                        ),
+                        recommended_followup_date=(
+                            followup_payload.recommended_followup_date
+                            if followup_payload
+                            else None
+                        ),
+                        followup_reason=(
+                            followup_payload.followup_reason
+                            if followup_payload
+                            else None
+                        ),
+                    ),
+                    metadata,
+                )
+                result.appointment = _action_success("Cita finalizada.", appointment.id)
+                if completed.followup:
+                    result.followup = _action_success(
+                        "Seguimiento creado.",
+                        completed.followup.id,
+                    )
+                    _audit(
+                        session,
+                        context,
+                        metadata,
+                        appointment_id=appointment.id,
+                        action="FOLLOWUP_CREATED_FROM_CLINICAL_CARE",
+                        detail={"followup_id": str(completed.followup.id)},
+                    )
+                    session.commit()
+                elif followup_payload and followup_payload.requires_followup:
+                    result.followup = _action_failure("No se creó seguimiento.")
+                    result.partial_failure = True
+            except Exception as exc:  # noqa: BLE001
+                session.rollback()
+                result.appointment = _action_failure(str(exc), appointment.id)
+                result.partial_failure = True
+
+    if payload.control_appointment_payload is not None:
+        if not permissions["can_create_appointment"]:
+            result.control_appointment = _action_failure("No tienes permiso para crear la cita de control.")
+            result.partial_failure = True
+        else:
+            try:
+                control = create_appointment(
+                    session,
+                    context,
+                    payload.control_appointment_payload,
+                    metadata,
+                )
+                result.control_appointment = _action_success("Cita de control creada.", control.id)
+                _audit(
+                    session,
+                    context,
+                    metadata,
+                    appointment_id=appointment.id,
+                    action="CONTROL_APPOINTMENT_CREATED_FROM_CLINICAL_CARE",
+                    detail={"control_appointment_id": str(control.id)},
+                )
+                session.commit()
+            except Exception as exc:  # noqa: BLE001
+                session.rollback()
+                result.control_appointment = _action_failure(str(exc))
+                result.partial_failure = True
+
+    _audit_result(
+        session,
+        context,
+        metadata,
+        appointment_id=appointment.id,
+        action=(
+            "CLINICAL_CARE_COMPLETION_PARTIAL_FAILURE"
+            if result.partial_failure
+            else "CLINICAL_CARE_COMPLETION_COMPLETED"
+        ),
+        result="PARTIAL_FAILURE" if result.partial_failure else "SUCCESS",
+        detail=result.model_dump(mode="json"),
+    )
+    session.commit()
+    return result
 
 
 def _history(
@@ -555,7 +1004,7 @@ def get_events(
         .where(*filters)
         .order_by(Appointment.starts_at)
     )
-    return AgendaEventsResponse(items=[_to_response(row) for row in rows])
+    return AgendaEventsResponse(items=[_to_response(session, row) for row in rows])
 
 
 def create_appointment(
@@ -621,7 +1070,7 @@ def create_appointment(
     )
     if commit:
         session.commit()
-    return _to_response(_appointment_row(session, context, appointment.id))
+    return _to_response(session, _appointment_row(session, context, appointment.id))
 
 
 def update_appointment(
@@ -651,7 +1100,7 @@ def update_appointment(
         action="APPOINTMENT_UPDATED",
     )
     session.commit()
-    return _to_response(_appointment_row(session, context, appointment.id))
+    return _to_response(session, _appointment_row(session, context, appointment.id))
 
 
 def confirm_appointment(
@@ -689,7 +1138,7 @@ def confirm_appointment(
         detail={"method": method},
     )
     session.commit()
-    return _to_response(_appointment_row(session, context, appointment.id))
+    return _to_response(session, _appointment_row(session, context, appointment.id))
 
 
 def appointment_whatsapp_link(
@@ -699,8 +1148,7 @@ def appointment_whatsapp_link(
     metadata: RequestMetadata,
 ) -> AppointmentWhatsAppLinkResponse:
     row = _appointment_row(session, context, appointment_id)
-    appointment, patient, dentist, site, _appointment_type = row
-    company = session.get(Company, context.user.company_id)
+    appointment, patient, dentist, site, _appointment_type, company = row
     phone = _normalize_phone(_patient_contact_mobile(session, patient))
     if len(phone) < 10:
         raise AgendaError("El paciente no tiene un celular válido.", 409)
@@ -765,7 +1213,7 @@ def cancel_appointment(
         detail={"reason": reason},
     )
     session.commit()
-    return _to_response(_appointment_row(session, context, appointment.id))
+    return _to_response(session, _appointment_row(session, context, appointment.id))
 
 
 def reschedule_appointment(
@@ -850,7 +1298,7 @@ def reschedule_appointment(
         detail={"new_appointment_id": str(new.id), "reason": payload.reason},
     )
     session.commit()
-    return _to_response(_appointment_row(session, context, new.id))
+    return _to_response(session, _appointment_row(session, context, new.id))
 
 
 def adjust_appointment_time(
@@ -915,7 +1363,7 @@ def adjust_appointment_time(
         },
     )
     session.commit()
-    return _to_response(_appointment_row(session, context, appointment.id))
+    return _to_response(session, _appointment_row(session, context, appointment.id))
 
 
 def ensure_agenda_seed_data(

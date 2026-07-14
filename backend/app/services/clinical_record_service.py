@@ -1012,13 +1012,13 @@ def create_clinical_evolution(
     attended_at = _normalize_datetime(payload.attended_at, timezone_name)
     if payload.appointment_id:
         existing = session.scalar(
-            select(ClinicalEvolution.id).where(
+            select(ClinicalEvolution).where(
                 ClinicalEvolution.company_id == context.user.company_id,
                 ClinicalEvolution.appointment_id == payload.appointment_id,
             )
         )
         if existing is not None:
-            raise ClinicalRecordError("La cita ya tiene una evolución principal.", 409)
+            return _evolution_response(session, existing)
     _ensure_appointment(session, context, patient_id, payload.appointment_id)
     _ensure_treatment(session, context, patient_id, payload.treatment_id)
     evolution = ClinicalEvolution(

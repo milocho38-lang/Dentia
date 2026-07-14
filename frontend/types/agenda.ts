@@ -57,6 +57,10 @@ export interface Appointment {
   overbook_reason: string | null;
   confirmation_method: string | null;
   confirmed_at: string | null;
+  clinical_record_exists: boolean;
+  clinical_evolution_id: string | null;
+  clinical_evolution_status: string | null;
+  clinical_evolution_version: number | null;
 }
 
 export interface AppointmentCreateInput {
@@ -88,4 +92,68 @@ export interface ConflictPayload {
   message: string;
   conflicts: Appointment[];
   can_overbook: boolean;
+}
+
+export interface AppointmentClinicalTreatment {
+  id: string;
+  name: string;
+  status: string;
+}
+
+export interface AppointmentClinicalProcedure {
+  id: string;
+  treatment_id: string;
+  treatment_name: string | null;
+  name: string;
+  status: string;
+  scope_label: string;
+  clinical_action: "PLANNED" | "PERFORMED" | "REVIEWED" | "SUSPENDED" | null;
+}
+
+export interface AppointmentClinicalContext {
+  appointment: Appointment;
+  clinical_record_exists: boolean;
+  clinical_record_id: string | null;
+  clinical_evolution_id: string | null;
+  clinical_evolution_status: string | null;
+  clinical_evolution_version: number | null;
+  terminology: {
+    record: string;
+    open_record: string;
+    summary: string;
+  };
+  treatments: AppointmentClinicalTreatment[];
+  procedures: AppointmentClinicalProcedure[];
+  permissions: Record<string, boolean>;
+}
+
+export interface ClinicalCareCompletionInput {
+  complete_appointment: boolean;
+  sign_evolution: boolean;
+  evolution_id?: string | null;
+  evolution_version?: number | null;
+  mark_procedure_ids_done: string[];
+  followup_payload?: {
+    attention_description: string;
+    prescribed_medications?: string | null;
+    requires_followup: boolean;
+    recommended_followup_date?: string | null;
+    followup_reason?: string | null;
+  } | null;
+  control_appointment_payload?: AppointmentCreateInput | null;
+}
+
+export interface ClinicalCareActionResult {
+  success: boolean;
+  message: string;
+  entity_id: string | null;
+}
+
+export interface ClinicalCareCompletionResult {
+  appointment: ClinicalCareActionResult | null;
+  evolution: ClinicalCareActionResult | null;
+  procedures: ClinicalCareActionResult[];
+  followup: ClinicalCareActionResult | null;
+  control_appointment: ClinicalCareActionResult | null;
+  partial_failure: boolean;
 }

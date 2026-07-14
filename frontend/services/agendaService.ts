@@ -3,7 +3,10 @@ export { completeAppointment } from "@/services/followupService";
 import type {
   AgendaOptions,
   Appointment,
+  AppointmentClinicalContext,
   AppointmentCreateInput,
+  ClinicalCareCompletionInput,
+  ClinicalCareCompletionResult,
   AppointmentRescheduleInput,
   AppointmentTimeAdjustInput,
   PatientOption,
@@ -68,6 +71,26 @@ export function generateAppointmentWhatsApp(appointmentId: string) {
   return apiRequest<{ url: string; phone: string; message: string }>(
     `/api/appointments/${appointmentId}/whatsapp-link`,
     { method: "POST" },
+  );
+}
+
+export function getAppointmentClinicalContext(appointmentId: string) {
+  return apiRequest<AppointmentClinicalContext>(
+    `/api/appointments/${appointmentId}/clinical-context`,
+  );
+}
+
+export function completeClinicalCare(
+  appointmentId: string,
+  data: ClinicalCareCompletionInput,
+) {
+  return apiRequest<ClinicalCareCompletionResult>(
+    `/api/appointments/${appointmentId}/complete-clinical-care`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
   );
 }
 
