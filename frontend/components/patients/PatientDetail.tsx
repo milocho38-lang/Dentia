@@ -92,6 +92,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
 
   const patient = summary.patient;
   const clinicalRecordHref = `/pacientes/${patient.id}/historia-clinica`;
+  const odontogramHref = `/pacientes/${patient.id}/odontograma`;
   const canOpenClinicalRecord =
     Boolean(clinicalSummary) &&
     hasPermission("clinical_records.view_sensitive") &&
@@ -202,6 +203,14 @@ export function PatientDetail({ patientId }: { patientId: string }) {
               {clinicalSummary?.terminology.record}
             </Link>
           )}
+          {hasPermission("odontogram.view") && (
+            <Link
+              href={odontogramHref}
+              className="inline-flex min-h-11 items-center rounded-xl border border-emerald-200 bg-white px-4 font-bold text-emerald-800"
+            >
+              Odontograma
+            </Link>
+          )}
           {patient.status === "Activo" &&
             hasPermission("appointments.create") && (
               <Link
@@ -299,12 +308,22 @@ export function PatientDetail({ patientId }: { patientId: string }) {
               )}
             </div>
             {canOpenClinicalRecord && clinicalRecordActionLabel ? (
-              <Link
-                href={clinicalRecordHref}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-green-700 px-4 font-bold text-white"
-              >
-                {clinicalRecordActionLabel}
-              </Link>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={clinicalRecordHref}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-green-700 px-4 font-bold text-white"
+                >
+                  {clinicalRecordActionLabel}
+                </Link>
+                {hasPermission("odontogram.view") && clinicalSummary.exists && (
+                  <Link
+                    href={odontogramHref}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-green-200 bg-white px-4 font-bold text-green-800"
+                  >
+                    Odontograma
+                  </Link>
+                )}
+              </div>
             ) : (
               clinicalSummary.exists &&
               !hasPermission("clinical_records.view_sensitive") && (

@@ -23,6 +23,12 @@ from app.models.clinical_record import (
     ClinicalTimelineEvent,
 )
 from app.models.company import Company
+from app.models.odontogram import (
+    Odontogram,
+    OdontogramCatalogItem,
+    OdontogramEvent,
+    OdontogramEventDetail,
+)
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.site import Site
@@ -55,6 +61,10 @@ __all__ = [
     "Company",
     "Dentist",
     "DentistSite",
+    "Odontogram",
+    "OdontogramCatalogItem",
+    "OdontogramEvent",
+    "OdontogramEventDetail",
     "Permission",
     "Patient",
     "PatientResponsible",
