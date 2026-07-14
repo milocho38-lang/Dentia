@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password, normalize_email, utc_now
 from app.core.config import settings
 from app.models.associations import UserRole, UserSite
+from app.models.agenda import Dentist, DentistSite
 from app.models.audit_event import AuditEvent
 from app.models.auth_session import AuthSession
 from app.models.role import Role
@@ -34,6 +35,7 @@ from app.schemas.user_schema import (
     RoleOptionResponse,
     SiteOptionResponse,
     TemporaryPasswordResponse,
+    EnableClinicalRoleRequest,
     UserAuditResponse,
     UserCreateRequest,
     UserListResponse,
@@ -330,6 +332,39 @@ def _sync_sites(
             )
         )
     target.default_site_id = default_site_id
+
+
+def _active_company_sites(session: Session, company_id: UUID) -> list[UUID]:
+    from app.models.site import Site
+
+    return list(
+        session.scalars(
+            select(Site.id)
+            .where(
+                Site.company_id == company_id,
+                Site.is_active.is_(True),
+                Site.status == "Activa",
+            )
+            .order_by(Site.name)
+        )
+    )
+
+
+def _target_site_ids_for_clinical_profile(
+    session: Session,
+    target: User,
+    role_codes: set[str],
+) -> list[UUID]:
+    if "ADMINISTRATOR" in role_codes:
+        return _active_company_sites(session, target.company_id)
+    assigned = [
+        site.id
+        for _, site in get_user_sites(session, target.id)
+        if site.is_active and site.status == "Activa"
+    ]
+    if assigned:
+        return assigned
+    return [target.default_site_id] if target.default_site_id else []
 
 
 def list_users(
@@ -738,6 +773,149 @@ def assign_sites(
             "after": sorted(str(site_id) for site_id in data.site_ids),
             "default_before": str(old_default) if old_default else None,
             "default_after": str(data.default_site_id),
+            "sessions_revoked": revoked,
+        },
+    )
+    session.commit()
+    return _build_user_summary(session, target)
+
+
+def enable_clinical_role(
+    session: Session,
+    context: AuthContext,
+    user_id: UUID,
+    data: EnableClinicalRoleRequest,
+    metadata: RequestMetadata,
+) -> UserSummaryResponse:
+    if "users.assign_roles" not in context.permissions:
+        raise UserManagementError(
+            "No tienes permiso para asignar función clínica.",
+            403,
+        )
+    if "sites.manage" not in context.permissions:
+        raise UserManagementError(
+            "No tienes permiso para crear o asociar perfiles odontológicos.",
+            403,
+        )
+    target = _get_target(session, context, user_id, lock=True)
+    if target.status != "Activo" or not target.is_active:
+        raise UserManagementError(
+            "Solo se puede habilitar función clínica a usuarios activos.",
+            409,
+        )
+    existing_role_rows = get_user_roles(session, target.id)
+    existing_role_codes = {role.code for _, role in existing_role_rows}
+    clinical_role = session.scalar(
+        select(Role).where(
+            Role.company_id == target.company_id,
+            Role.code == data.role_code,
+            Role.is_active.is_(True),
+        )
+    )
+    if clinical_role is None:
+        raise UserManagementError("Rol clínico no disponible para esta empresa.", 409)
+
+    dentist = session.scalar(
+        select(Dentist)
+        .where(
+            Dentist.company_id == target.company_id,
+            Dentist.user_id == target.id,
+        )
+        .with_for_update()
+    )
+    dentist_created = False
+    if dentist is None:
+        dentist = Dentist(
+            company_id=target.company_id,
+            user_id=target.id,
+            name=target.name,
+            status="Activo",
+            created_by=context.user.id,
+        )
+        session.add(dentist)
+        session.flush()
+        dentist_created = True
+    else:
+        dentist.is_active = True
+        dentist.status = "Activo"
+        dentist.name = target.name
+
+    role_added = False
+    if data.role_code not in existing_role_codes:
+        existing_assignments = {
+            assignment.role_id: assignment
+            for assignment in session.scalars(
+                select(UserRole)
+                .where(UserRole.user_id == target.id)
+                .with_for_update()
+            )
+        }
+        assignment = existing_assignments.get(clinical_role.id)
+        if assignment is None:
+            session.add(
+                UserRole(
+                    company_id=target.company_id,
+                    user_id=target.id,
+                    role_id=clinical_role.id,
+                    created_by=context.user.id,
+                )
+            )
+        else:
+            assignment.is_active = True
+        role_added = True
+
+    target_site_ids = set(
+        _target_site_ids_for_clinical_profile(session, target, existing_role_codes)
+    )
+    existing_dentist_sites = {
+        assignment.site_id: assignment
+        for assignment in session.scalars(
+            select(DentistSite)
+            .where(
+                DentistSite.company_id == target.company_id,
+                DentistSite.dentist_id == dentist.id,
+            )
+            .with_for_update()
+        )
+    }
+    active_existing = {
+        site_id
+        for site_id, assignment in existing_dentist_sites.items()
+        if assignment.is_active
+    }
+    if not active_existing and target_site_ids:
+        for site_id in target_site_ids:
+            assignment = existing_dentist_sites.get(site_id)
+            if assignment is None:
+                session.add(
+                    DentistSite(
+                        company_id=target.company_id,
+                        dentist_id=dentist.id,
+                        site_id=site_id,
+                        created_by=context.user.id,
+                    )
+                )
+            else:
+                assignment.is_active = True
+
+    revoked = _invalidate_access(
+        session,
+        target=target,
+        actor_id=context.user.id,
+        reason="USER_CLINICAL_ROLE_ENABLED",
+    )
+    _audit(
+        session,
+        context=context,
+        metadata=metadata,
+        target_user_id=target.id,
+        action="USER_CLINICAL_ROLE_ENABLED",
+        detail={
+            "role_code": data.role_code,
+            "role_added": role_added,
+            "dentist_id": str(dentist.id),
+            "dentist_created": dentist_created,
+            "site_ids": sorted(str(site_id) for site_id in target_site_ids),
             "sessions_revoked": revoked,
         },
     )

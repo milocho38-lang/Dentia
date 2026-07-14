@@ -192,6 +192,14 @@ def bootstrap_installation(
         )
     )
     session.add(
+        UserRole(
+            company_id=company.id,
+            user_id=admin.id,
+            role_id=roles_by_code["DENTIST_ADMIN"].id,
+            created_by=admin.id,
+        )
+    )
+    session.add(
         UserSite(
             company_id=company.id,
             user_id=admin.id,

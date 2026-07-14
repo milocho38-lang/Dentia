@@ -28,6 +28,52 @@ export interface CompanyInput {
   timezone: string;
 }
 
+export interface Branding {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  company_type: string | null;
+  tax_id: string | null;
+  address: string | null;
+  city: string | null;
+  department: string | null;
+  country: string | null;
+  phone: string | null;
+  mobile: string | null;
+  email: string | null;
+  website: string | null;
+  social_media: Record<string, string> | null;
+  logo_filename: string | null;
+  logo_url: string | null;
+  signature_filename: string | null;
+  signature_url: string | null;
+  primary_dentist_name: string | null;
+  professional_specialty: string | null;
+  professional_license: string | null;
+  university: string | null;
+  experience_years: number | null;
+  header_text: string | null;
+  footer_text: string | null;
+  legal_observations: string | null;
+  cancellation_policy: string | null;
+  thank_you_message: string | null;
+  primary_color: string;
+  secondary_color: string;
+  button_color: string;
+  heading_color: string;
+  updated_at: string;
+}
+
+export type BrandingInput = Omit<
+  Branding,
+  | "id"
+  | "logo_filename"
+  | "logo_url"
+  | "signature_filename"
+  | "signature_url"
+  | "updated_at"
+>;
+
 export interface Site {
   id: string;
   name: string;

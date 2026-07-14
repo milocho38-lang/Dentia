@@ -71,6 +71,8 @@ pnpm-debug.log*
 # Logs and runtime artifacts
 # -----------------------------------------------------------------------------
 logs/
+.run/
+scripts/dentia.env
 *.log
 *.pid
 *.pid.lock
@@ -99,4 +101,3 @@ postgres-data/
 # -----------------------------------------------------------------------------
 storage/*
 !storage/.gitkeep
-

@@ -7,3 +7,6 @@ alembic==1.16.1
 psycopg[binary]==3.2.13
 pwdlib[argon2]==0.2.1
 PyJWT==2.10.1
+python-multipart==0.0.20
+reportlab==4.4.2
+qrcode[pil]==8.2

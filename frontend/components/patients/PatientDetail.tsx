@@ -8,6 +8,7 @@ import { Spinner } from "@/components/shared/Spinner";
 import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/services/apiClient";
+import { getClinicalSummary } from "@/services/clinicalRecordService";
 import { getAppointmentFollowup } from "@/services/followupService";
 import {
   createResponsible,
@@ -24,6 +25,7 @@ import type {
   Responsible,
   ResponsibleInput,
 } from "@/types/patient";
+import type { ClinicalSummary } from "@/types/clinicalRecord";
 import type { Followup } from "@/types/followup";
 
 function formatDate(value: string | null, withTime = false) {
@@ -38,6 +40,8 @@ export function PatientDetail({ patientId }: { patientId: string }) {
   const { hasPermission } = useAuth();
   const [summary, setSummary] = useState<PatientSummary | null>(null);
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
+  const [clinicalSummary, setClinicalSummary] =
+    useState<ClinicalSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [responsibleOpen, setResponsibleOpen] = useState(false);
@@ -61,6 +65,11 @@ export function PatientDetail({ patientId }: { patientId: string }) {
       ]);
       setSummary(loadedSummary);
       setAppointments(loadedAppointments);
+      try {
+        setClinicalSummary(await getClinicalSummary(patientId));
+      } catch {
+        setClinicalSummary(null);
+      }
     } catch {
       setError("No fue posible cargar el paciente.");
     } finally {
@@ -82,6 +91,16 @@ export function PatientDetail({ patientId }: { patientId: string }) {
   }
 
   const patient = summary.patient;
+  const clinicalRecordHref = `/pacientes/${patient.id}/historia-clinica`;
+  const canOpenClinicalRecord =
+    Boolean(clinicalSummary) &&
+    hasPermission("clinical_records.view_sensitive") &&
+    (clinicalSummary?.exists
+      ? hasPermission("clinical_records.view")
+      : hasPermission("clinical_records.create"));
+  const clinicalRecordActionLabel = clinicalSummary?.exists
+    ? `Ver ${clinicalSummary.terminology.record}`
+    : clinicalSummary?.terminology.open_record;
 
   async function changeStatus() {
     setSaving(true);
@@ -175,6 +194,14 @@ export function PatientDetail({ patientId }: { patientId: string }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canOpenClinicalRecord && clinicalRecordActionLabel && (
+            <Link
+              href={clinicalRecordHref}
+              className="inline-flex min-h-11 items-center rounded-xl border border-green-200 bg-green-50 px-4 font-bold text-green-800"
+            >
+              {clinicalSummary?.terminology.record}
+            </Link>
+          )}
           {patient.status === "Activo" &&
             hasPermission("appointments.create") && (
               <Link
@@ -232,6 +259,63 @@ export function PatientDetail({ patientId }: { patientId: string }) {
           value={String(summary.appointment_count)}
         />
       </div>
+
+      {clinicalSummary && (
+        <section
+          className={`mt-6 rounded-2xl border p-5 shadow-sm ${
+            clinicalSummary.has_critical_alerts
+              ? "border-red-200 bg-red-50"
+              : clinicalSummary.requires_clinical_precaution
+                ? "border-amber-200 bg-amber-50"
+                : "border-slate-200 bg-white"
+          }`}
+        >
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                {clinicalSummary.terminology.summary}
+              </p>
+              <h2 className="mt-1 text-lg font-black text-slate-950">
+                {clinicalSummary.exists
+                  ? `${clinicalSummary.terminology.record} activa`
+                  : `Sin ${clinicalSummary.terminology.record.toLowerCase()} abierta`}
+              </h2>
+              {clinicalSummary.limited && clinicalSummary.message ? (
+                <p className="mt-2 text-sm font-semibold text-amber-900">
+                  {clinicalSummary.message}
+                </p>
+              ) : clinicalSummary.exists ? (
+                <p className="mt-2 text-sm text-slate-600">
+                  Apertura: {formatDate(clinicalSummary.opened_at, true)} ·
+                  Última actualización: {formatDate(clinicalSummary.updated_at, true)}
+                  {clinicalSummary.has_critical_alerts
+                    ? " · Presenta alergias críticas"
+                    : ""}
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">
+                  Este paciente aún no tiene {clinicalSummary.terminology.record.toLowerCase()} abierta.
+                </p>
+              )}
+            </div>
+            {canOpenClinicalRecord && clinicalRecordActionLabel ? (
+              <Link
+                href={clinicalRecordHref}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-green-700 px-4 font-bold text-white"
+              >
+                {clinicalRecordActionLabel}
+              </Link>
+            ) : (
+              clinicalSummary.exists &&
+              !hasPermission("clinical_records.view_sensitive") && (
+                <span className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-500">
+                  Acceso clínico restringido
+                </span>
+              )
+            )}
+          </div>
+        </section>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.35fr_1fr]">
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

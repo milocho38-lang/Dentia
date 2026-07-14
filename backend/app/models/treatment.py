@@ -104,6 +104,7 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_proc_empresa_estado", "empresa_id", "estado"),
         Index("ix_proc_empresa_odontologo", "empresa_id", "odontologo_id"),
         Index("ix_proc_empresa_sede", "empresa_id", "sede_id"),
+        Index("ix_proc_catalogo", "catalogo_procedimiento_id"),
         Index("ix_proc_cita", "cita_id"),
     )
 
@@ -127,6 +128,12 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("pacientes.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
+    )
+    catalog_procedure_id: Mapped[UUID | None] = mapped_column(
+        "catalogo_procedimiento_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("catalogo_procedimientos.id", ondelete="SET NULL"),
+        nullable=True,
     )
     name: Mapped[str] = mapped_column("nombre", String(200), nullable=False)
     category: Mapped[str | None] = mapped_column(
@@ -175,8 +182,68 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     requires_tooth: Mapped[bool] = mapped_column(
         "requiere_pieza_dental", Boolean, nullable=False, default=False
     )
+    scope_type: Mapped[str] = mapped_column(
+        "tipo_alcance", String(30), nullable=False, default="GENERAL", server_default="GENERAL"
+    )
+    zone: Mapped[str | None] = mapped_column(
+        "zona", String(40), nullable=True
+    )
     tooth: Mapped[str | None] = mapped_column(
         "pieza_dental", String(30), nullable=True
+    )
+    surfaces: Mapped[list[str] | None] = mapped_column(
+        "caras", JSONB, nullable=True
+    )
+    created_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    updated_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+
+class ProcedureCatalogItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "catalogo_procedimientos"
+    __table_args__ = (
+        UniqueConstraint(
+            "empresa_id",
+            "nombre_normalizado",
+            name="uq_catalogo_proc_empresa_nombre_normalizado",
+        ),
+        CheckConstraint("valor_sugerido IS NULL OR valor_sugerido >= 0", name="ck_catalogo_proc_valor_no_negativo"),
+        Index("ix_catalogo_proc_empresa_activo", "empresa_id", "activo"),
+        Index("ix_catalogo_proc_empresa_categoria", "empresa_id", "categoria"),
+        Index("ix_catalogo_proc_empresa_id", "empresa_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        "empresa_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("empresas.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column("nombre", String(200), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(
+        "nombre_normalizado", String(220), nullable=False
+    )
+    category: Mapped[str | None] = mapped_column(
+        "categoria", String(120), nullable=True
+    )
+    description: Mapped[str | None] = mapped_column(
+        "descripcion", Text, nullable=True
+    )
+    suggested_value: Mapped[Decimal | None] = mapped_column(
+        "valor_sugerido", Numeric(14, 2), nullable=True
+    )
+    suggested_scope_type: Mapped[str | None] = mapped_column(
+        "tipo_alcance_sugerido", String(30), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(
+        "activo", Boolean, nullable=False, default=True, server_default="true"
     )
     created_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
@@ -327,6 +394,18 @@ class BudgetDetail(UUIDPrimaryKeyMixin, Base):
     order: Mapped[int] = mapped_column("orden", Integer, nullable=False)
     observations: Mapped[str | None] = mapped_column(
         "observaciones", Text, nullable=True
+    )
+    scope_type: Mapped[str] = mapped_column(
+        "tipo_alcance", String(30), nullable=False, default="GENERAL", server_default="GENERAL"
+    )
+    zone: Mapped[str | None] = mapped_column(
+        "zona", String(40), nullable=True
+    )
+    tooth: Mapped[str | None] = mapped_column(
+        "pieza_dental", String(30), nullable=True
+    )
+    surfaces: Mapped[list[str] | None] = mapped_column(
+        "caras", JSONB, nullable=True
     )
 
 

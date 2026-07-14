@@ -43,6 +43,7 @@ export interface Procedure {
   id: string;
   treatment_id: string;
   patient_id: string;
+  catalog_procedure_id: string | null;
   name: string;
   category: string | null;
   dentist_id: string | null;
@@ -58,7 +59,28 @@ export interface Procedure {
   performed_at: string | null;
   observations: string | null;
   requires_tooth: boolean;
+  scope_type: string;
+  zone: string | null;
   tooth: string | null;
+  surfaces: string[] | null;
+  scope_label: string;
+}
+
+export interface ProcedureCatalogItem {
+  id: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  suggested_value: string | null;
+  suggested_scope_type: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProcedureCatalogListResponse {
+  items: ProcedureCatalogItem[];
+  total: number;
 }
 
 export interface BudgetDetail {
@@ -71,6 +93,11 @@ export interface BudgetDetail {
   total_value: string;
   order: number;
   observations: string | null;
+  scope_type: string;
+  zone: string | null;
+  tooth: string | null;
+  surfaces: string[] | null;
+  scope_label: string;
 }
 
 export interface Budget {

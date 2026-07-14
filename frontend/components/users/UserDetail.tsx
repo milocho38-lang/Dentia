@@ -9,6 +9,7 @@ import { TemporaryPasswordDialog } from "@/components/users/TemporaryPasswordDia
 import { useAuth } from "@/hooks/useAuth";
 import {
   changeUserStatus,
+  enableClinicalRole,
   getAccessOptions,
   getUser,
   getUserAudit,
@@ -135,6 +136,13 @@ export function UserDetail({ userId }: { userId: string }) {
     },
     { id: "audit", label: "Auditoría", visible: hasPermission("audit.view") },
   ];
+  const roleCodes = user.roles.map((role) => role.code);
+  const hasClinicalAdminRole = roleCodes.includes("DENTIST_ADMIN");
+  const hasClinicalRole =
+    hasClinicalAdminRole || roleCodes.includes("DENTIST");
+  const hasAdministratorRole = roleCodes.includes("ADMINISTRATOR");
+  const suggestedClinicalRole: "DENTIST" | "DENTIST_ADMIN" =
+    hasAdministratorRole ? "DENTIST_ADMIN" : "DENTIST";
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -323,6 +331,61 @@ export function UserDetail({ userId }: { userId: string }) {
 
       {tab === "access" && options && (
         <div className="mt-6 grid gap-5 lg:grid-cols-2">
+          <section className="rounded-2xl border border-green-200 bg-green-50 p-6 shadow-sm lg:col-span-2">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-green-700">
+                  Función administrativa y clínica
+                </p>
+                <h2 className="mt-2 text-lg font-black text-slate-950">
+                  {hasClinicalRole
+                    ? "Este usuario ya tiene función clínica"
+                    : "Habilitar función clínica para este usuario"}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Esta acción conserva los roles actuales y agrega el rol clínico
+                  correspondiente junto con el perfil odontólogo. Después de
+                  aplicarla, el usuario debe cerrar sesión e iniciar nuevamente
+                  para recibir permisos actualizados.
+                </p>
+                {hasAdministratorRole && (
+                  <p className="mt-2 text-sm font-semibold text-green-800">
+                    El usuario conservará ADMINISTRATOR y sumará DENTIST_ADMIN.
+                  </p>
+                )}
+              </div>
+              {hasPermission("users.assign_roles") &&
+                hasPermission("sites.manage") && (
+                  <button
+                    disabled={saving || hasClinicalAdminRole}
+                    onClick={() =>
+                      setConfirmation({
+                        title: "Habilitar función clínica",
+                        description:
+                          "Se creará o reutilizará el perfil odontólogo, se agregará el rol clínico sin retirar roles existentes y se revocarán sesiones para actualizar permisos en el próximo inicio de sesión.",
+                        label: hasClinicalRole
+                          ? "Actualizar función clínica"
+                          : "Habilitar",
+                        tone: "primary",
+                        action: async () => {
+                          setUser(
+                            await enableClinicalRole(
+                              user.id,
+                              suggestedClinicalRole,
+                            ),
+                          );
+                        },
+                      })
+                    }
+                    className="min-h-11 rounded-xl bg-green-700 px-5 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {hasClinicalAdminRole
+                      ? "Función clínica activa"
+                      : "Habilitar función clínica"}
+                  </button>
+                )}
+            </div>
+          </section>
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900">Roles</h2>
             <div className="mt-4 space-y-2">

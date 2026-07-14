@@ -12,6 +12,7 @@ from app.database.session import get_db
 from app.schemas.user_schema import (
     AccessOptionsResponse,
     ActionResponse,
+    EnableClinicalRoleRequest,
     TemporaryPasswordResponse,
     UserAuditResponse,
     UserCreateRequest,
@@ -29,6 +30,7 @@ from app.services.user_service import (
     assign_sites,
     change_status,
     create_user,
+    enable_clinical_role,
     get_access_options,
     get_audit,
     get_sessions,
@@ -253,6 +255,28 @@ def assign_sites_endpoint(
 ) -> UserSummaryResponse:
     try:
         return assign_sites(
+            session,
+            context,
+            user_id,
+            payload,
+            get_request_metadata(request),
+        )
+    except UserManagementError as exc:
+        raise handle_user_error(exc)
+
+
+@router.post("/{user_id}/enable-clinical-role", response_model=UserSummaryResponse)
+def enable_clinical_role_endpoint(
+    user_id: UUID,
+    payload: EnableClinicalRoleRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("users.assign_roles"))
+    ],
+) -> UserSummaryResponse:
+    try:
+        return enable_clinical_role(
             session,
             context,
             user_id,

@@ -1,12 +1,15 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth_dependencies import get_request_metadata, require_permission
 from app.database.session import get_db
 from app.schemas.organization_schema import (
+    BrandingResponse,
+    BrandingUpdateRequest,
     CompanyResponse,
     CompanyUpdateRequest,
     DentistSiteListResponse,
@@ -25,12 +28,17 @@ from app.services.organization_service import (
     OrganizationError,
     create_site,
     deactivate_site,
+    delete_branding_asset,
+    get_branding,
+    get_branding_asset_path,
     get_company,
     get_site,
     list_dentists_for_site_management,
     list_sites,
     reactivate_site,
+    save_branding_asset,
     site_impact,
+    update_branding,
     update_company,
     update_dentist_sites,
     update_site,
@@ -62,6 +70,120 @@ def update_company_endpoint(
     try:
         return update_company(
             session, context, payload, get_request_metadata(request)
+        )
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.get("/api/company/branding", response_model=BrandingResponse)
+def branding_endpoint(
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("branding.view"))],
+):
+    try:
+        return get_branding(session, context)
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.patch("/api/company/branding", response_model=BrandingResponse)
+def update_branding_endpoint(
+    payload: BrandingUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("branding.update"))],
+):
+    try:
+        return update_branding(
+            session, context, payload, get_request_metadata(request)
+        )
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.get("/api/company/branding/{kind}")
+def branding_asset_endpoint(
+    kind: str,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("branding.view"))],
+) -> FileResponse:
+    try:
+        path, filename = get_branding_asset_path(session, context, kind)
+        return FileResponse(path, filename=filename)
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+async def _upload_branding_asset_endpoint(
+    *,
+    kind: str,
+    file: UploadFile,
+    request: Request,
+    session: Session,
+    context: AuthContext,
+) -> BrandingResponse:
+    try:
+        content = await file.read()
+        return save_branding_asset(
+            session,
+            context,
+            kind=kind,
+            filename=file.filename,
+            content_type=file.content_type,
+            content=content,
+            metadata=get_request_metadata(request),
+        )
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.post("/api/company/branding/logo", response_model=BrandingResponse)
+async def upload_logo_endpoint(
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("branding.update"))],
+    file: UploadFile = File(...),
+) -> BrandingResponse:
+    return await _upload_branding_asset_endpoint(
+        kind="logo", file=file, request=request, session=session, context=context
+    )
+
+
+@router.post("/api/company/branding/signature", response_model=BrandingResponse)
+async def upload_signature_endpoint(
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("branding.update"))],
+    file: UploadFile = File(...),
+) -> BrandingResponse:
+    return await _upload_branding_asset_endpoint(
+        kind="signature", file=file, request=request, session=session, context=context
+    )
+
+
+@router.delete("/api/company/branding/logo", response_model=BrandingResponse)
+def delete_logo_endpoint(
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("branding.update"))],
+) -> BrandingResponse:
+    try:
+        return delete_branding_asset(
+            session, context, kind="logo", metadata=get_request_metadata(request)
+        )
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.delete("/api/company/branding/signature", response_model=BrandingResponse)
+def delete_signature_endpoint(
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("branding.update"))],
+) -> BrandingResponse:
+    try:
+        return delete_branding_asset(
+            session, context, kind="signature", metadata=get_request_metadata(request)
         )
     except OrganizationError as exc:
         raise handle(exc)

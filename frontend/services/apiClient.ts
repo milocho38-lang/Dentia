@@ -140,3 +140,48 @@ export async function apiRequest<T>(
 
   return parseResponse<T>(response);
 }
+
+export async function apiBlob(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<Blob> {
+  const { retryOnUnauthorized = true, headers, ...requestOptions } = options;
+  const requestHeaders = new Headers(headers);
+  if (accessToken) {
+    requestHeaders.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  let response = await fetch(path, {
+    ...requestOptions,
+    credentials: "include",
+    headers: requestHeaders,
+  });
+
+  if (
+    response.status === 401 &&
+    retryOnUnauthorized &&
+    path !== "/api/auth/refresh" &&
+    path !== "/api/auth/login"
+  ) {
+    try {
+      await refreshSession();
+    } catch {
+      await parseResponse<never>(response);
+    }
+
+    const retryHeaders = new Headers(headers);
+    if (accessToken) {
+      retryHeaders.set("Authorization", `Bearer ${accessToken}`);
+    }
+    response = await fetch(path, {
+      ...requestOptions,
+      credentials: "include",
+      headers: retryHeaders,
+    });
+  }
+
+  if (!response.ok) {
+    await parseResponse<never>(response);
+  }
+  return response.blob();
+}

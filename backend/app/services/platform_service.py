@@ -358,6 +358,12 @@ def create_platform_company(
                 role_id=roles["ADMINISTRATOR"].id,
                 created_by=context.user.id,
             ),
+            UserRole(
+                company_id=company.id,
+                user_id=admin.id,
+                role_id=roles["DENTIST_ADMIN"].id,
+                created_by=context.user.id,
+            ),
             UserSite(
                 company_id=company.id,
                 user_id=admin.id,

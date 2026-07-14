@@ -12,6 +12,16 @@ from app.models.audit_event import AuditEvent
 from app.models.followup import AppointmentCare, FollowupManagement, PatientFollowup
 from app.models.auth_attempt import AuthAttempt
 from app.models.auth_session import AuthSession
+from app.models.clinical_record import (
+    ClinicalAllergy,
+    ClinicalEvolution,
+    ClinicalEvolutionAddendum,
+    ClinicalEvolutionProcedure,
+    ClinicalMedicalHistoryItem,
+    ClinicalMedication,
+    ClinicalRecord,
+    ClinicalTimelineEvent,
+)
 from app.models.company import Company
 from app.models.permission import Permission
 from app.models.role import Role
@@ -34,6 +44,14 @@ __all__ = [
     "AppointmentCare",
     "AuthAttempt",
     "AuthSession",
+    "ClinicalAllergy",
+    "ClinicalEvolution",
+    "ClinicalEvolutionAddendum",
+    "ClinicalEvolutionProcedure",
+    "ClinicalMedicalHistoryItem",
+    "ClinicalMedication",
+    "ClinicalRecord",
+    "ClinicalTimelineEvent",
     "Company",
     "Dentist",
     "DentistSite",

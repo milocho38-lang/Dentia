@@ -124,6 +124,17 @@ class UserSitesRequest(BaseModel):
         return self
 
 
+class EnableClinicalRoleRequest(BaseModel):
+    role_code: str = "DENTIST_ADMIN"
+
+    @field_validator("role_code")
+    @classmethod
+    def validate_role_code(cls, value: str) -> str:
+        if value not in {"DENTIST", "DENTIST_ADMIN"}:
+            raise ValueError("Rol clínico no válido.")
+        return value
+
+
 class TemporaryPasswordResponse(BaseModel):
     user: UserSummaryResponse
     temporary_password: str

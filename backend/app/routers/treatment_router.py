@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.auth_dependencies import get_request_metadata, require_permission
@@ -19,6 +19,10 @@ from app.schemas.treatment_schema import (
     PaymentListResponse,
     PaymentResponse,
     PaymentReverseRequest,
+    ProcedureCatalogCreateRequest,
+    ProcedureCatalogItemResponse,
+    ProcedureCatalogListResponse,
+    ProcedureCatalogUpdateRequest,
     ProcedureCreateRequest,
     ProcedureResponse,
     ProcedureUpdateRequest,
@@ -32,16 +36,20 @@ from app.services.auth_service import AuthContext
 from app.services.treatment_service import (
     TreatmentError,
     cancel_procedure,
+    change_procedure_catalog_status,
     change_budget_status,
     change_treatment_status,
     create_budget,
     create_payment,
     create_procedure,
+    create_procedure_catalog_item,
     create_treatment,
+    delete_procedure,
     finance_by_dentist,
     finance_by_procedure,
     finance_by_site,
     finance_dashboard,
+    generate_budget_pdf,
     get_budget,
     get_payment,
     get_treatment,
@@ -49,6 +57,7 @@ from app.services.treatment_service import (
     link_procedure_appointment,
     list_budgets,
     list_payments,
+    list_procedure_catalog,
     list_procedures,
     list_treatments,
     mark_procedure_done,
@@ -56,6 +65,7 @@ from app.services.treatment_service import (
     reverse_payment,
     update_budget,
     update_procedure,
+    update_procedure_catalog_item,
     update_treatment,
 )
 
@@ -65,6 +75,102 @@ router = APIRouter(tags=["Tratamientos y finanzas"])
 
 def handle_treatment_error(exc: TreatmentError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
+
+
+@router.get("/api/procedure-catalog", response_model=ProcedureCatalogListResponse)
+def list_procedure_catalog_endpoint(
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.view"))],
+    busqueda: str | None = Query(default=None),
+    activo: bool | None = Query(default=None),
+    categoria: str | None = Query(default=None),
+) -> ProcedureCatalogListResponse:
+    try:
+        return list_procedure_catalog(
+            session,
+            context,
+            search=busqueda,
+            active=activo,
+            category=categoria,
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.post("/api/procedure-catalog", response_model=ProcedureCatalogItemResponse, status_code=201)
+def create_procedure_catalog_endpoint(
+    payload: ProcedureCatalogCreateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.manage"))],
+) -> ProcedureCatalogItemResponse:
+    try:
+        return create_procedure_catalog_item(
+            session,
+            context,
+            payload,
+            get_request_metadata(request),
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.patch("/api/procedure-catalog/{item_id}", response_model=ProcedureCatalogItemResponse)
+def update_procedure_catalog_endpoint(
+    item_id: UUID,
+    payload: ProcedureCatalogUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.manage"))],
+) -> ProcedureCatalogItemResponse:
+    try:
+        return update_procedure_catalog_item(
+            session,
+            context,
+            item_id,
+            payload,
+            get_request_metadata(request),
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.post("/api/procedure-catalog/{item_id}/activate", response_model=ProcedureCatalogItemResponse)
+def activate_procedure_catalog_endpoint(
+    item_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.manage"))],
+) -> ProcedureCatalogItemResponse:
+    try:
+        return change_procedure_catalog_status(
+            session,
+            context,
+            item_id,
+            True,
+            get_request_metadata(request),
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.post("/api/procedure-catalog/{item_id}/deactivate", response_model=ProcedureCatalogItemResponse)
+def deactivate_procedure_catalog_endpoint(
+    item_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.manage"))],
+) -> ProcedureCatalogItemResponse:
+    try:
+        return change_procedure_catalog_status(
+            session,
+            context,
+            item_id,
+            False,
+            get_request_metadata(request),
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
 
 
 @router.get("/api/treatments", response_model=TreatmentListResponse)
@@ -283,6 +389,27 @@ def update_procedure_endpoint(
         raise handle_treatment_error(exc)
 
 
+@router.delete("/api/treatments/{treatment_id}/procedures/{procedure_id}", status_code=204)
+def delete_procedure_endpoint(
+    treatment_id: UUID,
+    procedure_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("treatments.update"))],
+) -> Response:
+    try:
+        delete_procedure(
+            session,
+            context,
+            treatment_id,
+            procedure_id,
+            get_request_metadata(request),
+        )
+        return Response(status_code=204)
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
 @router.post("/api/treatments/{treatment_id}/procedures/{procedure_id}/mark-done", response_model=ProcedureResponse)
 def mark_procedure_done_endpoint(
     treatment_id: UUID,
@@ -362,6 +489,25 @@ def get_budget_endpoint(
 ) -> BudgetResponse:
     try:
         return get_budget(session, context, budget_id)
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.get("/api/budgets/{budget_id}/pdf")
+def get_budget_pdf_endpoint(
+    budget_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("budgets.view"))],
+) -> Response:
+    try:
+        result = generate_budget_pdf(session, context, budget_id)
+        return Response(
+            content=result.content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{result.filename}"'
+            },
+        )
     except TreatmentError as exc:
         raise handle_treatment_error(exc)
 

@@ -55,6 +55,18 @@ export const navigationItems: NavigationItem[] = [
     section: "Configuración",
   },
   {
+    label: "Personalización",
+    href: "/configuracion/personalizacion",
+    permission: "branding.view",
+    section: "Configuración",
+  },
+  {
+    label: "Procedimientos",
+    href: "/configuracion/procedimientos",
+    permission: "procedure_catalog.view",
+    section: "Configuración",
+  },
+  {
     label: "Sedes",
     href: "/configuracion/sedes",
     permission: "sites.view",

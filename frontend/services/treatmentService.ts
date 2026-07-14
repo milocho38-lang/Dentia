@@ -1,4 +1,4 @@
-import { apiRequest } from "@/services/apiClient";
+import { apiBlob, apiRequest } from "@/services/apiClient";
 import type {
   Budget,
   FinanceBreakdownItem,
@@ -6,6 +6,8 @@ import type {
   PatientBalanceItem,
   Payment,
   Procedure,
+  ProcedureCatalogItem,
+  ProcedureCatalogListResponse,
   Treatment,
   TreatmentListResponse,
 } from "@/types/treatment";
@@ -59,9 +61,59 @@ export function listProcedures(treatmentId: string) {
   return apiRequest<Procedure[]>(`/api/treatments/${treatmentId}/procedures`);
 }
 
+export function listProcedureCatalog(query = "") {
+  return apiRequest<ProcedureCatalogListResponse>(`/api/procedure-catalog${query}`);
+}
+
+export function createProcedureCatalogItem(data: {
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  suggested_value?: string | null;
+  suggested_scope_type?: string | null;
+  is_active?: boolean;
+}) {
+  return apiRequest<ProcedureCatalogItem>("/api/procedure-catalog", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateProcedureCatalogItem(
+  itemId: string,
+  data: {
+    name?: string;
+    category?: string | null;
+    description?: string | null;
+    suggested_value?: string | null;
+    suggested_scope_type?: string | null;
+    is_active?: boolean;
+  },
+) {
+  return apiRequest<ProcedureCatalogItem>(`/api/procedure-catalog/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function activateProcedureCatalogItem(itemId: string) {
+  return apiRequest<ProcedureCatalogItem>(`/api/procedure-catalog/${itemId}/activate`, {
+    method: "POST",
+  });
+}
+
+export function deactivateProcedureCatalogItem(itemId: string) {
+  return apiRequest<ProcedureCatalogItem>(`/api/procedure-catalog/${itemId}/deactivate`, {
+    method: "POST",
+  });
+}
+
 export function createProcedure(
   treatmentId: string,
   data: {
+    catalog_procedure_id?: string | null;
     name: string;
     category?: string | null;
     dentist_id?: string | null;
@@ -70,6 +122,10 @@ export function createProcedure(
     quantity: string;
     estimated_date?: string | null;
     observations?: string | null;
+    scope_type?: string;
+    zone?: string | null;
+    tooth?: string | null;
+    surfaces?: string[] | null;
   },
 ) {
   return apiRequest<Procedure>(`/api/treatments/${treatmentId}/procedures`, {
@@ -77,6 +133,42 @@ export function createProcedure(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+}
+
+export function updateProcedure(
+  treatmentId: string,
+  procedureId: string,
+  data: {
+    catalog_procedure_id?: string | null;
+    name?: string;
+    category?: string | null;
+    dentist_id?: string | null;
+    site_id?: string | null;
+    unit_value?: string;
+    quantity?: string;
+    estimated_date?: string | null;
+    observations?: string | null;
+    scope_type?: string;
+    zone?: string | null;
+    tooth?: string | null;
+    surfaces?: string[] | null;
+  },
+) {
+  return apiRequest<Procedure>(
+    `/api/treatments/${treatmentId}/procedures/${procedureId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+export function deleteProcedure(treatmentId: string, procedureId: string) {
+  return apiRequest<void>(
+    `/api/treatments/${treatmentId}/procedures/${procedureId}`,
+    { method: "DELETE" },
+  );
 }
 
 export function markProcedureDone(treatmentId: string, procedureId: string) {
@@ -131,6 +223,16 @@ export function submitBudget(budgetId: string) {
 
 export function rejectBudget(budgetId: string) {
   return apiRequest<Budget>(`/api/budgets/${budgetId}/reject`, {
+    method: "POST",
+  });
+}
+
+export function downloadBudgetPdf(budgetId: string) {
+  return apiBlob(`/api/budgets/${budgetId}/pdf`);
+}
+
+export function duplicateBudgetVersion(budgetId: string) {
+  return apiRequest<Budget>(`/api/budgets/${budgetId}/duplicate-version`, {
     method: "POST",
   });
 }

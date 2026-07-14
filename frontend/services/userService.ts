@@ -78,6 +78,17 @@ export function updateUserSites(
   });
 }
 
+export function enableClinicalRole(
+  userId: string,
+  roleCode: "DENTIST" | "DENTIST_ADMIN" = "DENTIST_ADMIN",
+) {
+  return apiRequest<ManagedUser>(`/api/users/${userId}/enable-clinical-role`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role_code: roleCode }),
+  });
+}
+
 export async function getUserSessions(userId: string) {
   const response = await apiRequest<{ items: UserSession[] }>(
     `/api/users/${userId}/sessions`,

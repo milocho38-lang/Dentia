@@ -1,5 +1,7 @@
-import { apiRequest } from "@/services/apiClient";
+import { apiBlob, apiRequest } from "@/services/apiClient";
 import type {
+  Branding,
+  BrandingInput,
   Company,
   CompanyInput,
   DentistSiteManagement,
@@ -18,6 +20,37 @@ export function updateCompany(data: CompanyInput) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+}
+
+export function getBranding() {
+  return apiRequest<Branding>("/api/company/branding");
+}
+
+export function updateBranding(data: BrandingInput) {
+  return apiRequest<Branding>("/api/company/branding", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function uploadBrandingAsset(kind: "logo" | "signature", file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiRequest<Branding>(`/api/company/branding/${kind}`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export function deleteBrandingAsset(kind: "logo" | "signature") {
+  return apiRequest<Branding>(`/api/company/branding/${kind}`, {
+    method: "DELETE",
+  });
+}
+
+export function fetchBrandingAsset(kind: "logo" | "signature") {
+  return apiBlob(`/api/company/branding/${kind}`);
 }
 
 export async function listSites(search = "", status = "") {

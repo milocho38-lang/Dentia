@@ -30,6 +30,27 @@ BUDGET_STATUSES = {
     "Finalizado",
 }
 PAYMENT_METHODS = {"Efectivo", "Transferencia", "Tarjeta", "Otro"}
+PROCEDURE_SCOPE_TYPES = {"GENERAL", "ZONE", "TOOTH", "TOOTH_SURFACE"}
+PROCEDURE_ZONES = {
+    "UPPER_ARCH",
+    "LOWER_ARCH",
+    "FULL_MOUTH",
+    "QUADRANT_1",
+    "QUADRANT_2",
+    "QUADRANT_3",
+    "QUADRANT_4",
+    "ANTERIOR",
+    "POSTERIOR",
+}
+PROCEDURE_SURFACES = {
+    "VESTIBULAR",
+    "LINGUAL",
+    "PALATAL",
+    "MESIAL",
+    "DISTAL",
+    "OCCLUSAL",
+    "INCISAL",
+}
 
 
 class TreatmentCreateRequest(BaseModel):
@@ -121,6 +142,7 @@ class TreatmentResponse(TreatmentListItemResponse):
 
 
 class ProcedureCreateRequest(BaseModel):
+    catalog_procedure_id: UUID | None = None
     name: str = Field(min_length=2, max_length=200)
     category: str | None = Field(default=None, max_length=120)
     dentist_id: UUID | None = None
@@ -131,7 +153,10 @@ class ProcedureCreateRequest(BaseModel):
     estimated_date: date | None = None
     observations: str | None = None
     requires_tooth: bool = False
+    scope_type: str = "GENERAL"
+    zone: str | None = Field(default=None, max_length=40)
     tooth: str | None = Field(default=None, max_length=30)
+    surfaces: list[str] | None = None
 
     @field_validator("status")
     @classmethod
@@ -139,6 +164,35 @@ class ProcedureCreateRequest(BaseModel):
         if value not in PROCEDURE_STATUSES:
             raise ValueError("Estado de procedimiento no válido.")
         return value
+
+    @field_validator("scope_type")
+    @classmethod
+    def valid_scope_type(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_SCOPE_TYPES:
+            raise ValueError("Tipo de alcance dental no válido.")
+        return normalized
+
+    @field_validator("zone")
+    @classmethod
+    def valid_zone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_ZONES:
+            raise ValueError("Zona dental no válida.")
+        return normalized
+
+    @field_validator("surfaces")
+    @classmethod
+    def valid_surfaces(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = [surface.strip().upper() for surface in value if surface and surface.strip()]
+        invalid = [surface for surface in normalized if surface not in PROCEDURE_SURFACES]
+        if invalid:
+            raise ValueError("Cara dental no válida.")
+        return normalized
 
     @field_validator("name", "category", "observations", "tooth")
     @classmethod
@@ -149,6 +203,7 @@ class ProcedureCreateRequest(BaseModel):
 
 
 class ProcedureUpdateRequest(BaseModel):
+    catalog_procedure_id: UUID | None = None
     name: str | None = Field(default=None, min_length=2, max_length=200)
     category: str | None = Field(default=None, max_length=120)
     dentist_id: UUID | None = None
@@ -159,7 +214,10 @@ class ProcedureUpdateRequest(BaseModel):
     estimated_date: date | None = None
     observations: str | None = None
     requires_tooth: bool | None = None
+    scope_type: str | None = None
+    zone: str | None = Field(default=None, max_length=40)
     tooth: str | None = Field(default=None, max_length=30)
+    surfaces: list[str] | None = None
 
     @field_validator("status")
     @classmethod
@@ -167,6 +225,37 @@ class ProcedureUpdateRequest(BaseModel):
         if value is not None and value not in PROCEDURE_STATUSES:
             raise ValueError("Estado de procedimiento no válido.")
         return value
+
+    @field_validator("scope_type")
+    @classmethod
+    def valid_scope_type(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_SCOPE_TYPES:
+            raise ValueError("Tipo de alcance dental no válido.")
+        return normalized
+
+    @field_validator("zone")
+    @classmethod
+    def valid_zone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_ZONES:
+            raise ValueError("Zona dental no válida.")
+        return normalized
+
+    @field_validator("surfaces")
+    @classmethod
+    def valid_surfaces(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = [surface.strip().upper() for surface in value if surface and surface.strip()]
+        invalid = [surface for surface in normalized if surface not in PROCEDURE_SURFACES]
+        if invalid:
+            raise ValueError("Cara dental no válida.")
+        return normalized
 
     @field_validator("name", "category", "observations", "tooth")
     @classmethod
@@ -184,6 +273,7 @@ class ProcedureResponse(BaseModel):
     id: UUID
     treatment_id: UUID
     patient_id: UUID
+    catalog_procedure_id: UUID | None
     name: str
     category: str | None
     dentist_id: UUID | None
@@ -199,7 +289,84 @@ class ProcedureResponse(BaseModel):
     performed_at: datetime | None
     observations: str | None
     requires_tooth: bool
+    scope_type: str
+    zone: str | None
     tooth: str | None
+    surfaces: list[str] | None
+    scope_label: str
+
+
+class ProcedureCatalogBase(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    category: str | None = Field(default=None, max_length=120)
+    description: str | None = None
+    suggested_value: Decimal | None = Field(default=None, ge=0)
+    suggested_scope_type: str | None = None
+    is_active: bool = True
+
+    @field_validator("suggested_scope_type")
+    @classmethod
+    def valid_suggested_scope_type(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_SCOPE_TYPES:
+            raise ValueError("Tipo de alcance sugerido no válido.")
+        return normalized
+
+    @field_validator("name", "category", "description")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class ProcedureCatalogCreateRequest(ProcedureCatalogBase):
+    pass
+
+
+class ProcedureCatalogUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    category: str | None = Field(default=None, max_length=120)
+    description: str | None = None
+    suggested_value: Decimal | None = Field(default=None, ge=0)
+    suggested_scope_type: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("suggested_scope_type")
+    @classmethod
+    def valid_suggested_scope_type(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_SCOPE_TYPES:
+            raise ValueError("Tipo de alcance sugerido no válido.")
+        return normalized
+
+    @field_validator("name", "category", "description")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class ProcedureCatalogItemResponse(BaseModel):
+    id: UUID
+    name: str
+    category: str | None
+    description: str | None
+    suggested_value: Decimal | None
+    suggested_scope_type: str | None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProcedureCatalogListResponse(BaseModel):
+    items: list[ProcedureCatalogItemResponse]
+    total: int
 
 
 class BudgetCreateRequest(BaseModel):
@@ -230,6 +397,11 @@ class BudgetDetailResponse(BaseModel):
     total_value: Decimal
     order: int
     observations: str | None
+    scope_type: str
+    zone: str | None
+    tooth: str | None
+    surfaces: list[str] | None
+    scope_label: str
 
 
 class BudgetResponse(BaseModel):

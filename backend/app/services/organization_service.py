@@ -1,12 +1,15 @@
 import re
 import unicodedata
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID
+from uuid import uuid4
 
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.agenda import Appointment, Dentist, DentistSite
 from app.models.associations import UserRole, UserSite
 from app.models.audit_event import AuditEvent
@@ -17,6 +20,8 @@ from app.models.role import Role
 from app.models.site import Site
 from app.models.user import User
 from app.schemas.organization_schema import (
+    BrandingResponse,
+    BrandingUpdateRequest,
     CompanyResponse,
     CompanyUpdateRequest,
     DentistSiteListResponse,
@@ -40,6 +45,18 @@ class OrganizationError(RuntimeError):
         self.status_code = status_code
 
 
+MAX_BRANDING_FILE_SIZE = 5 * 1024 * 1024
+LOGO_CONTENT_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/svg+xml": ".svg",
+}
+SIGNATURE_CONTENT_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+}
+
+
 def normalize_name(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value.strip().casefold())
     normalized = "".join(
@@ -57,6 +74,66 @@ def normalize_tax_id(value: str | None) -> str | None:
         character for character in value.upper() if character.isalnum()
     )
     return normalized or None
+
+
+def _branding_root() -> Path:
+    root = Path(settings.branding_storage_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _asset_path(relative_path: str | None) -> Path | None:
+    if not relative_path:
+        return None
+    root = _branding_root().resolve()
+    candidate = (root / relative_path).resolve()
+    if root not in candidate.parents and candidate != root:
+        raise OrganizationError("Ruta de archivo inválida.", 500)
+    return candidate
+
+
+def _delete_asset(relative_path: str | None) -> None:
+    path = _asset_path(relative_path)
+    if path and path.exists() and path.is_file():
+        path.unlink()
+
+
+def _branding_response(company: Company) -> BrandingResponse:
+    return BrandingResponse(
+        id=company.id,
+        name=company.name,
+        legal_name=company.legal_name,
+        company_type=company.company_type,
+        tax_id=company.tax_id,
+        address=company.address,
+        city=company.city,
+        department=company.department,
+        country=company.country,
+        phone=company.phone,
+        mobile=company.mobile,
+        email=company.email,
+        website=company.website,
+        social_media=company.social_media,
+        logo_filename=company.logo_filename,
+        logo_url="/api/company/branding/logo" if company.logo_path else None,
+        signature_filename=company.signature_filename,
+        signature_url="/api/company/branding/signature" if company.signature_path else None,
+        primary_dentist_name=company.primary_dentist_name,
+        professional_specialty=company.professional_specialty,
+        professional_license=company.professional_license,
+        university=company.university,
+        experience_years=company.experience_years,
+        header_text=company.header_text,
+        footer_text=company.footer_text,
+        legal_observations=company.legal_observations,
+        cancellation_policy=company.cancellation_policy,
+        thank_you_message=company.thank_you_message,
+        primary_color=company.primary_color or "#16a34a",
+        secondary_color=company.secondary_color or "#0f766e",
+        button_color=company.button_color or "#16a34a",
+        heading_color=company.heading_color or "#0f172a",
+        updated_at=company.updated_at,
+    )
 
 
 def _audit(
@@ -186,6 +263,209 @@ def update_company(
         )
     session.commit()
     return _company_response(company)
+
+
+def get_branding(session: Session, context: AuthContext) -> BrandingResponse:
+    company = session.get(Company, context.user.company_id)
+    if company is None:
+        raise OrganizationError("Empresa no encontrada.", 404)
+    return _branding_response(company)
+
+
+def update_branding(
+    session: Session,
+    context: AuthContext,
+    payload: BrandingUpdateRequest,
+    metadata: RequestMetadata,
+) -> BrandingResponse:
+    company = session.scalar(
+        select(Company)
+        .where(Company.id == context.user.company_id)
+        .with_for_update()
+    )
+    if company is None:
+        raise OrganizationError("Empresa no encontrada.", 404)
+    fields = {
+        "name": "name",
+        "legal_name": "legal_name",
+        "company_type": "company_type",
+        "tax_id": "tax_id",
+        "address": "address",
+        "city": "city",
+        "department": "department",
+        "country": "country",
+        "phone": "phone",
+        "mobile": "mobile",
+        "email": "email",
+        "website": "website",
+        "social_media": "social_media",
+        "primary_dentist_name": "primary_dentist_name",
+        "professional_specialty": "professional_specialty",
+        "professional_license": "professional_license",
+        "university": "university",
+        "experience_years": "experience_years",
+        "header_text": "header_text",
+        "footer_text": "footer_text",
+        "legal_observations": "legal_observations",
+        "cancellation_policy": "cancellation_policy",
+        "thank_you_message": "thank_you_message",
+        "primary_color": "primary_color",
+        "secondary_color": "secondary_color",
+        "button_color": "button_color",
+        "heading_color": "heading_color",
+    }
+    data = payload.model_dump()
+    before = {key: getattr(company, attr) for key, attr in fields.items()}
+    for key, attr in fields.items():
+        setattr(company, attr, data[key])
+    company.normalized_tax_id = normalize_tax_id(payload.tax_id)
+    after = {key: getattr(company, attr) for key, attr in fields.items()}
+    changes = {
+        key: {"before": before[key], "after": value}
+        for key, value in after.items()
+        if before[key] != value
+    }
+    if changes:
+        _audit(
+            session,
+            context,
+            metadata,
+            entity="company",
+            entity_id=company.id,
+            action="BRANDING_UPDATED",
+            detail={"changes": changes},
+        )
+    session.commit()
+    return _branding_response(company)
+
+
+def get_branding_asset_path(
+    session: Session,
+    context: AuthContext,
+    kind: str,
+) -> tuple[Path, str]:
+    company = session.get(Company, context.user.company_id)
+    if company is None:
+        raise OrganizationError("Empresa no encontrada.", 404)
+    if kind == "logo":
+        relative_path = company.logo_path
+        filename = company.logo_filename or "logo"
+    elif kind == "signature":
+        relative_path = company.signature_path
+        filename = company.signature_filename or "firma"
+    else:
+        raise OrganizationError("Tipo de archivo no válido.", 404)
+    path = _asset_path(relative_path)
+    if path is None or not path.exists():
+        raise OrganizationError("Archivo no encontrado.", 404)
+    return path, filename
+
+
+def save_branding_asset(
+    session: Session,
+    context: AuthContext,
+    *,
+    kind: str,
+    filename: str | None,
+    content_type: str | None,
+    content: bytes,
+    metadata: RequestMetadata,
+) -> BrandingResponse:
+    company = session.scalar(
+        select(Company)
+        .where(Company.id == context.user.company_id)
+        .with_for_update()
+    )
+    if company is None:
+        raise OrganizationError("Empresa no encontrada.", 404)
+    allowed = LOGO_CONTENT_TYPES if kind == "logo" else SIGNATURE_CONTENT_TYPES
+    if content_type not in allowed:
+        raise OrganizationError(
+            "Formato de archivo no permitido."
+            if kind == "logo"
+            else "Formato de firma no permitido."
+        )
+    if len(content) > MAX_BRANDING_FILE_SIZE:
+        raise OrganizationError("El archivo no puede superar 5 MB.")
+    if not content:
+        raise OrganizationError("El archivo está vacío.")
+
+    old_path = company.logo_path if kind == "logo" else company.signature_path
+    extension = allowed[content_type]
+    company_dir_name = str(company.id)
+    company_dir = _branding_root() / company_dir_name
+    company_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = f"{kind}_{uuid4().hex}{extension}"
+    relative_path = f"{company_dir_name}/{safe_name}"
+    path = _asset_path(relative_path)
+    if path is None:
+        raise OrganizationError("No fue posible preparar el archivo.", 500)
+    path.write_bytes(content)
+
+    if kind == "logo":
+        company.logo_path = relative_path
+        company.logo_filename = filename or safe_name
+        action = "BRANDING_LOGO_UPLOADED"
+        entity = "company_logo"
+    else:
+        company.signature_path = relative_path
+        company.signature_filename = filename or safe_name
+        action = "BRANDING_SIGNATURE_UPLOADED"
+        entity = "company_signature"
+
+    _delete_asset(old_path)
+    _audit(
+        session,
+        context,
+        metadata,
+        entity=entity,
+        entity_id=company.id,
+        action=action,
+        detail={"filename": filename, "content_type": content_type},
+    )
+    session.commit()
+    return _branding_response(company)
+
+
+def delete_branding_asset(
+    session: Session,
+    context: AuthContext,
+    *,
+    kind: str,
+    metadata: RequestMetadata,
+) -> BrandingResponse:
+    company = session.scalar(
+        select(Company)
+        .where(Company.id == context.user.company_id)
+        .with_for_update()
+    )
+    if company is None:
+        raise OrganizationError("Empresa no encontrada.", 404)
+    if kind == "logo":
+        old_path = company.logo_path
+        company.logo_path = None
+        company.logo_filename = None
+        action = "BRANDING_LOGO_DELETED"
+        entity = "company_logo"
+    elif kind == "signature":
+        old_path = company.signature_path
+        company.signature_path = None
+        company.signature_filename = None
+        action = "BRANDING_SIGNATURE_DELETED"
+        entity = "company_signature"
+    else:
+        raise OrganizationError("Tipo de archivo no válido.", 404)
+    _delete_asset(old_path)
+    _audit(
+        session,
+        context,
+        metadata,
+        entity=entity,
+        entity_id=company.id,
+        action=action,
+    )
+    session.commit()
+    return _branding_response(company)
 
 
 def _site_counts(session: Session, site_id: UUID) -> dict[str, int]:

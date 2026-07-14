@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     refresh_cookie_secure: bool = False
     refresh_cookie_samesite: str = "lax"
     refresh_cookie_path: str = "/api/auth"
+    branding_storage_dir: str = str(BACKEND_DIR / "storage" / "branding")
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
