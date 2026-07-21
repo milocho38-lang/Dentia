@@ -23,6 +23,7 @@ import {
   createTreatment,
   deleteProcedure,
   downloadBudgetPdf,
+  downloadPaymentReceipt,
   duplicateBudgetVersion,
   getTreatment,
   listBudgets,
@@ -462,6 +463,23 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     URL.revokeObjectURL(url);
   }
 
+  async function handleDownloadPaymentReceipt(payment: Payment, print = false) {
+    const blob = await downloadPaymentReceipt(payment.id);
+    const url = URL.createObjectURL(blob);
+    if (print) {
+      const receiptWindow = window.open(url, "_blank", "noopener,noreferrer");
+      receiptWindow?.addEventListener("load", () => receiptWindow.print(), { once: true });
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `comprobante-${payment.receipt_number}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   const budgetHasDiscount = latestBudget
     ? Number(latestBudget.discount_calculated_value) > 0
     : false;
@@ -758,12 +776,12 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
         title="Pagos"
         description={`Saldo actualizado: ${money(treatment.summary.balance)}`}
       >
-          {hasPermission("payments.create") && <PaymentForm treatment={treatment} options={options} onDone={refresh} />}
+          {hasPermission("payments.create") && <PaymentForm treatment={treatment} procedures={procedures} options={options} onDone={refresh} />}
           <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
             <table className="min-w-full table-fixed divide-y divide-slate-100 text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  {["Fecha", "Valor", "Medio", "Estado", "Observación", "Acciones"].map((heading) => (
+                  {["Fecha", "Comprobante", "Valor", "Medio", "Estado", "Observación", "Acciones"].map((heading) => (
                     <th key={heading} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">
                       {heading}
                     </th>
@@ -774,6 +792,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                 {payments.map((payment) => (
                   <tr key={payment.id}>
                     <td className="px-4 py-3 text-slate-600">{localDate(payment.paid_at)}</td>
+                    <td className="px-4 py-3 font-bold text-slate-700">{payment.receipt_number}</td>
                     <td className="px-4 py-3 font-black text-slate-900">{money(payment.value)}</td>
                     <td className="px-4 py-3 text-slate-600">{payment.payment_method}</td>
                     <td className="px-4 py-3">
@@ -781,9 +800,14 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                     </td>
                     <td className="px-4 py-3 text-slate-600">{payment.observation ?? "—"}</td>
                     <td className="px-4 py-3 text-right">
-                      {hasPermission("payments.reverse") && payment.status === "valido" && (
-                        <button onClick={async () => { const reason = window.prompt("Motivo de reversión"); if (reason) { await reversePayment(payment.id, reason); await refresh(); } }} className="text-xs font-bold text-red-700 hover:underline">Reversar</button>
-                      )}
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {hasPermission("payments.view") && (
+                          <button onClick={() => handleDownloadPaymentReceipt(payment)} className="text-xs font-bold text-green-700 hover:underline">Descargar comprobante</button>
+                        )}
+                        {hasPermission("payments.reverse") && payment.status === "valido" && (
+                          <button onClick={async () => { const reason = window.prompt("Motivo de reversión"); if (reason) { await reversePayment(payment.id, reason); await refresh(); } }} className="text-xs font-bold text-red-700 hover:underline">Reversar</button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1461,80 +1485,239 @@ function BudgetForm({ treatmentId, onDone }: { treatmentId: string; onDone: () =
   );
 }
 
-function PaymentForm({ treatment, options, onDone }: { treatment: Treatment; options: AgendaOptions | null; onDone: () => Promise<void> }) {
+function PaymentForm({
+  treatment,
+  procedures,
+  options,
+  onDone,
+}: {
+  treatment: Treatment;
+  procedures: Procedure[];
+  options: AgendaOptions | null;
+  onDone: () => Promise<void>;
+}) {
   const [value, setValue] = useState("");
   const [method, setMethod] = useState("Efectivo");
   const [siteId, setSiteId] = useState(treatment.main_site_id ?? "");
   const [dentistId, setDentistId] = useState(treatment.responsible_dentist_id ?? "");
+  const [reference, setReference] = useState("");
+  const [observation, setObservation] = useState("");
+  const availableProcedures = procedures.filter((procedure) => procedure.status !== "Cancelado");
+  const [procedureIds, setProcedureIds] = useState<string[]>(() => availableProcedures.map((procedure) => procedure.id));
+  const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null);
+
+  useEffect(() => {
+    if (!procedureIds.length && availableProcedures.length) {
+      setProcedureIds(availableProcedures.map((procedure) => procedure.id));
+    }
+  }, [availableProcedures, procedureIds.length]);
+
+  async function handleReceipt(payment: Payment, print = false) {
+    const blob = await downloadPaymentReceipt(payment.id);
+    const url = URL.createObjectURL(blob);
+    if (print) {
+      const receiptWindow = window.open(url, "_blank", "noopener,noreferrer");
+      receiptWindow?.addEventListener("load", () => receiptWindow.print(), { once: true });
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `comprobante-${payment.receipt_number}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await createPayment(treatment.id, {
+    const payment = await createPayment(treatment.id, {
       value,
       payment_method: method,
       site_id: siteId,
       dentist_id: dentistId || null,
+      procedure_ids: procedureIds,
       paid_at: new Date().toISOString(),
+      reference: reference || null,
+      observation: observation || null,
     });
     setValue("");
+    setReference("");
+    setObservation("");
+    setReceiptPayment(payment);
     await onDone();
   }
   return (
-    <form onSubmit={submit} className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-      <div className="grid gap-4 lg:grid-cols-[150px_170px_minmax(170px,1fr)_minmax(170px,1fr)_auto] lg:items-end">
-        <label>
-          <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
-            Valor
-          </span>
-          <input
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            type="number"
-            min="1"
-            className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
-          />
-        </label>
-        <label>
-          <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
-            Medio
-          </span>
-          <select
-            value={method}
-            onChange={(event) => setMethod(event.target.value)}
-            className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
-          >
-            {["Efectivo", "Transferencia", "Tarjeta", "Otro"].map((item) => <option key={item}>{item}</option>)}
-          </select>
-        </label>
-        <label>
-          <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
-            Sede
-          </span>
-          <select
-            value={siteId}
-            onChange={(event) => setSiteId(event.target.value)}
-            className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
-          >
-            <option value="">Selecciona sede</option>
-            {options?.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
-          </select>
-        </label>
-        <label>
-          <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
-            Odontólogo
-          </span>
-          <select
-            value={dentistId}
-            onChange={(event) => setDentistId(event.target.value)}
-            className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
-          >
-            <option value="">Sin odontólogo</option>
-            {options?.dentists.map((dentist) => <option key={dentist.id} value={dentist.id}>{dentist.name}</option>)}
-          </select>
-        </label>
-        <button className="min-h-11 whitespace-nowrap rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white hover:bg-green-700">
-          Registrar pago
-        </button>
-      </div>
-    </form>
+    <>
+      <form onSubmit={submit} className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+        <div className="grid gap-4 lg:grid-cols-[150px_170px_minmax(170px,1fr)_minmax(170px,1fr)] lg:items-end">
+          <label>
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
+              Valor
+            </span>
+            <input
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              type="number"
+              min="1"
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+            />
+          </label>
+          <label>
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
+              Medio
+            </span>
+            <select
+              value={method}
+              onChange={(event) => setMethod(event.target.value)}
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+            >
+              {["Efectivo", "Transferencia", "Tarjeta", "Otro"].map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
+              Sede
+            </span>
+            <select
+              value={siteId}
+              onChange={(event) => setSiteId(event.target.value)}
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+            >
+              <option value="">Selecciona sede</option>
+              {options?.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
+              Odontólogo
+            </span>
+            <select
+              value={dentistId}
+              onChange={(event) => setDentistId(event.target.value)}
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+            >
+              <option value="">Sin odontólogo</option>
+              {options?.dentists.map((dentist) => <option key={dentist.id} value={dentist.id}>{dentist.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label>
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
+              Referencia
+            </span>
+            <input
+              value={reference}
+              onChange={(event) => setReference(event.target.value)}
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+              placeholder="Opcional"
+            />
+          </label>
+          <label>
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
+              Observación
+            </span>
+            <input
+              value={observation}
+              onChange={(event) => setObservation(event.target.value)}
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
+              placeholder="Opcional"
+            />
+          </label>
+        </div>
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+                Procedimientos asociados al pago
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                El comprobante mostrará únicamente los procedimientos seleccionados.
+              </p>
+            </div>
+            {availableProcedures.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setProcedureIds(availableProcedures.map((procedure) => procedure.id))}
+                className="text-xs font-bold text-green-700 hover:underline"
+              >
+                Seleccionar todos
+              </button>
+            )}
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {availableProcedures.map((procedure) => (
+              <label key={procedure.id} className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-200 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={procedureIds.includes(procedure.id)}
+                  onChange={() => {
+                    setProcedureIds((current) =>
+                      current.includes(procedure.id)
+                        ? current.filter((id) => id !== procedure.id)
+                        : [...current, procedure.id],
+                    );
+                  }}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-bold text-slate-900">{procedure.name}</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">{procedure.scope_label} · {procedure.status}</span>
+                </span>
+              </label>
+            ))}
+            {!availableProcedures.length && (
+              <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">
+                No hay procedimientos disponibles para asociar.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button className="min-h-11 whitespace-nowrap rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white hover:bg-green-700">
+            Registrar pago
+          </button>
+        </div>
+      </form>
+
+      <Modal
+        open={Boolean(receiptPayment)}
+        title="Pago registrado correctamente"
+        onClose={() => setReceiptPayment(null)}
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl bg-green-50 p-4 text-green-900">
+            <p className="text-lg font-black">✓ Pago registrado correctamente</p>
+            <p className="mt-1 text-sm">
+              Comprobante {receiptPayment?.receipt_number}. Puedes descargarlo ahora o volver a hacerlo desde el historial de pagos.
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => receiptPayment && handleReceipt(receiptPayment)}
+              className="min-h-10 rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white"
+            >
+              Descargar comprobante
+            </button>
+            <button
+              type="button"
+              onClick={() => receiptPayment && handleReceipt(receiptPayment, true)}
+              className="min-h-10 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700"
+            >
+              Imprimir
+            </button>
+            <button
+              type="button"
+              onClick={() => setReceiptPayment(null)}
+              className="min-h-10 rounded-xl border border-slate-300 px-4 text-sm font-bold text-slate-700"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }

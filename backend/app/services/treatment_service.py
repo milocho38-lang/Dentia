@@ -4,6 +4,7 @@ from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 from xml.sax.saxutils import escape
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import qrcode
 from sqlalchemy import and_, delete, func, or_, select
@@ -36,8 +37,10 @@ from app.models.treatment import (
     Treatment,
     TreatmentEvent,
     TreatmentPayment,
+    TreatmentPaymentProcedure,
     TreatmentProcedure,
 )
+from app.models.user import User
 from app.schemas.treatment_schema import (
     BudgetCreateRequest,
     BudgetDetailResponse,
@@ -254,6 +257,16 @@ def _date_text(value: datetime | date | None) -> str:
     if isinstance(value, datetime):
         value = value.date()
     return value.strftime("%d/%m/%Y")
+
+
+def _time_text(value: datetime | None, timezone_name: str | None = None) -> str:
+    if value is None:
+        return "—"
+    try:
+        value = value.astimezone(ZoneInfo(timezone_name or "America/Bogota"))
+    except ZoneInfoNotFoundError:
+        value = value.astimezone(ZoneInfo("America/Bogota"))
+    return value.strftime("%H:%M")
 
 
 def _safe_text(value: object | None, fallback: str = "—") -> str:
@@ -1960,6 +1973,43 @@ def create_payment(session: Session, context: AuthContext, treatment_id: UUID, p
     summary = _summary(session, treatment.id)
     if payload.value > summary.balance:
         raise TreatmentError("El pago no puede superar el saldo pendiente.")
+    selected_procedure_ids = list(dict.fromkeys(payload.procedure_ids))
+    if selected_procedure_ids:
+        procedures = list(
+            session.scalars(
+                select(TreatmentProcedure).where(
+                    TreatmentProcedure.company_id == context.user.company_id,
+                    TreatmentProcedure.treatment_id == treatment.id,
+                    TreatmentProcedure.id.in_(selected_procedure_ids),
+                    TreatmentProcedure.status != "Cancelado",
+                )
+            )
+        )
+        if len(procedures) != len(selected_procedure_ids):
+            raise TreatmentError("Uno o más procedimientos no pertenecen al tratamiento o no están disponibles.")
+    else:
+        procedures = list(
+            session.scalars(
+                select(TreatmentProcedure)
+                .where(
+                    TreatmentProcedure.company_id == context.user.company_id,
+                    TreatmentProcedure.treatment_id == treatment.id,
+                    TreatmentProcedure.status != "Cancelado",
+                )
+                .order_by(TreatmentProcedure.created_at)
+            )
+        )
+    session.scalar(
+        select(Company)
+        .where(Company.id == context.user.company_id)
+        .with_for_update()
+    )
+    current_sequence = session.scalar(
+        select(func.coalesce(func.max(TreatmentPayment.receipt_sequence), 0)).where(
+            TreatmentPayment.company_id == context.user.company_id
+        )
+    )
+    receipt_sequence = int(current_sequence or 0) + 1
     payment = TreatmentPayment(
         company_id=context.user.company_id,
         patient_id=treatment.patient_id,
@@ -1972,6 +2022,8 @@ def create_payment(session: Session, context: AuthContext, treatment_id: UUID, p
         payment_method=payload.payment_method,
         reference=payload.reference,
         observation=payload.observation,
+        receipt_sequence=receipt_sequence,
+        receipt_number=f"CP-{receipt_sequence:06d}",
         status=VALID_PAYMENT_STATUS,
         registered_by=context.user.id,
     )
@@ -1979,6 +2031,14 @@ def create_payment(session: Session, context: AuthContext, treatment_id: UUID, p
     if treatment.status == "Aprobado":
         treatment.status = "En ejecución"
     session.flush()
+    for procedure in procedures:
+        session.add(
+            TreatmentPaymentProcedure(
+                company_id=context.user.company_id,
+                payment_id=payment.id,
+                procedure_id=procedure.id,
+            )
+        )
     _event(session, context, treatment.id, "PAYMENT_REGISTERED", "Pago registrado.", {"payment_id": str(payment.id), "value": str(payment.value)})
     _audit(session, context, metadata, entity="payment", entity_id=payment.id, action="PAYMENT_REGISTERED", detail={"value": str(payment.value)})
     session.commit()
@@ -1994,6 +2054,7 @@ def _payment_response(session: Session, payment: TreatmentPayment) -> PaymentRes
         raise TreatmentError("Pago inválido o incompleto.", 500)
     return PaymentResponse(
         id=payment.id,
+        receipt_number=payment.receipt_number,
         patient_id=payment.patient_id,
         patient_name=f"{patient.first_names} {patient.last_names}".strip(),
         treatment_id=payment.treatment_id,
@@ -2011,6 +2072,14 @@ def _payment_response(session: Session, payment: TreatmentPayment) -> PaymentRes
         status=payment.status,
         reversed_at=payment.reversed_at,
         reversal_reason=payment.reversal_reason,
+        procedure_ids=[
+            row.procedure_id
+            for row in session.scalars(
+                select(TreatmentPaymentProcedure).where(
+                    TreatmentPaymentProcedure.payment_id == payment.id
+                )
+            )
+        ],
     )
 
 
@@ -2025,6 +2094,428 @@ def get_payment(session: Session, context: AuthContext, payment_id: UUID) -> Pay
         raise TreatmentError("Pago no encontrado.", 404)
     _require_treatment(session, context, payment.treatment_id)
     return _payment_response(session, payment)
+
+
+def generate_payment_receipt_pdf(
+    session: Session,
+    context: AuthContext,
+    payment_id: UUID,
+    metadata: RequestMetadata,
+) -> BudgetPdfResult:
+    payment = session.scalar(
+        select(TreatmentPayment).where(
+            TreatmentPayment.id == payment_id,
+            TreatmentPayment.company_id == context.user.company_id,
+        )
+    )
+    if payment is None:
+        raise TreatmentError("Pago no encontrado.", 404)
+    treatment = _require_treatment(session, context, payment.treatment_id)
+    company = session.get(Company, context.user.company_id)
+    patient = session.get(Patient, payment.patient_id)
+    site = session.get(Site, payment.site_id)
+    receiver = session.get(User, payment.registered_by) if payment.registered_by else None
+    if company is None or patient is None or site is None:
+        raise TreatmentError("Pago incompleto.", 500)
+
+    payment_procedures = list(
+        session.scalars(
+            select(TreatmentProcedure)
+            .join(
+                TreatmentPaymentProcedure,
+                TreatmentPaymentProcedure.procedure_id == TreatmentProcedure.id,
+            )
+            .where(
+                TreatmentPaymentProcedure.payment_id == payment.id,
+                TreatmentPaymentProcedure.company_id == context.user.company_id,
+            )
+            .order_by(TreatmentProcedure.created_at)
+        )
+    )
+
+    primary = _pdf_color(company.primary_color, "#16a34a")
+    secondary = _visible_accent(_pdf_color(company.secondary_color, "#0f766e"), "#64748b")
+    heading = _safe_text_color(_pdf_color(company.heading_color, "#0f172a"), "#0f172a")
+    section_heading = _safe_text_color(primary, "#0f172a")
+    table_header_background = _visible_accent(primary, "#1e3a8a")
+    table_header_text = _text_on_background(table_header_background)
+    light_primary = _soft_accent_background(primary)
+    timezone_name = site.timezone or company.timezone or "America/Bogota"
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=1.6 * cm,
+        leftMargin=1.6 * cm,
+        topMargin=1.4 * cm,
+        bottomMargin=1.5 * cm,
+        title=f"{company.payment_receipt_title or 'COMPROBANTE DE PAGO'} {payment.receipt_number}",
+        author=company.name,
+    )
+    base = getSampleStyleSheet()
+    styles = {
+        "title": ParagraphStyle(
+            "DentiaPaymentReceiptTitle",
+            parent=base["Title"],
+            fontName="Helvetica-Bold",
+            fontSize=17,
+            leading=20,
+            textColor=heading,
+            alignment=TA_RIGHT,
+            spaceAfter=4,
+        ),
+        "clinic_name": ParagraphStyle(
+            "DentiaPaymentReceiptClinicName",
+            parent=base["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=15,
+            leading=18,
+            textColor=heading,
+            spaceAfter=3,
+        ),
+        "subtitle": ParagraphStyle(
+            "DentiaPaymentReceiptSubtitle",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8.2,
+            leading=11,
+            textColor=colors.HexColor("#475569"),
+        ),
+        "receipt_number": ParagraphStyle(
+            "DentiaPaymentReceiptNumber",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=11,
+            leading=14,
+            textColor=section_heading,
+            alignment=TA_RIGHT,
+        ),
+        "h2": ParagraphStyle(
+            "DentiaPaymentReceiptH2",
+            parent=base["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=12,
+            leading=15,
+            textColor=section_heading,
+            spaceBefore=8,
+            spaceAfter=8,
+        ),
+        "body": ParagraphStyle(
+            "DentiaPaymentReceiptBody",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#334155"),
+        ),
+        "small": ParagraphStyle(
+            "DentiaPaymentReceiptSmall",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=11,
+            textColor=colors.HexColor("#64748b"),
+        ),
+        "cell": ParagraphStyle(
+            "DentiaPaymentReceiptCell",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8.7,
+            leading=11,
+            textColor=colors.HexColor("#334155"),
+        ),
+        "cell_bold": ParagraphStyle(
+            "DentiaPaymentReceiptCellBold",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8.7,
+            leading=11,
+            textColor=colors.HexColor("#0f172a"),
+        ),
+        "patient_name": ParagraphStyle(
+            "DentiaPaymentReceiptPatientName",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=10.2,
+            leading=13,
+            textColor=colors.HexColor("#0f172a"),
+        ),
+        "cell_header": ParagraphStyle(
+            "DentiaPaymentReceiptCellHeader",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8.7,
+            leading=11,
+            textColor=table_header_text,
+        ),
+        "center": ParagraphStyle(
+            "DentiaPaymentReceiptCenter",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=11,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#64748b"),
+        ),
+    }
+
+    company_lines = [
+        company.address,
+        " · ".join(part for part in [company.city, company.country] if part),
+        company.phone,
+        company.email,
+        company.website,
+    ]
+    logo = _image_if_exists(_branding_asset_path(company.logo_path), width=34 * mm, height=20 * mm)
+    branding_block = [
+        _paragraph(company.name, styles["clinic_name"]),
+        Paragraph("<br/>".join(escape(line) for line in company_lines if line), styles["subtitle"]),
+    ]
+    header_left = Table(
+        [[logo or "", branding_block]],
+        colWidths=[doc.width * 0.22, doc.width * 0.43],
+        style=TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (0, 0), 9),
+                ("RIGHTPADDING", (1, 0), (1, 0), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        ),
+    )
+    header_right = Table(
+        [
+            [_paragraph(company.payment_receipt_title or "COMPROBANTE DE PAGO", styles["title"])],
+            [_paragraph(payment.receipt_number, styles["receipt_number"])],
+        ],
+        colWidths=[doc.width * 0.35],
+        style=TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                ("BACKGROUND", (0, 1), (0, 1), light_primary),
+                ("BOX", (0, 1), (0, 1), 0.45, colors.HexColor("#cbd5e1")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 9),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+                ("TOPPADDING", (0, 0), (0, 0), 1),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 5),
+                ("TOPPADDING", (0, 1), (0, 1), 5),
+                ("BOTTOMPADDING", (0, 1), (0, 1), 5),
+            ]
+        ),
+    )
+
+    story: list[Flowable] = []
+    story.append(
+        Table(
+            [[header_left, header_right]],
+            colWidths=[doc.width * 0.65, doc.width * 0.35],
+            style=TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                    ("LINEBELOW", (0, 0), (-1, -1), 1.2, table_header_background),
+                ]
+            ),
+        )
+    )
+    story.append(Spacer(1, 10))
+
+    patient_name = f"{patient.first_names} {patient.last_names}".strip()
+    patient_document = " ".join(part for part in [patient.document_type, patient.document] if part)
+    story.append(_paragraph("Información general", styles["h2"]))
+    story.append(
+        Table(
+            [
+                [
+                    _paragraph("Número", styles["cell_bold"]),
+                    _paragraph(payment.receipt_number, styles["receipt_number"]),
+                    _paragraph("Fecha", styles["cell_bold"]),
+                    _paragraph(_date_text(payment.paid_at), styles["cell"]),
+                ],
+                [
+                    _paragraph("Hora", styles["cell_bold"]),
+                    _paragraph(_time_text(payment.paid_at, timezone_name), styles["cell"]),
+                    _paragraph("Sede", styles["cell_bold"]),
+                    _paragraph(site.name, styles["cell"]),
+                ],
+            ],
+            colWidths=[doc.width * 0.16, doc.width * 0.34, doc.width * 0.16, doc.width * 0.34],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (0, -1), light_primary),
+                    ("BACKGROUND", (2, 0), (2, -1), light_primary),
+                    ("TEXTCOLOR", (0, 0), (0, -1), _safe_text_color(primary, "#0f172a")),
+                    ("TEXTCOLOR", (2, 0), (2, -1), _safe_text_color(primary, "#0f172a")),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]
+            ),
+        )
+    )
+    story.append(_paragraph("Paciente", styles["h2"]))
+    story.append(
+        Table(
+            [[
+                _paragraph("Nombre", styles["cell_bold"]),
+                _paragraph(patient_name, styles["patient_name"]),
+                _paragraph("Documento", styles["cell_bold"]),
+                _paragraph(patient_document or "—", styles["cell"]),
+            ]],
+            colWidths=[doc.width * 0.16, doc.width * 0.44, doc.width * 0.16, doc.width * 0.24],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (0, -1), light_primary),
+                    ("BACKGROUND", (2, 0), (2, -1), light_primary),
+                    ("TEXTCOLOR", (0, 0), (0, -1), _safe_text_color(primary, "#0f172a")),
+                    ("TEXTCOLOR", (2, 0), (2, -1), _safe_text_color(primary, "#0f172a")),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            ),
+        )
+    )
+
+    has_only_tooth_scopes = bool(payment_procedures) and all(
+        procedure.scope_type in {"TOOTH", "TOOTH_SURFACE"} and procedure.tooth
+        for procedure in payment_procedures
+    )
+    procedure_scope_header = "Pieza" if has_only_tooth_scopes else "Alcance"
+    table_data = [[
+        _paragraph("Procedimiento asociado al pago", styles["cell_header"]),
+        _paragraph(procedure_scope_header, styles["cell_header"]),
+    ]]
+    if payment_procedures:
+        for procedure in payment_procedures:
+            table_data.append(
+                [
+                    _paragraph(procedure.name, styles["cell_bold"]),
+                    _paragraph(
+                        _scope_label(
+                            procedure.scope_type,
+                            procedure.zone,
+                            procedure.tooth,
+                            procedure.surfaces,
+                        ),
+                        styles["cell"],
+                    ),
+                ]
+            )
+    else:
+        table_data.append([
+            _paragraph("Procedimiento no especificado en el pago", styles["cell"]),
+            _paragraph("—", styles["cell"]),
+        ])
+    story.append(_paragraph("Procedimiento(s)", styles["h2"]))
+    story.append(
+        Table(
+            table_data,
+            colWidths=[doc.width * 0.58, doc.width * 0.42],
+            repeatRows=1,
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), table_header_background),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), table_header_text),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            ),
+        )
+    )
+
+    story.append(_paragraph("Pago recibido", styles["h2"]))
+    payment_rows = [
+        ["Valor pagado", _money_text(payment.value), "Medio de pago", payment.payment_method],
+    ]
+    if payment.reference:
+        payment_rows.append(["Referencia", payment.reference, "Recibido por", receiver.name if receiver else "—"])
+    else:
+        payment_rows.append(["Recibido por", receiver.name if receiver else "—", "", ""])
+    story.append(_info_table(payment_rows, styles, primary, light_primary, doc.width))
+    if payment.observation:
+        story.append(Spacer(1, 8))
+        story.append(
+            Table(
+                [[_paragraph("Observaciones", styles["cell_bold"])], [_paragraph(payment.observation, styles["body"])]],
+                colWidths=[doc.width],
+                style=TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), light_primary),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                        ("TOPPADDING", (0, 0), (-1, -1), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ]
+                ),
+            )
+        )
+
+    story.append(Spacer(1, 16))
+    story.append(
+        Table(
+            [[Paragraph("Este documento certifica la recepción del pago indicado.<br/>No constituye factura ni documento tributario.", styles["center"])]],
+            colWidths=[doc.width],
+            style=TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                    ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            ),
+        )
+    )
+
+    footer_lines = [
+        company.footer_text,
+        company.address,
+        " · ".join(part for part in [company.phone, company.email] if part),
+    ]
+
+    def on_page(canvas, document):
+        canvas.saveState()
+        canvas.setStrokeColor(secondary)
+        canvas.setLineWidth(0.4)
+        canvas.line(document.leftMargin, 1.02 * cm, letter[0] - document.rightMargin, 1.02 * cm)
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(document.leftMargin, 0.68 * cm, " · ".join(line for line in footer_lines if line)[:170])
+        canvas.drawRightString(letter[0] - document.rightMargin, 0.68 * cm, f"Página {document.page}")
+        canvas.restoreState()
+
+    _audit(
+        session,
+        context,
+        metadata,
+        entity="payment",
+        entity_id=payment.id,
+        action="PAYMENT_RECEIPT_DOWNLOADED",
+        detail={"receipt_number": payment.receipt_number},
+    )
+    session.commit()
+    doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
+    filename = f"comprobante-{payment.receipt_number}.pdf".replace("/", "-")
+    return BudgetPdfResult(content=buffer.getvalue(), filename=filename)
 
 
 def list_payments(session: Session, context: AuthContext) -> list[PaymentResponse]:

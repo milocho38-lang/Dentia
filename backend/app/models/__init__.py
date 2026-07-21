@@ -38,6 +38,7 @@ from app.models.treatment import (
     Treatment,
     TreatmentEvent,
     TreatmentPayment,
+    TreatmentPaymentProcedure,
     TreatmentProcedure,
 )
 from app.models.user import User
@@ -78,6 +79,7 @@ __all__ = [
     "Treatment",
     "TreatmentEvent",
     "TreatmentPayment",
+    "TreatmentPaymentProcedure",
     "TreatmentProcedure",
     "User",
     "UserRole",

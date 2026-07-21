@@ -249,6 +249,7 @@ export function createPayment(
   data: {
     site_id: string;
     dentist_id?: string | null;
+    procedure_ids?: string[];
     paid_at: string;
     value: string;
     payment_method: string;
@@ -276,6 +277,10 @@ export function reversePayment(paymentId: string, reason: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),
   });
+}
+
+export function downloadPaymentReceipt(paymentId: string) {
+  return apiBlob(`/api/payments/${paymentId}/receipt`);
 }
 
 export function getFinanceDashboard() {

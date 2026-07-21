@@ -50,6 +50,7 @@ from app.services.treatment_service import (
     finance_by_site,
     finance_dashboard,
     generate_budget_pdf,
+    generate_payment_receipt_pdf,
     get_budget,
     get_payment,
     get_treatment,
@@ -621,6 +622,29 @@ def get_payment_endpoint(
 ) -> PaymentResponse:
     try:
         return get_payment(session, context, payment_id)
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.get("/api/payments/{payment_id}/receipt")
+def get_payment_receipt_endpoint(
+    payment_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("payments.view"))],
+) -> Response:
+    try:
+        result = generate_payment_receipt_pdf(
+            session,
+            context,
+            payment_id,
+            get_request_metadata(request),
+        )
+        return Response(
+            content=result.content,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
+        )
     except TreatmentError as exc:
         raise handle_treatment_error(exc)
 

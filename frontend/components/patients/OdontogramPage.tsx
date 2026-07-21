@@ -185,7 +185,13 @@ function surfaceStyles(
   return styles;
 }
 
-export function OdontogramPage({ patientId }: { patientId: string }) {
+export function OdontogramPage({
+  patientId,
+  embedded = false,
+}: {
+  patientId: string;
+  embedded?: boolean;
+}) {
   const { hasPermission } = useAuth();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [envelope, setEnvelope] = useState<{ exists: boolean; clinical_record_exists: boolean } | null>(null);
@@ -379,34 +385,38 @@ export function OdontogramPage({ patientId }: { patientId: string }) {
   const warning = selectedSurfaceWarning(selectedTooth, selectedSurfaces);
 
   return (
-    <div className="mx-auto max-w-7xl">
-      <Link href={`/pacientes/${patientId}`} className="text-sm font-bold text-green-700 hover:underline">
-        ← Volver al paciente
-      </Link>
+    <div className={embedded ? "" : "mx-auto max-w-7xl"}>
+      {!embedded && (
+        <>
+          <Link href={`/pacientes/${patientId}`} className="text-sm font-bold text-green-700 hover:underline">
+            ← Volver al paciente
+          </Link>
 
-      <header className="mt-5 flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-        <div>
-          <p className="text-xs font-black uppercase tracking-wide text-green-700">
-            Odontograma histórico
-          </p>
-          <h1 className="mt-1 text-3xl font-black text-slate-950">
-            {patient?.full_name ?? "Paciente"}
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Registra hallazgos, diagnósticos y procedimientos como eventos. El estado actual se calcula desde el historial confirmado.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
-          <span className="font-bold text-slate-900">Fuente de verdad:</span>{" "}
-          eventos odontográficos
-        </div>
-      </header>
+          <header className="mt-5 flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-green-700">
+                Odontograma histórico
+              </p>
+              <h1 className="mt-1 text-3xl font-black text-slate-950">
+                {patient?.full_name ?? "Paciente"}
+              </h1>
+              <p className="mt-2 max-w-3xl text-sm text-slate-600">
+                Registra hallazgos, diagnósticos y procedimientos como eventos. El estado actual se calcula desde el historial confirmado.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+              <span className="font-bold text-slate-900">Fuente de verdad:</span>{" "}
+              eventos odontográficos
+            </div>
+          </header>
+        </>
+      )}
 
-      {error && <div className="mt-5"><Alert tone="error">{error}</Alert></div>}
-      {message && <div className="mt-5"><Alert tone="info">{message}</Alert></div>}
+      {error && <div className={embedded ? "mb-5" : "mt-5"}><Alert tone="error">{error}</Alert></div>}
+      {message && <div className={embedded ? "mb-5" : "mt-5"}><Alert tone="info">{message}</Alert></div>}
 
       {!envelope?.exists && (
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-7 shadow-sm">
+        <section className={`${embedded ? "" : "mt-6"} rounded-2xl border border-slate-200 bg-white p-7 shadow-sm`}>
           <h2 className="text-xl font-black text-slate-950">
             Este paciente aún no tiene odontograma.
           </h2>

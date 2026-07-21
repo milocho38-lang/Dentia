@@ -419,6 +419,16 @@ class TreatmentPayment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_pagos_empresa_sede", "empresa_id", "sede_id"),
         Index("ix_pagos_empresa_odontologo", "empresa_id", "odontologo_id"),
         Index("ix_pagos_empresa_estado", "empresa_id", "estado"),
+        UniqueConstraint(
+            "empresa_id",
+            "comprobante_consecutivo",
+            name="uq_pagos_empresa_comprobante_consecutivo",
+        ),
+        UniqueConstraint(
+            "empresa_id",
+            "comprobante_numero",
+            name="uq_pagos_empresa_comprobante_numero",
+        ),
     )
 
     company_id: Mapped[UUID] = mapped_column(
@@ -475,6 +485,12 @@ class TreatmentPayment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     observation: Mapped[str | None] = mapped_column(
         "observacion", Text, nullable=True
     )
+    receipt_sequence: Mapped[int] = mapped_column(
+        "comprobante_consecutivo", Integer, nullable=False
+    )
+    receipt_number: Mapped[str] = mapped_column(
+        "comprobante_numero", String(30), nullable=False
+    )
     status: Mapped[str] = mapped_column("estado", String(20), nullable=False)
     registered_by: Mapped[UUID | None] = mapped_column(
         "registrado_by",
@@ -493,6 +509,44 @@ class TreatmentPayment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     reversal_reason: Mapped[str | None] = mapped_column(
         "motivo_reversion", Text, nullable=True
+    )
+
+
+class TreatmentPaymentProcedure(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "pagos_tratamiento_procedimientos"
+    __table_args__ = (
+        UniqueConstraint(
+            "pago_id",
+            "procedimiento_id",
+            name="uq_pagos_proc_pago_procedimiento",
+        ),
+        Index("ix_pagos_proc_empresa_pago", "empresa_id", "pago_id"),
+        Index("ix_pagos_proc_empresa_procedimiento", "empresa_id", "procedimiento_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        "empresa_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("empresas.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    payment_id: Mapped[UUID] = mapped_column(
+        "pago_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("pagos_tratamiento.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    procedure_id: Mapped[UUID] = mapped_column(
+        "procedimiento_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("tratamiento_procedimientos.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

@@ -38,6 +38,7 @@ const defaults: BrandingInput = {
   legal_observations: null,
   cancellation_policy: null,
   thank_you_message: null,
+  payment_receipt_title: "COMPROBANTE DE PAGO",
   primary_color: "#16a34a",
   secondary_color: "#0f766e",
   button_color: "#16a34a",
@@ -69,6 +70,7 @@ function toInput(branding: Branding): BrandingInput {
     legal_observations: branding.legal_observations,
     cancellation_policy: branding.cancellation_policy,
     thank_you_message: branding.thank_you_message,
+    payment_receipt_title: branding.payment_receipt_title,
     primary_color: branding.primary_color,
     secondary_color: branding.secondary_color,
     button_color: branding.button_color,
@@ -347,6 +349,7 @@ export function BrandingSettingsPage() {
         <div className="grid gap-4 md:grid-cols-2">
           {textarea("header_text", "Texto de encabezado")}
           {textarea("footer_text", "Texto de pie de página")}
+          {field("payment_receipt_title", "Nombre del comprobante de pago")}
           {textarea("legal_observations", "Observaciones legales", 4)}
           {textarea("cancellation_policy", "Política de cancelación", 4)}
           <div className="md:col-span-2">{textarea("thank_you_message", "Mensaje de agradecimiento")}</div>

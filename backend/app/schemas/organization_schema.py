@@ -113,6 +113,7 @@ class BrandingResponse(BaseModel):
     legal_observations: str | None
     cancellation_policy: str | None
     thank_you_message: str | None
+    payment_receipt_title: str
     primary_color: str
     secondary_color: str
     button_color: str
@@ -146,6 +147,11 @@ class BrandingUpdateRequest(BaseModel):
     legal_observations: str | None = Field(default=None, max_length=2000)
     cancellation_policy: str | None = Field(default=None, max_length=2000)
     thank_you_message: str | None = Field(default=None, max_length=1000)
+    payment_receipt_title: str = Field(
+        default="COMPROBANTE DE PAGO",
+        min_length=3,
+        max_length=120,
+    )
     primary_color: str = "#16a34a"
     secondary_color: str = "#0f766e"
     button_color: str = "#16a34a"

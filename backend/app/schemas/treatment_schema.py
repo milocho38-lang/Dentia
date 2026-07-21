@@ -432,6 +432,7 @@ class BudgetListResponse(BaseModel):
 class PaymentCreateRequest(BaseModel):
     site_id: UUID
     dentist_id: UUID | None = None
+    procedure_ids: list[UUID] = Field(default_factory=list)
     paid_at: datetime
     value: Decimal = Field(gt=0)
     payment_method: str
@@ -470,6 +471,7 @@ class PaymentReverseRequest(BaseModel):
 
 class PaymentResponse(BaseModel):
     id: UUID
+    receipt_number: str
     patient_id: UUID
     patient_name: str
     treatment_id: UUID
@@ -487,6 +489,7 @@ class PaymentResponse(BaseModel):
     status: str
     reversed_at: datetime | None
     reversal_reason: str | None
+    procedure_ids: list[UUID] = Field(default_factory=list)
 
 
 class PaymentListResponse(BaseModel):

@@ -122,6 +122,7 @@ export interface Budget {
 
 export interface Payment {
   id: string;
+  receipt_number: string;
   patient_id: string;
   patient_name: string;
   treatment_id: string;
@@ -139,6 +140,7 @@ export interface Payment {
   status: string;
   reversed_at: string | null;
   reversal_reason: string | null;
+  procedure_ids: string[];
 }
 
 export interface FinanceDashboard {

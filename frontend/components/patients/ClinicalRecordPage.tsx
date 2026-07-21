@@ -269,7 +269,13 @@ function normalizeInformantBeforeSubmit(
   return { payload: form };
 }
 
-export function ClinicalRecordPage({ patientId }: { patientId: string }) {
+export function ClinicalRecordPage({
+  patientId,
+  embedded = false,
+}: {
+  patientId: string;
+  embedded?: boolean;
+}) {
   const { user, hasPermission } = useAuth();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [record, setRecord] = useState<ClinicalRecord | null>(null);
@@ -731,40 +737,44 @@ export function ClinicalRecordPage({ patientId }: { patientId: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <Link
-        href={`/pacientes/${patientId}`}
-        className="text-sm font-bold text-green-700 hover:underline"
-      >
-        ← Volver al paciente
-      </Link>
+    <div className={embedded ? "space-y-5" : "mx-auto max-w-6xl space-y-6"}>
+      {!embedded && (
+        <>
+          <Link
+            href={`/pacientes/${patientId}`}
+            className="text-sm font-bold text-green-700 hover:underline"
+          >
+            ← Volver al paciente
+          </Link>
 
-      <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-green-700">
-              {terminology.record}
-            </p>
-            <h1 className="mt-2 text-3xl font-black text-slate-950">
-              {patient.full_name}
-            </h1>
-            <p className="mt-2 text-sm text-slate-500">
-              Registro longitudinal clínico. Las evoluciones firmadas llegarán en
-              C015C; esta fase cubre apertura, antecedentes, alergias y resumen.
-            </p>
-          </div>
-          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm">
-            <p className="font-bold text-slate-900">
-              {record ? "Abierta" : "Sin historia abierta"}
-            </p>
-            <p className="text-slate-500">
-              {record
-                ? `Versión ${record.version} · ${formatDate(record.updated_at, true)}`
-                : terminology.open_record}
-            </p>
-          </div>
-        </div>
-      </header>
+          <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-green-700">
+                  {terminology.record}
+                </p>
+                <h1 className="mt-2 text-3xl font-black text-slate-950">
+                  {patient.full_name}
+                </h1>
+                <p className="mt-2 text-sm text-slate-500">
+                  Registro longitudinal clínico. Las evoluciones firmadas llegarán en
+                  C015C; esta fase cubre apertura, antecedentes, alergias y resumen.
+                </p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm">
+                <p className="font-bold text-slate-900">
+                  {record ? "Abierta" : "Sin historia abierta"}
+                </p>
+                <p className="text-slate-500">
+                  {record
+                    ? `Versión ${record.version} · ${formatDate(record.updated_at, true)}`
+                    : terminology.open_record}
+                </p>
+              </div>
+            </div>
+          </header>
+        </>
+      )}
 
       {error && <Alert tone="error">{error}</Alert>}
       {message && <Alert tone="info">{message}</Alert>}
@@ -814,12 +824,14 @@ export function ClinicalRecordPage({ patientId }: { patientId: string }) {
                 No tienes permiso para abrir la {terminology.record.toLowerCase()}.
               </span>
             )}
-            <Link
-              href={`/pacientes/${patientId}`}
-              className="min-h-12 rounded-xl border border-slate-300 px-6 py-3 font-bold text-slate-700"
-            >
-              Volver al paciente
-            </Link>
+            {!embedded && (
+              <Link
+                href={`/pacientes/${patientId}`}
+                className="min-h-12 rounded-xl border border-slate-300 px-6 py-3 font-bold text-slate-700"
+              >
+                Volver al paciente
+              </Link>
+            )}
           </div>
         </section>
       )}

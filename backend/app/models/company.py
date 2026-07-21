@@ -86,6 +86,13 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
     thank_you_message: Mapped[str | None] = mapped_column(
         "mensaje_agradecimiento", String(1000), nullable=True
     )
+    payment_receipt_title: Mapped[str] = mapped_column(
+        "titulo_comprobante_pago",
+        String(120),
+        nullable=False,
+        default="COMPROBANTE DE PAGO",
+        server_default="COMPROBANTE DE PAGO",
+    )
     primary_color: Mapped[str] = mapped_column(
         "color_principal", String(20), nullable=False, default="#16a34a", server_default="#16a34a"
     )
