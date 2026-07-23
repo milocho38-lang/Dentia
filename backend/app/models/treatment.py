@@ -15,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Boolean,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -106,6 +107,19 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_proc_empresa_sede", "empresa_id", "sede_id"),
         Index("ix_proc_catalogo", "catalogo_procedimiento_id"),
         Index("ix_proc_cita", "cita_id"),
+        Index("ix_proc_odontograma_evento_origen", "odontograma_evento_origen_id"),
+        Index(
+            "ix_proc_empresa_odontograma_evento_origen",
+            "empresa_id",
+            "odontograma_evento_origen_id",
+        ),
+        Index(
+            "uq_proc_empresa_odontograma_idempotency_key",
+            "empresa_id",
+            "odontograma_idempotency_key",
+            unique=True,
+            postgresql_where=text("odontograma_idempotency_key IS NOT NULL"),
+        ),
     )
 
     company_id: Mapped[UUID] = mapped_column(
@@ -159,6 +173,22 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("citas.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    source_odontogram_event_id: Mapped[UUID | None] = mapped_column(
+        "odontograma_evento_origen_id",
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "odontograma_eventos.id",
+            name="fk_proc_odontograma_evento_origen",
+            ondelete="SET NULL",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    odontogram_idempotency_key: Mapped[str | None] = mapped_column(
+        "odontograma_idempotency_key",
+        String(120),
+        nullable=True,
     )
     unit_value: Mapped[Decimal] = mapped_column(
         "valor_unitario", Numeric(14, 2), nullable=False, default=0

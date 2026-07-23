@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.models.agenda import Appointment, Dentist, DentistSite, Patient
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
+from app.models.odontogram import OdontogramCatalogItem, OdontogramEvent, OdontogramEventDetail
 from app.models.site import Site
 from app.models.treatment import (
     Budget,
@@ -52,6 +53,10 @@ from app.schemas.treatment_schema import (
     PatientBalancesResponse,
     PaymentCreateRequest,
     PaymentResponse,
+    OdontogramLinkedProcedureListResponse,
+    OdontogramLinkedProcedureResponse,
+    OdontogramPlannedProcedureCreateRequest,
+    OdontogramPlannedProcedureCreateResponse,
     ProcedureCatalogCreateRequest,
     ProcedureCatalogItemResponse,
     ProcedureCatalogListResponse,
@@ -972,6 +977,7 @@ def _procedure_response(
         site_id=procedure.site_id,
         site_name=site.name if site else None,
         appointment_id=procedure.appointment_id,
+        source_odontogram_event_id=procedure.source_odontogram_event_id,
         unit_value=_money(procedure.unit_value),
         quantity=Decimal(procedure.quantity),
         total_value=_money(procedure.total_value),
@@ -985,6 +991,381 @@ def _procedure_response(
         tooth=procedure.tooth,
         surfaces=procedure.surfaces,
         scope_label=_scope_label(procedure.scope_type, procedure.zone, procedure.tooth, procedure.surfaces),
+    )
+
+
+def _require_bridge_permission(context: AuthContext, permission: str) -> None:
+    if permission not in context.permissions:
+        raise TreatmentError("No tienes permiso para realizar esta acción.", 403)
+
+
+def _canonical_surfaces(value: list[str] | None) -> list[str] | None:
+    if not value:
+        return None
+    return sorted({surface.strip().upper() for surface in value if surface and surface.strip()}) or None
+
+
+def _linked_procedure_response(
+    procedure: TreatmentProcedure,
+    treatment: Treatment,
+) -> OdontogramLinkedProcedureResponse:
+    return OdontogramLinkedProcedureResponse(
+        procedure_id=procedure.id,
+        treatment_id=treatment.id,
+        treatment_name=treatment.name,
+        treatment_status=treatment.status,
+        patient_id=procedure.patient_id,
+        source_odontogram_event_id=procedure.source_odontogram_event_id,
+        catalog_procedure_id=procedure.catalog_procedure_id,
+        name=procedure.name,
+        category=procedure.category,
+        status=procedure.status,
+        unit_value=_money(procedure.unit_value),
+        quantity=Decimal(procedure.quantity),
+        total_value=_money(procedure.total_value),
+        scope_type=procedure.scope_type or "GENERAL",
+        zone=procedure.zone,
+        tooth=procedure.tooth,
+        surfaces=procedure.surfaces,
+        scope_label=_scope_label(
+            procedure.scope_type,
+            procedure.zone,
+            procedure.tooth,
+            procedure.surfaces,
+        ),
+        created_at=procedure.created_at,
+    )
+
+
+def _linked_procedures_for_events(
+    session: Session,
+    context: AuthContext,
+    event_ids: list[UUID],
+) -> list[OdontogramLinkedProcedureResponse]:
+    if not event_ids:
+        return []
+    rows = session.execute(
+        select(TreatmentProcedure, Treatment)
+        .join(Treatment, Treatment.id == TreatmentProcedure.treatment_id)
+        .where(
+            TreatmentProcedure.company_id == context.user.company_id,
+            TreatmentProcedure.source_odontogram_event_id.in_(event_ids),
+        )
+        .order_by(TreatmentProcedure.created_at.desc())
+    ).all()
+    return [_linked_procedure_response(procedure, treatment) for procedure, treatment in rows]
+
+
+def _require_eligible_odontogram_event(
+    session: Session,
+    context: AuthContext,
+    event_id: UUID,
+) -> tuple[OdontogramEvent, list[OdontogramEventDetail]]:
+    event = session.scalar(
+        select(OdontogramEvent).where(
+            OdontogramEvent.id == event_id,
+            OdontogramEvent.company_id == context.user.company_id,
+        )
+    )
+    if event is None:
+        raise TreatmentError("Evento odontográfico no encontrado.", 404)
+    if event.status != "CONFIRMED":
+        raise TreatmentError("Solo los eventos odontográficos confirmados pueden generar procedimientos.", 422)
+    if event.event_type in {"PLANNED_PROCEDURE_ADDED", "PROCEDURE_PERFORMED", "OBSERVATION_ADDED"}:
+        raise TreatmentError("Este tipo de evento odontográfico no genera procedimientos planificados.", 422)
+    details = session.scalars(
+        select(OdontogramEventDetail).where(
+            OdontogramEventDetail.event_id == event.id,
+            OdontogramEventDetail.company_id == context.user.company_id,
+            OdontogramEventDetail.layer.in_(["DIAGNOSIS", "FINDING"]),
+        )
+    ).all()
+    if not details:
+        raise TreatmentError("El evento no contiene diagnósticos o hallazgos elegibles.", 422)
+    return event, details
+
+
+def _find_similar_planned_procedures(
+    session: Session,
+    context: AuthContext,
+    *,
+    source_event_id: UUID,
+    treatment_id: UUID,
+    catalog_procedure_id: UUID | None,
+    name: str,
+    scope_type: str,
+    zone: str | None,
+    tooth: str | None,
+    surfaces: list[str] | None,
+) -> list[tuple[TreatmentProcedure, Treatment]]:
+    statement = (
+        select(TreatmentProcedure, Treatment)
+        .join(Treatment, Treatment.id == TreatmentProcedure.treatment_id)
+        .where(
+            TreatmentProcedure.company_id == context.user.company_id,
+            TreatmentProcedure.source_odontogram_event_id == source_event_id,
+            TreatmentProcedure.treatment_id == treatment_id,
+            TreatmentProcedure.status.in_(["Pendiente", "Agendado", "En proceso"]),
+            TreatmentProcedure.scope_type == scope_type,
+            TreatmentProcedure.zone.is_(None) if zone is None else TreatmentProcedure.zone == zone,
+            TreatmentProcedure.tooth.is_(None) if tooth is None else TreatmentProcedure.tooth == tooth,
+        )
+    )
+    if catalog_procedure_id:
+        statement = statement.where(TreatmentProcedure.catalog_procedure_id == catalog_procedure_id)
+    else:
+        statement = statement.where(func.lower(TreatmentProcedure.name) == name.lower())
+    rows = session.execute(statement).all()
+    normalized_surfaces = _canonical_surfaces(surfaces)
+    return [
+        (procedure, treatment)
+        for procedure, treatment in rows
+        if _canonical_surfaces(procedure.surfaces) == normalized_surfaces
+    ]
+
+
+def list_odontogram_planned_procedure_links(
+    session: Session,
+    context: AuthContext,
+    patient_id: UUID,
+    *,
+    tooth_code: str | None = None,
+) -> OdontogramLinkedProcedureListResponse:
+    _require_bridge_permission(context, "odontogram.view")
+    _require_bridge_permission(context, "treatments.view")
+    _require_patient(session, context, patient_id)
+    event_statement = select(OdontogramEvent.id).where(
+        OdontogramEvent.company_id == context.user.company_id,
+        OdontogramEvent.patient_id == patient_id,
+    )
+    if tooth_code:
+        event_statement = event_statement.join(
+            OdontogramEventDetail,
+            OdontogramEventDetail.event_id == OdontogramEvent.id,
+        ).where(OdontogramEventDetail.tooth_code == tooth_code)
+    event_ids = list(session.scalars(event_statement).all())
+    items = _linked_procedures_for_events(session, context, event_ids)
+    return OdontogramLinkedProcedureListResponse(items=items, total=len(items))
+
+
+def create_planned_procedure_from_odontogram_event(
+    session: Session,
+    context: AuthContext,
+    event_id: UUID,
+    payload: OdontogramPlannedProcedureCreateRequest,
+    metadata: RequestMetadata,
+) -> OdontogramPlannedProcedureCreateResponse:
+    _require_bridge_permission(context, "odontogram.view")
+    _require_bridge_permission(context, "treatments.view")
+    event, _details = _require_eligible_odontogram_event(session, context, event_id)
+
+    replay = session.scalar(
+        select(TreatmentProcedure).where(
+            TreatmentProcedure.company_id == context.user.company_id,
+            TreatmentProcedure.odontogram_idempotency_key == payload.idempotency_key,
+        )
+    )
+    if replay:
+        if replay.source_odontogram_event_id != event.id:
+            raise TreatmentError("La clave de idempotencia ya fue usada para otro evento.", 409)
+        linked = _linked_procedures_for_events(session, context, [event.id])
+        row = session.execute(
+            select(TreatmentProcedure, Dentist, Site)
+            .outerjoin(Dentist, Dentist.id == TreatmentProcedure.dentist_id)
+            .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
+            .where(TreatmentProcedure.id == replay.id)
+        ).one()
+        return OdontogramPlannedProcedureCreateResponse(
+            procedure=_procedure_response(*row),
+            linked_procedures=linked,
+            source_odontogram_event_id=event.id,
+            treatment_id=replay.treatment_id,
+            idempotency_key=payload.idempotency_key,
+            idempotent_replay=True,
+            message="Solicitud idempotente reutilizada. No se creó un procedimiento duplicado.",
+        )
+
+    treatment: Treatment
+    if payload.treatment_id:
+        _require_bridge_permission(context, "treatments.update")
+        treatment = _require_treatment(session, context, payload.treatment_id, lock=True)
+        if treatment.patient_id != event.patient_id:
+            raise TreatmentError("El tratamiento seleccionado no pertenece al paciente del evento.", 422)
+    else:
+        _require_bridge_permission(context, "treatments.create")
+        assert payload.new_treatment is not None
+        if payload.new_treatment.main_site_id:
+            _require_site(session, context, payload.new_treatment.main_site_id)
+        if payload.new_treatment.responsible_dentist_id:
+            _require_dentist(
+                session,
+                context,
+                payload.new_treatment.responsible_dentist_id,
+                payload.new_treatment.main_site_id,
+            )
+        treatment = Treatment(
+            company_id=context.user.company_id,
+            patient_id=event.patient_id,
+            name=payload.new_treatment.name,
+            description=payload.new_treatment.description,
+            specialty=payload.new_treatment.specialty,
+            status="Borrador",
+            responsible_dentist_id=payload.new_treatment.responsible_dentist_id,
+            main_site_id=payload.new_treatment.main_site_id,
+            observations=payload.new_treatment.observations,
+            created_by=context.user.id,
+        )
+        session.add(treatment)
+        session.flush()
+        _event(
+            session,
+            context,
+            treatment.id,
+            "TREATMENT_CREATED",
+            "Tratamiento creado desde evento odontográfico.",
+            {"source_odontogram_event_id": str(event.id)},
+        )
+        _audit(
+            session,
+            context,
+            metadata,
+            entity="treatment",
+            entity_id=treatment.id,
+            action="TREATMENT_CREATED_FROM_ODONTOGRAM",
+            detail={"source_odontogram_event_id": str(event.id)},
+        )
+
+    if treatment.status in TREATMENT_FINAL_STATUSES:
+        raise TreatmentError("No se pueden agregar procedimientos a este tratamiento.")
+    if payload.site_id:
+        _require_site(session, context, payload.site_id)
+    if payload.dentist_id:
+        _require_dentist(session, context, payload.dentist_id, payload.site_id)
+
+    catalog_item: ProcedureCatalogItem | None = None
+    if payload.catalog_procedure_id:
+        catalog_item = _require_catalog_item(
+            session,
+            context,
+            payload.catalog_procedure_id,
+            active_only=True,
+        )
+    procedure_name = payload.name or (catalog_item.name if catalog_item else None)
+    if not procedure_name:
+        raise TreatmentError("Debe seleccionar o nombrar el procedimiento.", 422)
+    scope_type, zone, tooth, surfaces = _validate_dental_scope(
+        payload.scope_type,
+        payload.zone,
+        payload.tooth,
+        payload.surfaces,
+    )
+    surfaces = _canonical_surfaces(surfaces)
+
+    similar = _find_similar_planned_procedures(
+        session,
+        context,
+        source_event_id=event.id,
+        treatment_id=treatment.id,
+        catalog_procedure_id=catalog_item.id if catalog_item else None,
+        name=procedure_name,
+        scope_type=scope_type,
+        zone=zone,
+        tooth=tooth,
+        surfaces=surfaces,
+    )
+    if similar and not payload.allow_similar_duplicate:
+        linked = [_linked_procedure_response(procedure, linked_treatment) for procedure, linked_treatment in similar]
+        return OdontogramPlannedProcedureCreateResponse(
+            procedure=None,
+            linked_procedures=linked,
+            source_odontogram_event_id=event.id,
+            treatment_id=treatment.id,
+            idempotency_key=payload.idempotency_key,
+            similar_duplicate_detected=True,
+            message="Ya existe un procedimiento planificado similar para este evento.",
+        )
+
+    procedure = TreatmentProcedure(
+        company_id=context.user.company_id,
+        treatment_id=treatment.id,
+        patient_id=treatment.patient_id,
+        catalog_procedure_id=catalog_item.id if catalog_item else None,
+        name=procedure_name,
+        category=payload.category if payload.category is not None else (catalog_item.category if catalog_item else None),
+        dentist_id=payload.dentist_id,
+        site_id=payload.site_id,
+        source_odontogram_event_id=event.id,
+        odontogram_idempotency_key=payload.idempotency_key,
+        unit_value=_money(payload.unit_value),
+        quantity=payload.quantity,
+        total_value=_money(payload.unit_value * payload.quantity),
+        status="Pendiente",
+        estimated_date=payload.estimated_date,
+        observations=payload.observations,
+        requires_tooth=scope_type in {"TOOTH", "TOOTH_SURFACE"} or payload.requires_tooth,
+        scope_type=scope_type,
+        zone=zone,
+        tooth=tooth,
+        surfaces=surfaces,
+        created_by=context.user.id,
+    )
+    session.add(procedure)
+    treatment.updated_by = context.user.id
+    session.flush()
+    _recalculate_editable_budgets(session, context, treatment)
+
+    detail = {
+        "source_odontogram_event_id": str(event.id),
+        "procedure_id": str(procedure.id),
+        "treatment_id": str(treatment.id),
+        "scope_type": procedure.scope_type,
+        "zone": procedure.zone,
+        "tooth": procedure.tooth,
+        "surfaces": procedure.surfaces,
+        "idempotency_key": payload.idempotency_key,
+        "allow_similar_duplicate": payload.allow_similar_duplicate,
+    }
+    _event(
+        session,
+        context,
+        treatment.id,
+        "PROCEDURE_CREATED_FROM_ODONTOGRAM",
+        "Procedimiento planificado creado desde diagnóstico odontográfico.",
+        detail,
+    )
+    _audit(
+        session,
+        context,
+        metadata,
+        entity="treatment_procedure",
+        entity_id=procedure.id,
+        action="PROCEDURE_CREATED_FROM_ODONTOGRAM",
+        detail=detail,
+    )
+    _audit(
+        session,
+        context,
+        metadata,
+        entity="odontogram_event",
+        entity_id=event.id,
+        action="ODONTOGRAM_EVENT_LINKED_TO_PROCEDURE",
+        detail=detail,
+    )
+    session.commit()
+    row = session.execute(
+        select(TreatmentProcedure, Dentist, Site)
+        .outerjoin(Dentist, Dentist.id == TreatmentProcedure.dentist_id)
+        .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
+        .where(TreatmentProcedure.id == procedure.id)
+    ).one()
+    linked = _linked_procedures_for_events(session, context, [event.id])
+    return OdontogramPlannedProcedureCreateResponse(
+        procedure=_procedure_response(*row),
+        linked_procedures=linked,
+        source_odontogram_event_id=event.id,
+        treatment_id=treatment.id,
+        idempotency_key=payload.idempotency_key,
+        message="Procedimiento planificado creado desde el evento odontográfico.",
     )
 
 

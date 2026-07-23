@@ -8,6 +8,9 @@ import type {
   OdontogramEventInput,
   OdontogramEventListResponse,
   OdontogramEventUpdateInput,
+  OdontogramLinkedProcedureListResponse,
+  OdontogramPlannedProcedureCreateInput,
+  OdontogramPlannedProcedureCreateResponse,
   OdontogramToothHistoryResponse,
 } from "@/types/odontogram";
 
@@ -87,5 +90,29 @@ export function getOdontogramToothHistory(
 ) {
   return apiRequest<OdontogramToothHistoryResponse>(
     `/api/patients/${patientId}/odontogram/teeth/${toothCode}/history`,
+  );
+}
+
+export function getOdontogramPlannedProcedureLinks(
+  patientId: string,
+  toothCode?: string,
+) {
+  const params = toothCode ? `?tooth_code=${encodeURIComponent(toothCode)}` : "";
+  return apiRequest<OdontogramLinkedProcedureListResponse>(
+    `/api/patients/${patientId}/odontogram/planned-procedure-links${params}`,
+  );
+}
+
+export function createPlannedProcedureFromOdontogramEvent(
+  eventId: string,
+  data: OdontogramPlannedProcedureCreateInput,
+) {
+  return apiRequest<OdontogramPlannedProcedureCreateResponse>(
+    `/api/odontogram/events/${eventId}/planned-procedures`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
   );
 }

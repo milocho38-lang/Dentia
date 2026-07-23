@@ -281,6 +281,7 @@ class ProcedureResponse(BaseModel):
     site_id: UUID | None
     site_name: str | None
     appointment_id: UUID | None
+    source_odontogram_event_id: UUID | None = None
     unit_value: Decimal
     quantity: Decimal
     total_value: Decimal
@@ -294,6 +295,127 @@ class ProcedureResponse(BaseModel):
     tooth: str | None
     surfaces: list[str] | None
     scope_label: str
+
+
+class OdontogramPlannedProcedureTreatmentCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    description: str | None = None
+    specialty: str | None = Field(default=None, max_length=120)
+    responsible_dentist_id: UUID | None = None
+    main_site_id: UUID | None = None
+    observations: str | None = None
+
+    @field_validator("name", "description", "specialty", "observations")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
+class OdontogramPlannedProcedureCreateRequest(BaseModel):
+    idempotency_key: str = Field(min_length=8, max_length=120)
+    treatment_id: UUID | None = None
+    new_treatment: OdontogramPlannedProcedureTreatmentCreate | None = None
+    catalog_procedure_id: UUID | None = None
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    category: str | None = Field(default=None, max_length=120)
+    dentist_id: UUID | None = None
+    site_id: UUID | None = None
+    unit_value: Decimal = Field(default=Decimal("0"), ge=0)
+    quantity: Decimal = Field(default=Decimal("1"), gt=0)
+    estimated_date: date | None = None
+    observations: str | None = None
+    requires_tooth: bool = False
+    scope_type: str = "GENERAL"
+    zone: str | None = Field(default=None, max_length=40)
+    tooth: str | None = Field(default=None, max_length=30)
+    surfaces: list[str] | None = None
+    allow_similar_duplicate: bool = False
+
+    @model_validator(mode="after")
+    def validate_target_treatment(self):
+        if bool(self.treatment_id) == bool(self.new_treatment):
+            raise ValueError("Seleccione un tratamiento existente o cree uno nuevo.")
+        return self
+
+    @field_validator("idempotency_key", "name", "category", "observations", "tooth")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @field_validator("scope_type")
+    @classmethod
+    def valid_scope_type(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_SCOPE_TYPES:
+            raise ValueError("Tipo de alcance dental no válido.")
+        return normalized
+
+    @field_validator("zone")
+    @classmethod
+    def valid_zone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_ZONES:
+            raise ValueError("Zona dental no válida.")
+        return normalized
+
+    @field_validator("surfaces")
+    @classmethod
+    def valid_surfaces(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = sorted({
+            surface.strip().upper()
+            for surface in value
+            if surface and surface.strip()
+        })
+        invalid = [surface for surface in normalized if surface not in PROCEDURE_SURFACES]
+        if invalid:
+            raise ValueError("Cara dental no válida.")
+        return normalized
+
+
+class OdontogramLinkedProcedureResponse(BaseModel):
+    procedure_id: UUID
+    treatment_id: UUID
+    treatment_name: str
+    treatment_status: str
+    patient_id: UUID
+    source_odontogram_event_id: UUID
+    catalog_procedure_id: UUID | None
+    name: str
+    category: str | None
+    status: str
+    unit_value: Decimal
+    quantity: Decimal
+    total_value: Decimal
+    scope_type: str
+    zone: str | None
+    tooth: str | None
+    surfaces: list[str] | None
+    scope_label: str
+    created_at: datetime
+
+
+class OdontogramLinkedProcedureListResponse(BaseModel):
+    items: list[OdontogramLinkedProcedureResponse]
+    total: int
+
+
+class OdontogramPlannedProcedureCreateResponse(BaseModel):
+    procedure: ProcedureResponse | None
+    linked_procedures: list[OdontogramLinkedProcedureResponse] = []
+    source_odontogram_event_id: UUID
+    treatment_id: UUID | None = None
+    idempotency_key: str
+    idempotent_replay: bool = False
+    similar_duplicate_detected: bool = False
+    message: str
 
 
 class ProcedureCatalogBase(BaseModel):

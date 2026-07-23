@@ -26,6 +26,11 @@ const clinicalRecordService = read("backend/app/services/clinical_record_service
 const agendaService = read("backend/app/services/agenda_service.py");
 const treatmentSchema = read("backend/app/schemas/treatment_schema.py");
 const odontogramSchema = read("backend/app/schemas/odontogram_schema.py");
+const dentalInspector = read("frontend/components/odontogram/inspector/DentalInspector.tsx");
+const addPlannedDialog = read("frontend/components/odontogram/inspector/AddPlannedProcedureDialog.tsx");
+const odontogramPage = read("frontend/components/patients/OdontogramPage.tsx");
+const patientDetail = read("frontend/components/patients/PatientDetail.tsx");
+const treatmentPages = read("frontend/components/treatments/TreatmentPages.tsx");
 
 includes(
   odontogramModel,
@@ -221,15 +226,124 @@ notIncludes(
   "Current clinical care completion does not directly create odontogram events.",
 );
 
-notIncludes(
+includes(
   treatmentModel,
   "source_odontogram_event_id",
-  "TreatmentProcedure does not yet store source_odontogram_event_id.",
+  "TreatmentProcedure stores source_odontogram_event_id for explicit clinical-commercial traceability.",
 );
-notIncludes(
+includes(
+  treatmentModel,
+  "odontogram_idempotency_key",
+  "TreatmentProcedure stores an odontogram idempotency key.",
+);
+includes(
   treatmentSchema,
   "source_odontogram_event_id",
-  "Procedure create/update API does not yet accept source_odontogram_event_id.",
+  "Procedure responses expose source_odontogram_event_id when applicable.",
+);
+includes(
+  treatmentSchema,
+  "class OdontogramPlannedProcedureCreateRequest",
+  "Bridge request contract exists for creating planned procedures from odontogram events.",
+);
+includes(
+  treatmentSchema,
+  "treatment_status: str",
+  "Linked procedure responses include the real treatment status.",
+);
+includes(
+  treatmentSchema,
+  "allow_similar_duplicate",
+  "Bridge request supports explicit override for probable duplicates.",
+);
+notIncludes(
+  treatmentSchema.slice(
+    treatmentSchema.indexOf("class ProcedureCreateRequest"),
+    treatmentSchema.indexOf("class ProcedureUpdateRequest"),
+  ),
+  "source_odontogram_event_id",
+  "Standard procedure creation does not accept clinical traceability directly.",
+);
+includes(
+  treatmentService,
+  "def create_planned_procedure_from_odontogram_event(",
+  "Explicit bridge service exists from odontogram event to planned procedure.",
+);
+includes(
+  treatmentService,
+  "PROCEDURE_CREATED_FROM_ODONTOGRAM",
+  "Bridge creation audits procedure creation from odontogram.",
+);
+includes(
+  treatmentService,
+  "ODONTOGRAM_EVENT_LINKED_TO_PROCEDURE",
+  "Bridge creation audits odontogram event linkage.",
+);
+
+includes(
+  dentalInspector,
+  "Estado del tratamiento",
+  "Dental Inspector distinguishes treatment status.",
+);
+includes(
+  dentalInspector,
+  "Estado del procedimiento",
+  "Dental Inspector distinguishes procedure status.",
+);
+includes(
+  dentalInspector,
+  "Ver tratamiento",
+  "Dental Inspector provides contextual navigation to treatment detail.",
+);
+includes(
+  dentalInspector,
+  "plannedProcedureCountLabel",
+  "Dental Inspector uses explicit singular/plural wording.",
+);
+notIncludes(
+  dentalInspector,
+  "procedimiento(s)",
+  "Dental Inspector does not show parenthetical pluralization.",
+);
+includes(
+  addPlannedDialog,
+  "El procedimiento fue creado, pero no fue posible actualizar la vista.",
+  "Post-create refresh failure does not masquerade as creation failure.",
+);
+includes(
+  addPlannedDialog,
+  "Actualizar",
+  "Post-create refresh failure offers a refresh action.",
+);
+notIncludes(
+  addPlannedDialog,
+  "window.location.reload",
+  "Planned procedure dialog does not force a full browser reload.",
+);
+includes(
+  odontogramPage,
+  "onCommercialDataChanged",
+  "Odontogram page notifies the patient workspace after commercial data changes.",
+);
+includes(
+  patientDetail,
+  "onCommercialDataChanged={loadWorkspaceData}",
+  "Patient workspace refreshes treatments after odontogram commercial bridge changes.",
+);
+includes(
+  patientDetail,
+  'searchParams.get("tab")',
+  "Patient detail supports contextual tab return.",
+);
+includes(
+  treatmentPages,
+  "returnPatientId",
+  "Treatment detail receives patient return context.",
+);
+includes(
+  treatmentPages,
+  "← Volver a {treatment.patient_name}",
+  "Treatment detail includes direct return to patient.",
 );
 
 console.log("clinical-commercial characterization tests OK");

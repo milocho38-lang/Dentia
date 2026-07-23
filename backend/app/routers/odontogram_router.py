@@ -20,6 +20,11 @@ from app.schemas.odontogram_schema import (
     OdontogramResponse,
     OdontogramToothHistoryResponse,
 )
+from app.schemas.treatment_schema import (
+    OdontogramLinkedProcedureListResponse,
+    OdontogramPlannedProcedureCreateRequest,
+    OdontogramPlannedProcedureCreateResponse,
+)
 from app.services.auth_service import AuthContext
 from app.services.odontogram_service import (
     OdontogramError,
@@ -35,6 +40,11 @@ from app.services.odontogram_service import (
     tooth_history,
     update_event_draft,
 )
+from app.services.treatment_service import (
+    TreatmentError,
+    create_planned_procedure_from_odontogram_event,
+    list_odontogram_planned_procedure_links,
+)
 
 
 router = APIRouter(prefix="/api/patients", tags=["Odontogram"])
@@ -42,6 +52,10 @@ odontogram_router = APIRouter(prefix="/api/odontogram", tags=["Odontogram"])
 
 
 def handle_odontogram_error(exc: OdontogramError) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=str(exc))
+
+
+def handle_treatment_error(exc: TreatmentError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
@@ -179,6 +193,27 @@ def patient_odontogram_tooth_history_endpoint(
         raise handle_odontogram_error(exc)
 
 
+@router.get(
+    "/{patient_id}/odontogram/planned-procedure-links",
+    response_model=OdontogramLinkedProcedureListResponse,
+)
+def patient_odontogram_planned_procedure_links_endpoint(
+    patient_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("odontogram.view"))],
+    tooth_code: str | None = None,
+) -> OdontogramLinkedProcedureListResponse:
+    try:
+        return list_odontogram_planned_procedure_links(
+            session,
+            context,
+            patient_id,
+            tooth_code=tooth_code,
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
 @odontogram_router.get(
     "/catalog",
     response_model=list[OdontogramCatalogItemResponse],
@@ -278,3 +313,26 @@ def correct_odontogram_event_endpoint(
         )
     except OdontogramError as exc:
         raise handle_odontogram_error(exc)
+
+
+@odontogram_router.post(
+    "/events/{event_id}/planned-procedures",
+    response_model=OdontogramPlannedProcedureCreateResponse,
+)
+def create_planned_procedure_from_odontogram_event_endpoint(
+    event_id: UUID,
+    payload: OdontogramPlannedProcedureCreateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("odontogram.view"))],
+) -> OdontogramPlannedProcedureCreateResponse:
+    try:
+        return create_planned_procedure_from_odontogram_event(
+            session,
+            context,
+            event_id,
+            payload,
+            get_request_metadata(request),
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)

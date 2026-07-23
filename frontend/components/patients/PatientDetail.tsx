@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Alert } from "@/components/shared/Alert";
 import { Modal } from "@/components/shared/Modal";
@@ -71,6 +72,7 @@ type PatientWorkspaceTab =
 
 export function PatientDetail({ patientId }: { patientId: string }) {
   const { hasPermission } = useAuth();
+  const searchParams = useSearchParams();
   const [summary, setSummary] = useState<PatientSummary | null>(null);
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [clinicalSummary, setClinicalSummary] =
@@ -126,6 +128,16 @@ export function PatientDetail({ patientId }: { patientId: string }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (
+      tab &&
+      ["summary", "clinical", "odontogram", "treatments", "finance", "agenda", "documents", "files"].includes(tab)
+    ) {
+      setActiveTab(tab as PatientWorkspaceTab);
+    }
+  }, [searchParams]);
 
   const loadWorkspaceData = useCallback(async () => {
     setWorkspaceLoading(true);
@@ -412,7 +424,11 @@ export function PatientDetail({ patientId }: { patientId: string }) {
 
         {activeTab === "odontogram" && (
           hasPermission("odontogram.view") ? (
-            <OdontogramPage patientId={patient.id} embedded />
+            <OdontogramPage
+              patientId={patient.id}
+              embedded
+              onCommercialDataChanged={loadWorkspaceData}
+            />
           ) : (
             <AccessCard title="No tienes permiso para ver el odontograma." />
           )

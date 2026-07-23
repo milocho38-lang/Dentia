@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type React from "react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Alert } from "@/components/shared/Alert";
 import { Modal } from "@/components/shared/Modal";
 import { Spinner } from "@/components/shared/Spinner";
@@ -397,6 +397,7 @@ export function TreatmentCreatePage() {
 
 export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
   const { hasPermission } = useAuth();
+  const searchParams = useSearchParams();
   const [treatment, setTreatment] = useState<Treatment | null>(null);
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -450,6 +451,8 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
   }
 
   const latestBudget = budgets[0];
+  const returnPatientId = searchParams.get("returnPatientId") || treatment.patient_id;
+  const patientBackHref = `/pacientes/${returnPatientId}?tab=treatments`;
 
   async function handleDownloadBudgetPdf(budget: Budget) {
     const blob = await downloadBudgetPdf(budget.id);
@@ -533,7 +536,12 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     <div className="mx-auto max-w-7xl space-y-6">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <Link href="/tratamientos" className="text-sm font-bold text-green-700 hover:underline">← Tratamientos</Link>
+          <div className="flex flex-wrap gap-3 text-sm font-bold">
+            <Link href="/tratamientos" className="text-green-700 hover:underline">← Tratamientos</Link>
+            <Link href={patientBackHref} className="text-slate-600 hover:text-green-700 hover:underline">
+              ← Volver a {treatment.patient_name}
+            </Link>
+          </div>
           <h1 className="mt-3 text-3xl font-black text-slate-950">{treatment.name}</h1>
           <p className="mt-2 text-sm text-slate-500">{treatment.patient_name}</p>
         </div>

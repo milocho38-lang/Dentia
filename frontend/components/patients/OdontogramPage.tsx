@@ -16,6 +16,7 @@ import {
   confirmOdontogramEvent,
   createOdontogram,
   createOdontogramEvent,
+  getOdontogramPlannedProcedureLinks,
   getOdontogram,
   getOdontogramCatalog,
   getOdontogramCurrent,
@@ -29,6 +30,7 @@ import type {
   OdontogramDentition,
   OdontogramEvent,
   OdontogramEventInput,
+  OdontogramLinkedProcedure,
   OdontogramToothState,
 } from "@/types/odontogram";
 import type { Patient } from "@/types/patient";
@@ -96,9 +98,11 @@ function suggestedDentition(age: number | null | undefined): OdontogramDentition
 export function OdontogramPage({
   patientId,
   embedded = false,
+  onCommercialDataChanged,
 }: {
   patientId: string;
   embedded?: boolean;
+  onCommercialDataChanged?: () => Promise<void> | void;
 }) {
   const { hasPermission } = useAuth();
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -107,6 +111,7 @@ export function OdontogramPage({
   const [catalog, setCatalog] = useState<OdontogramCatalogItem[]>([]);
   const [events, setEvents] = useState<OdontogramEvent[]>([]);
   const [history, setHistory] = useState<OdontogramEvent[]>([]);
+  const [plannedProcedureLinks, setPlannedProcedureLinks] = useState<OdontogramLinkedProcedure[]>([]);
   const [selectedTooth, setSelectedTooth] = useState("11");
   const [selectedSurfaces, setSelectedSurfaces] = useState<string[]>([]);
   const [dentition, setDentition] = useState<OdontogramDentition>("PERMANENT");
@@ -166,13 +171,21 @@ export function OdontogramPage({
   const loadHistory = useCallback(async () => {
     if (!envelope?.exists || !selectedTooth || !hasPermission("odontogram.history")) {
       setHistory([]);
+      setPlannedProcedureLinks([]);
       return;
     }
     try {
       const response = await getOdontogramToothHistory(patientId, selectedTooth);
       setHistory(response.items);
+      try {
+        const linkedResponse = await getOdontogramPlannedProcedureLinks(patientId, selectedTooth);
+        setPlannedProcedureLinks(linkedResponse.items);
+      } catch {
+        setPlannedProcedureLinks([]);
+      }
     } catch {
       setHistory([]);
+      setPlannedProcedureLinks([]);
     }
   }, [envelope?.exists, hasPermission, patientId, selectedTooth]);
 
@@ -499,8 +512,10 @@ export function OdontogramPage({
                 <DentalInspector
                   toothCode={selectedTooth}
                   toothState={selectedToothState}
+                  patientId={patientId}
                   history={history}
                   drafts={events.filter((event) => event.status === "DRAFT")}
+                  linkedProcedures={plannedProcedureLinks}
                   selectedSurfaces={selectedSurfaces}
                   warning={warning}
                   eventOptions={EVENT_OPTIONS}
@@ -527,6 +542,14 @@ export function OdontogramPage({
                   onSaveAsConfirmedChange={setSaveAsConfirmed}
                   onSaveEvent={saveEvent}
                   onConfirmDraft={confirmDraft}
+                  onPlannedProcedureCreated={async () => {
+                    await Promise.all([
+                      load(),
+                      loadHistory(),
+                      onCommercialDataChanged?.(),
+                    ]);
+                    setMessage("Procedimiento agregado al plan de tratamiento.");
+                  }}
                 />
               </aside>
             )}
