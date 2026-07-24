@@ -135,6 +135,10 @@ class OdontogramEventResponse(BaseModel):
     observation: str | None = None
     correction_reason: str | None = None
     parent_event_id: UUID | None = None
+    source_odontogram_event_id: UUID | None = None
+    source_diagnosis_action: str | None = None
+    reviewed_for_evolution: bool = False
+    reviewed_at: datetime | None = None
     version: int
     content_hash: str | None = None
     confirmed_at: datetime | None = None

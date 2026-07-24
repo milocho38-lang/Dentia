@@ -51,6 +51,7 @@ export interface Procedure {
   site_id: string | null;
   site_name: string | null;
   appointment_id: string | null;
+  source_odontogram_event_id?: string | null;
   unit_value: string;
   quantity: string;
   total_value: string;
@@ -64,6 +65,30 @@ export interface Procedure {
   tooth: string | null;
   surfaces: string[] | null;
   scope_label: string;
+}
+
+export interface ProcedureClinicalCompletionInput {
+  clinical_evolution_id: string;
+  odontogram_catalog_item_id: string;
+  idempotency_key: string;
+  source_odontogram_event_id?: string | null;
+  source_diagnosis_action: "KEEP_ACTIVE" | "RESOLVE_ON_SIGN";
+  scope_type: string;
+  zone?: string | null;
+  tooth?: string | null;
+  surfaces?: string[] | null;
+  dentition?: string;
+  observation?: string | null;
+}
+
+export interface ProcedureClinicalCompletionResponse {
+  procedure: Procedure;
+  odontogram_event_id: string;
+  odontogram_event_status: string;
+  clinical_evolution_id: string;
+  idempotency_key: string;
+  idempotent_replay: boolean;
+  message: string;
 }
 
 export interface ProcedureCatalogItem {
@@ -105,7 +130,14 @@ export interface Budget {
   patient_id: string;
   treatment_id: string;
   number: string | null;
+  series_id: string;
+  previous_budget_id: string | null;
+  superseded_by_id: string | null;
   version: number;
+  is_current: boolean;
+  is_editable: boolean;
+  is_current_draft: boolean;
+  version_reason: string | null;
   status: string;
   gross_value: string;
   discount_type: string | null;

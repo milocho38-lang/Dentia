@@ -2,7 +2,12 @@
 
 ## Estado
 
-Propuesta de diseño. No implementada.
+Propuesta de diseño evolutiva.
+
+Partes implementadas:
+
+- C017E.1: trazabilidad desde procedimiento hacia evento odontográfico origen.
+- C017E.2: presupuesto versionado e inmutable por serie.
 
 ## Relación mínima recomendada
 
@@ -85,6 +90,9 @@ Desventajas:
 | `source_budget_detail_id` | `TreatmentProcedure` o link table | Opcional | Detalle 1 → N acciones | No necesario para C017E.1 |
 | `source_clinical_evolution_id` | `OdontogramEvent` | Ya existe como `evolution_id` | Evolución 1 → N eventos | Reutilizar |
 | `generated_odontogram_event_id` | Link table | Sí | Procedimiento/evolución → evento | Mejor en tabla intermedia |
+| `budget_series_id` | `Budget` | Sí | Serie 1 → N versiones | Implementado en C017E.2 |
+| `previous_budget_id` | `Budget` | Sí | Versión anterior 1 → N derivadas | Implementado en C017E.2 |
+| `superseded_by_id` | `Budget` | Sí | Versión sustituida → nueva versión vigente | Implementado en C017E.2 |
 
 ## BudgetDetail como snapshot
 
@@ -110,6 +118,29 @@ Para trazabilidad futura, se recomienda snapshot adicional:
 - `source_surfaces`
 
 Esto permite preservar la venta aunque el procedimiento o evento origen cambie después.
+
+## Presupuesto versionado implementado en C017E.2
+
+La estructura vigente es:
+
+```text
+Budget series
+   ├── Budget V1
+   │      └── BudgetDetail snapshots
+   ├── Budget V2
+   │      └── BudgetDetail snapshots copiados de V1
+   └── Budget V3
+          └── BudgetDetail snapshots copiados de versión origen
+```
+
+Reglas:
+
+- `Budget.budget_series_id` agrupa las versiones.
+- `Budget.previous_budget_id` preserva la cadena de derivación.
+- `Budget.superseded_by_id` registra qué versión sustituyó a otra.
+- `Budget.es_version_vigente` marca la versión aprobada vigente.
+- `Budget.budget_idempotency_key` evita duplicados por reintentos.
+- `BudgetDetail` conserva el snapshot comercial y dental de cada línea.
 
 ## Procedimiento realizado → evento odontográfico
 

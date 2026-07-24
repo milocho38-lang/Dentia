@@ -286,7 +286,7 @@ def _catalog_response(item: OdontogramCatalogItem) -> OdontogramCatalogItemRespo
         id=item.id,
         company_id=item.company_id,
         code=item.code,
-        name=item.name,
+        name=_clinical_catalog_display_name(item.code, item.name),
         type=item.type,
         category=item.category,
         description=item.description,
@@ -299,13 +299,25 @@ def _catalog_response(item: OdontogramCatalogItem) -> OdontogramCatalogItemRespo
     )
 
 
+def _clinical_catalog_display_name(code: str | None, name: str | None) -> str:
+    normalized = (code or "").strip().upper()
+    if normalized == "DONE_RESIN":
+        return "Restauración en resina realizada"
+    if normalized == "PLAN_RESIN":
+        return "Restauración en resina planificada"
+    return name or "Elemento no disponible"
+
+
 def _detail_response(session: Session, detail: OdontogramEventDetail) -> OdontogramEventDetailResponse:
     catalog = session.get(OdontogramCatalogItem, detail.catalog_item_id)
     return OdontogramEventDetailResponse(
         id=detail.id,
         catalog_item_id=detail.catalog_item_id,
         catalog_code=catalog.code if catalog else "",
-        catalog_name=catalog.name if catalog else "Elemento no disponible",
+        catalog_name=_clinical_catalog_display_name(
+            catalog.code if catalog else None,
+            catalog.name if catalog else None,
+        ),
         catalog_type=catalog.type if catalog else "",
         color=catalog.color if catalog else None,
         pattern=catalog.pattern if catalog else None,
@@ -346,6 +358,10 @@ def _event_response(session: Session, event: OdontogramEvent) -> OdontogramEvent
         observation=event.observation,
         correction_reason=event.correction_reason,
         parent_event_id=event.parent_event_id,
+        source_odontogram_event_id=event.source_odontogram_event_id,
+        source_diagnosis_action=event.source_diagnosis_action,
+        reviewed_for_evolution=event.reviewed_for_evolution,
+        reviewed_at=event.reviewed_at,
         version=event.version,
         content_hash=event.content_hash,
         confirmed_at=event.confirmed_at,
@@ -383,6 +399,11 @@ def _canonical_hash(session: Session, event: OdontogramEvent) -> str:
         "company_id": str(event.company_id),
         "patient_id": str(event.patient_id),
         "odontogram_id": str(event.odontogram_id),
+        "evolution_id": str(event.evolution_id) if event.evolution_id else None,
+        "treatment_id": str(event.treatment_id) if event.treatment_id else None,
+        "procedure_id": str(event.procedure_id) if event.procedure_id else None,
+        "source_odontogram_event_id": str(event.source_odontogram_event_id) if event.source_odontogram_event_id else None,
+        "source_diagnosis_action": event.source_diagnosis_action,
         "event_type": event.event_type,
         "clinical_date": event.clinical_date.isoformat(),
         "site_id": str(event.site_id),

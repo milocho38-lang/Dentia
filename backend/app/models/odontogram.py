@@ -154,6 +154,15 @@ class OdontogramEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_odontograma_eventos_evolucion", "evolucion_id"),
         Index("ix_odontograma_eventos_tratamiento", "tratamiento_id"),
         Index("ix_odontograma_eventos_procedimiento", "procedimiento_id"),
+        Index("ix_odontograma_eventos_source_event", "source_odontogram_event_id"),
+        Index("ix_odontograma_eventos_completion_key", "empresa_id", "completion_idempotency_key"),
+        Index(
+            "uq_odontograma_eventos_empresa_completion_key",
+            "empresa_id",
+            "completion_idempotency_key",
+            unique=True,
+            postgresql_where=text("completion_idempotency_key IS NOT NULL"),
+        ),
     )
 
     company_id: Mapped[UUID] = mapped_column(
@@ -246,6 +255,32 @@ class OdontogramEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    source_odontogram_event_id: Mapped[UUID | None] = mapped_column(
+        "source_odontogram_event_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("odontograma_eventos.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_diagnosis_action: Mapped[str | None] = mapped_column(
+        String(40),
+        nullable=True,
+    )
+    completion_idempotency_key: Mapped[str | None] = mapped_column(
+        String(120),
+        nullable=True,
+    )
+    reviewed_for_evolution: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    reviewed_by: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     content_hash: Mapped[str | None] = mapped_column("hash_contenido", String(128), nullable=True)
     confirmed_by: Mapped[UUID | None] = mapped_column(

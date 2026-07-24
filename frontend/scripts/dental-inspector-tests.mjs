@@ -143,6 +143,14 @@ model = inspector.buildInspectorModel("36", toothState("36", {
 assert.equal(model.groups.find((group) => group.id === "informative").events.length, 1);
 assert.equal(inspector.eventSurfaceLabel(model.events[0]), "Diagnóstico no superficial");
 
+model = inspector.buildInspectorModel("46", toothState("46", {
+  PERFORMED: [detail("done-46", "DONE_RESIN", "Restauración en resina realizada", "PERFORMED", ["OCCLUSAL"], "PERFORMED_PROCEDURE")],
+}));
+assert.equal(model.events.length, 1, "resolved diagnosis does not participate in current inspector model");
+assert.equal(model.events[0].label, "Restauración en resina realizada");
+assert.equal(model.groups.find((group) => group.id === "diagnosis"), undefined);
+assert.equal(model.groups.find((group) => group.id === "performed").events.length, 1);
+
 assert.equal(inspector.eventBelongsToTooth(event("e1", "36"), "36"), true);
 assert.equal(inspector.eventBelongsToTooth(event("e2", "36"), "31"), false);
 

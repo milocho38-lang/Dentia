@@ -297,6 +297,81 @@ class ProcedureResponse(BaseModel):
     scope_label: str
 
 
+SOURCE_DIAGNOSIS_ACTIONS = {"KEEP_ACTIVE", "RESOLVE_ON_SIGN"}
+
+
+class ProcedureClinicalCompletionRequest(BaseModel):
+    clinical_evolution_id: UUID
+    odontogram_catalog_item_id: UUID
+    idempotency_key: str = Field(min_length=8, max_length=120)
+    source_odontogram_event_id: UUID | None = None
+    source_diagnosis_action: str = "KEEP_ACTIVE"
+    scope_type: str = "TOOTH"
+    zone: str | None = Field(default=None, max_length=40)
+    tooth: str | None = Field(default=None, max_length=30)
+    surfaces: list[str] | None = None
+    dentition: str = "PERMANENT"
+    observation: str | None = Field(default=None, max_length=3000)
+
+    @field_validator("idempotency_key", "zone", "tooth", "observation")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @field_validator("source_diagnosis_action")
+    @classmethod
+    def valid_source_diagnosis_action(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in SOURCE_DIAGNOSIS_ACTIONS:
+            raise ValueError("Acción sobre diagnóstico origen no válida.")
+        return normalized
+
+    @field_validator("scope_type")
+    @classmethod
+    def valid_scope_type(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_SCOPE_TYPES:
+            raise ValueError("Tipo de alcance dental no válido.")
+        return normalized
+
+    @field_validator("zone")
+    @classmethod
+    def valid_zone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_ZONES:
+            raise ValueError("Zona dental no válida.")
+        return normalized
+
+    @field_validator("surfaces")
+    @classmethod
+    def valid_surfaces(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        normalized = sorted({
+            surface.strip().upper()
+            for surface in value
+            if surface and surface.strip()
+        })
+        invalid = [surface for surface in normalized if surface not in PROCEDURE_SURFACES]
+        if invalid:
+            raise ValueError("Cara dental no válida.")
+        return normalized or None
+
+
+class ProcedureClinicalCompletionResponse(BaseModel):
+    procedure: ProcedureResponse
+    odontogram_event_id: UUID
+    odontogram_event_status: str
+    clinical_evolution_id: UUID
+    idempotency_key: str
+    idempotent_replay: bool = False
+    message: str
+
+
 class OdontogramPlannedProcedureTreatmentCreate(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     description: str | None = None
@@ -492,21 +567,40 @@ class ProcedureCatalogListResponse(BaseModel):
 
 
 class BudgetCreateRequest(BaseModel):
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
+    procedure_ids: list[UUID] = Field(default_factory=list)
     discount_type: str | None = Field(default=None, pattern="^(porcentaje|valor)$")
     discount_value: Decimal = Field(default=Decimal("0"), ge=0)
     observations: str | None = None
     expires_on: date | None = None
 
-    @field_validator("observations")
+    @field_validator("idempotency_key", "observations")
     @classmethod
     def strip_observations(cls, value: str | None) -> str | None:
         if value is None:
             return None
         return value.strip() or None
 
+    @field_validator("procedure_ids")
+    @classmethod
+    def unique_procedure_ids(cls, value: list[UUID]) -> list[UUID]:
+        return list(dict.fromkeys(value))
+
 
 class BudgetUpdateRequest(BudgetCreateRequest):
     pass
+
+
+class BudgetVersionCreateRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
+
+    @field_validator("reason", "idempotency_key")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 class BudgetDetailResponse(BaseModel):
@@ -531,7 +625,14 @@ class BudgetResponse(BaseModel):
     patient_id: UUID
     treatment_id: UUID
     number: str | None
+    series_id: UUID
+    previous_budget_id: UUID | None
+    superseded_by_id: UUID | None
     version: int
+    is_current: bool
+    is_editable: bool
+    is_current_draft: bool
+    version_reason: str | None
     status: str
     gross_value: Decimal
     discount_type: str | None

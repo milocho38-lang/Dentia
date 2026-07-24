@@ -8,6 +8,8 @@ import type {
   Procedure,
   ProcedureCatalogItem,
   ProcedureCatalogListResponse,
+  ProcedureClinicalCompletionInput,
+  ProcedureClinicalCompletionResponse,
   Treatment,
   TreatmentListResponse,
 } from "@/types/treatment";
@@ -178,6 +180,21 @@ export function markProcedureDone(treatmentId: string, procedureId: string) {
   );
 }
 
+export function completeProcedureClinically(
+  treatmentId: string,
+  procedureId: string,
+  data: ProcedureClinicalCompletionInput,
+) {
+  return apiRequest<ProcedureClinicalCompletionResponse>(
+    `/api/treatments/${treatmentId}/procedures/${procedureId}/clinical-completion`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
+}
+
 export function cancelProcedure(
   treatmentId: string,
   procedureId: string,
@@ -196,6 +213,8 @@ export function cancelProcedure(
 export function createBudget(
   treatmentId: string,
   data: {
+    idempotency_key?: string | null;
+    procedure_ids?: string[];
     discount_type?: string | null;
     discount_value: string;
     observations?: string | null;
@@ -204,6 +223,24 @@ export function createBudget(
 ) {
   return apiRequest<Budget>(`/api/treatments/${treatmentId}/budget`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateBudget(
+  budgetId: string,
+  data: {
+    idempotency_key?: string | null;
+    procedure_ids?: string[];
+    discount_type?: string | null;
+    discount_value: string;
+    observations?: string | null;
+    expires_on?: string | null;
+  },
+) {
+  return apiRequest<Budget>(`/api/budgets/${budgetId}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
@@ -231,9 +268,14 @@ export function downloadBudgetPdf(budgetId: string) {
   return apiBlob(`/api/budgets/${budgetId}/pdf`);
 }
 
-export function duplicateBudgetVersion(budgetId: string) {
+export function duplicateBudgetVersion(
+  budgetId: string,
+  data: { reason: string; idempotency_key?: string | null },
+) {
   return apiRequest<Budget>(`/api/budgets/${budgetId}/duplicate-version`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
   });
 }
 

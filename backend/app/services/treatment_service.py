@@ -1,8 +1,10 @@
+import hashlib
+import json
 from datetime import date, datetime, time, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from io import BytesIO
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -29,7 +31,8 @@ from app.core.config import settings
 from app.models.agenda import Appointment, Dentist, DentistSite, Patient
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
-from app.models.odontogram import OdontogramCatalogItem, OdontogramEvent, OdontogramEventDetail
+from app.models.clinical_record import ClinicalEvolution, ClinicalEvolutionProcedure, ClinicalRecord
+from app.models.odontogram import Odontogram, OdontogramCatalogItem, OdontogramEvent, OdontogramEventDetail
 from app.models.site import Site
 from app.models.treatment import (
     Budget,
@@ -46,6 +49,8 @@ from app.schemas.treatment_schema import (
     BudgetCreateRequest,
     BudgetDetailResponse,
     BudgetResponse,
+    BudgetUpdateRequest,
+    BudgetVersionCreateRequest,
     FinanceBreakdownItem,
     FinanceBreakdownResponse,
     FinanceDashboardResponse,
@@ -61,6 +66,8 @@ from app.schemas.treatment_schema import (
     ProcedureCatalogItemResponse,
     ProcedureCatalogListResponse,
     ProcedureCatalogUpdateRequest,
+    ProcedureClinicalCompletionRequest,
+    ProcedureClinicalCompletionResponse,
     PROCEDURE_SCOPE_TYPES,
     PROCEDURE_SURFACES,
     PROCEDURE_ZONES,
@@ -408,6 +415,118 @@ def _json_safe(value):
     return value
 
 
+def _effective_timezone(company: Company | None, site: Site | None) -> str:
+    candidate = (site.timezone if site else None) or (company.timezone if company else None) or "America/Bogota"
+    try:
+        ZoneInfo(candidate)
+    except ZoneInfoNotFoundError:
+        return "America/Bogota"
+    return candidate
+
+
+def _canonical_odontogram_event_payload(session: Session, event: OdontogramEvent) -> dict:
+    details = session.scalars(
+        select(OdontogramEventDetail)
+        .where(OdontogramEventDetail.event_id == event.id)
+        .order_by(OdontogramEventDetail.created_at, OdontogramEventDetail.id)
+    ).all()
+    return {
+        "id": str(event.id),
+        "company_id": str(event.company_id),
+        "patient_id": str(event.patient_id),
+        "clinical_record_id": str(event.clinical_record_id),
+        "odontogram_id": str(event.odontogram_id),
+        "evolution_id": str(event.evolution_id) if event.evolution_id else None,
+        "appointment_id": str(event.appointment_id) if event.appointment_id else None,
+        "treatment_id": str(event.treatment_id) if event.treatment_id else None,
+        "procedure_id": str(event.procedure_id) if event.procedure_id else None,
+        "source_odontogram_event_id": str(event.source_odontogram_event_id) if event.source_odontogram_event_id else None,
+        "source_diagnosis_action": event.source_diagnosis_action,
+        "site_id": str(event.site_id),
+        "dentist_id": str(event.dentist_id),
+        "event_type": event.event_type,
+        "status": event.status,
+        "clinical_date": event.clinical_date.isoformat(),
+        "timezone_name": event.timezone_name,
+        "observation": event.observation,
+        "details": [
+            {
+                "catalog_item_id": str(detail.catalog_item_id),
+                "scope_type": detail.scope_type,
+                "zone": detail.zone,
+                "tooth_code": detail.tooth_code,
+                "dentition": detail.dentition,
+                "surfaces": detail.surfaces,
+                "layer": detail.layer,
+                "status_after": detail.status_after,
+                "metadata": detail.detail_metadata,
+            }
+            for detail in details
+        ],
+    }
+
+
+def _content_hash(payload: dict) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _require_completion_evolution(
+    session: Session,
+    context: AuthContext,
+    patient_id: UUID,
+    evolution_id: UUID,
+) -> ClinicalEvolution:
+    evolution = session.scalar(
+        select(ClinicalEvolution)
+        .where(
+            ClinicalEvolution.id == evolution_id,
+            ClinicalEvolution.company_id == context.user.company_id,
+            ClinicalEvolution.patient_id == patient_id,
+        )
+        .with_for_update()
+    )
+    if evolution is None:
+        raise TreatmentError("Evolución clínica no encontrada para este paciente.", 404)
+    if evolution.status != "DRAFT":
+        raise TreatmentError("La realización clínica debe vincularse a una evolución en borrador.", 409)
+    return evolution
+
+
+def _require_patient_odontogram(session: Session, context: AuthContext, patient_id: UUID) -> Odontogram:
+    odontogram = session.scalar(
+        select(Odontogram).where(
+            Odontogram.company_id == context.user.company_id,
+            Odontogram.patient_id == patient_id,
+            Odontogram.status == "ACTIVE",
+        )
+    )
+    if odontogram is None:
+        raise TreatmentError("El paciente debe tener odontograma activo para registrar realización clínica.", 409)
+    return odontogram
+
+
+def _require_performed_catalog_item(
+    session: Session,
+    context: AuthContext,
+    catalog_item_id: UUID,
+) -> OdontogramCatalogItem:
+    item = session.scalar(
+        select(OdontogramCatalogItem).where(
+            OdontogramCatalogItem.id == catalog_item_id,
+            OdontogramCatalogItem.is_active.is_(True),
+            OdontogramCatalogItem.type == "PERFORMED_PROCEDURE",
+            or_(
+                OdontogramCatalogItem.company_id.is_(None),
+                OdontogramCatalogItem.company_id == context.user.company_id,
+            ),
+        )
+    )
+    if item is None:
+        raise TreatmentError("Seleccione un resultado odontográfico realizado válido.", 422)
+    return item
+
+
 def _authorized_sites(session: Session, context: AuthContext) -> set[UUID]:
     return authorized_site_ids(
         session,
@@ -705,10 +824,21 @@ def _budget_value(session: Session, treatment_id: UUID) -> tuple[Decimal, Decima
         .where(
             Budget.treatment_id == treatment_id,
             Budget.status.in_(APPROVED_BUDGET_STATUSES),
+            Budget.is_current.is_(True),
         )
         .order_by(Budget.version.desc())
         .limit(1)
     )
+    if budget is None:
+        budget = session.scalar(
+            select(Budget)
+            .where(
+                Budget.treatment_id == treatment_id,
+                Budget.status.in_(APPROVED_BUDGET_STATUSES),
+            )
+            .order_by(Budget.version.desc())
+            .limit(1)
+        )
     if budget:
         return (
             _money(budget.gross_value),
@@ -1543,6 +1673,242 @@ def mark_procedure_done(session: Session, context: AuthContext, treatment_id: UU
     return _procedure_response(*row)
 
 
+def complete_procedure_clinically(
+    session: Session,
+    context: AuthContext,
+    treatment_id: UUID,
+    procedure_id: UUID,
+    payload: ProcedureClinicalCompletionRequest,
+    metadata: RequestMetadata,
+) -> ProcedureClinicalCompletionResponse:
+    _require_bridge_permission(context, "odontogram.create")
+    _require_bridge_permission(context, "clinical_evolutions.update_draft")
+
+    existing_event = session.scalar(
+        select(OdontogramEvent).where(
+            OdontogramEvent.company_id == context.user.company_id,
+            OdontogramEvent.completion_idempotency_key == payload.idempotency_key,
+        )
+    )
+    if existing_event is not None:
+        row = session.execute(
+            select(TreatmentProcedure, Dentist, Site)
+            .outerjoin(Dentist, Dentist.id == TreatmentProcedure.dentist_id)
+            .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
+            .where(TreatmentProcedure.id == procedure_id)
+        ).one()
+        return ProcedureClinicalCompletionResponse(
+            procedure=_procedure_response(*row),
+            odontogram_event_id=existing_event.id,
+            odontogram_event_status=existing_event.status,
+            clinical_evolution_id=existing_event.evolution_id or payload.clinical_evolution_id,
+            idempotency_key=payload.idempotency_key,
+            idempotent_replay=True,
+            message="La realización clínica ya había sido registrada.",
+        )
+
+    treatment = _require_treatment(session, context, treatment_id, lock=True)
+    procedure = _require_procedure(session, context, treatment, procedure_id, lock=True)
+    if procedure.status == "Cancelado":
+        raise TreatmentError("No se puede registrar realización clínica de un procedimiento cancelado.")
+
+    evolution = _require_completion_evolution(session, context, treatment.patient_id, payload.clinical_evolution_id)
+    odontogram = _require_patient_odontogram(session, context, treatment.patient_id)
+    catalog_item = _require_performed_catalog_item(session, context, payload.odontogram_catalog_item_id)
+
+    scope_type, zone, tooth, surfaces = _validate_dental_scope(
+        payload.scope_type,
+        payload.zone,
+        payload.tooth,
+        payload.surfaces,
+    )
+    if catalog_item.allowed_scopes and scope_type not in catalog_item.allowed_scopes:
+        raise TreatmentError("El resultado odontográfico no permite ese alcance dental.", 422)
+    if catalog_item.allowed_surfaces and surfaces:
+        invalid = [surface for surface in surfaces if surface not in catalog_item.allowed_surfaces]
+        if invalid:
+            raise TreatmentError("El resultado odontográfico no permite una o más caras seleccionadas.", 422)
+
+    duplicate = session.scalar(
+        select(OdontogramEvent).where(
+            OdontogramEvent.company_id == context.user.company_id,
+            OdontogramEvent.procedure_id == procedure.id,
+            OdontogramEvent.evolution_id == evolution.id,
+            OdontogramEvent.event_type == "PROCEDURE_PERFORMED",
+            OdontogramEvent.status.in_(["DRAFT", "CONFIRMED"]),
+        )
+    )
+    if duplicate is not None:
+        row = session.execute(
+            select(TreatmentProcedure, Dentist, Site)
+            .outerjoin(Dentist, Dentist.id == TreatmentProcedure.dentist_id)
+            .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
+            .where(TreatmentProcedure.id == procedure.id)
+        ).one()
+        return ProcedureClinicalCompletionResponse(
+            procedure=_procedure_response(*row),
+            odontogram_event_id=duplicate.id,
+            odontogram_event_status=duplicate.status,
+            clinical_evolution_id=evolution.id,
+            idempotency_key=payload.idempotency_key,
+            idempotent_replay=True,
+            message="Este procedimiento ya tiene una realización odontográfica vinculada a la evolución.",
+        )
+
+    source_event_id = payload.source_odontogram_event_id or procedure.source_odontogram_event_id
+    if source_event_id is not None:
+        source_event = session.scalar(
+            select(OdontogramEvent).where(
+                OdontogramEvent.id == source_event_id,
+                OdontogramEvent.company_id == context.user.company_id,
+                OdontogramEvent.patient_id == treatment.patient_id,
+            )
+        )
+        if source_event is None:
+            raise TreatmentError("El diagnóstico odontográfico de origen no existe o no pertenece al paciente.", 404)
+
+    site_id = procedure.site_id or evolution.site_id or treatment.main_site_id
+    dentist_id = procedure.dentist_id or evolution.dentist_id or treatment.responsible_dentist_id
+    if site_id is None or dentist_id is None:
+        raise TreatmentError("La realización clínica requiere sede y odontólogo.", 422)
+    site = _require_site(session, context, site_id)
+    company = session.get(Company, context.user.company_id)
+    timezone_name = _effective_timezone(company, site)
+    now = datetime.now(timezone.utc)
+
+    procedure.status = "Realizado"
+    procedure.performed_at = procedure.performed_at or now
+    procedure.updated_by = context.user.id
+    if treatment.status in {"Borrador", "Presupuestado", "Aprobado"}:
+        treatment.status = "En ejecución"
+    treatment.updated_by = context.user.id
+
+    existing_link = session.scalar(
+        select(ClinicalEvolutionProcedure).where(
+            ClinicalEvolutionProcedure.evolution_id == evolution.id,
+            ClinicalEvolutionProcedure.procedure_id == procedure.id,
+        )
+    )
+    if existing_link is None:
+        session.add(
+            ClinicalEvolutionProcedure(
+                company_id=context.user.company_id,
+                evolution_id=evolution.id,
+                treatment_id=treatment.id,
+                procedure_id=procedure.id,
+                action="PERFORMED",
+                observations="Realización clínica vinculada al odontograma.",
+                created_by=context.user.id,
+            )
+        )
+    else:
+        existing_link.action = "PERFORMED"
+        existing_link.observations = existing_link.observations or "Realización clínica vinculada al odontograma."
+
+    event = OdontogramEvent(
+        company_id=context.user.company_id,
+        patient_id=treatment.patient_id,
+        clinical_record_id=odontogram.clinical_record_id,
+        odontogram_id=odontogram.id,
+        evolution_id=evolution.id,
+        appointment_id=evolution.appointment_id or procedure.appointment_id,
+        treatment_id=treatment.id,
+        procedure_id=procedure.id,
+        source_odontogram_event_id=source_event_id,
+        source_diagnosis_action=payload.source_diagnosis_action,
+        completion_idempotency_key=payload.idempotency_key,
+        reviewed_for_evolution=True,
+        reviewed_by=context.user.id,
+        reviewed_at=now,
+        site_id=site_id,
+        dentist_id=dentist_id,
+        event_type="PROCEDURE_PERFORMED",
+        status="DRAFT",
+        clinical_date=procedure.performed_at or now,
+        timezone_name=timezone_name,
+        observation=_normalize_optional_text(payload.observation),
+        created_by=context.user.id,
+        updated_by=context.user.id,
+    )
+    session.add(event)
+    session.flush()
+    session.add(
+        OdontogramEventDetail(
+            company_id=context.user.company_id,
+            event_id=event.id,
+            catalog_item_id=catalog_item.id,
+            scope_type=scope_type,
+            zone=zone,
+            tooth_code=tooth,
+            dentition=payload.dentition,
+            surfaces=surfaces,
+            layer="PERFORMED",
+            status_after="PERFORMED",
+            detail_metadata={
+                "procedure_id": str(procedure.id),
+                "source_diagnosis_action": payload.source_diagnosis_action,
+                "reviewed_for_evolution": True,
+            },
+        )
+    )
+
+    _event(
+        session,
+        context,
+        treatment.id,
+        "PROCEDURE_CLINICAL_COMPLETION_REGISTERED",
+        "Procedimiento realizado con borrador odontográfico vinculado a evolución.",
+        {
+            "procedure_id": str(procedure.id),
+            "evolution_id": str(evolution.id),
+            "odontogram_event_id": str(event.id),
+            "source_odontogram_event_id": str(source_event_id) if source_event_id else None,
+        },
+    )
+    for action in (
+        "PROCEDURE_MARKED_COMPLETED",
+        "ODONTOGRAM_DRAFT_GENERATED",
+        "ODONTOGRAM_DRAFT_LINKED_TO_EVOLUTION",
+        "ODONTOGRAM_DRAFT_REVIEWED",
+    ):
+        _audit(
+            session,
+            context,
+            metadata,
+            entity="treatment_procedure",
+            entity_id=procedure.id,
+            action=action,
+            detail={
+                "patient_id": str(treatment.patient_id),
+                "treatment_id": str(treatment.id),
+                "procedure_id": str(procedure.id),
+                "evolution_id": str(evolution.id),
+                "odontogram_event_id": str(event.id),
+                "source_odontogram_event_id": str(source_event_id) if source_event_id else None,
+                "source_diagnosis_action": payload.source_diagnosis_action,
+                "scope_type": scope_type,
+                "tooth": tooth,
+                "surfaces": surfaces,
+            },
+        )
+
+    session.commit()
+    row = session.execute(
+        select(TreatmentProcedure, Dentist, Site)
+        .outerjoin(Dentist, Dentist.id == TreatmentProcedure.dentist_id)
+        .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
+        .where(TreatmentProcedure.id == procedure.id)
+    ).one()
+    return ProcedureClinicalCompletionResponse(
+        procedure=_procedure_response(*row),
+        odontogram_event_id=event.id,
+        odontogram_event_status=event.status,
+        clinical_evolution_id=evolution.id,
+        idempotency_key=payload.idempotency_key,
+        message="Realización clínica registrada. El odontograma se confirmará al firmar la evolución.",
+    )
+
+
 def cancel_procedure(session: Session, context: AuthContext, treatment_id: UUID, procedure_id: UUID, metadata: RequestMetadata, reason: str | None) -> ProcedureResponse:
     if not reason:
         raise TreatmentError("Cancelar procedimiento requiere motivo.")
@@ -1728,6 +2094,59 @@ def _add_budget_detail_snapshot(
         )
 
 
+def _budget_detail_clone(
+    *,
+    company_id: UUID,
+    budget_id: UUID,
+    detail: BudgetDetail,
+    order: int,
+) -> BudgetDetail:
+    return BudgetDetail(
+        company_id=company_id,
+        budget_id=budget_id,
+        procedure_id=detail.procedure_id,
+        name=detail.name,
+        category=detail.category,
+        quantity=detail.quantity,
+        unit_value=detail.unit_value,
+        total_value=detail.total_value,
+        order=order,
+        observations=detail.observations,
+        scope_type=detail.scope_type or "GENERAL",
+        zone=detail.zone,
+        tooth=detail.tooth,
+        surfaces=detail.surfaces,
+    )
+
+
+def _procedures_for_budget_payload(
+    session: Session,
+    context: AuthContext,
+    treatment: Treatment,
+    procedure_ids: list[UUID],
+) -> list[TreatmentProcedure]:
+    statement = select(TreatmentProcedure).where(
+        TreatmentProcedure.company_id == context.user.company_id,
+        TreatmentProcedure.treatment_id == treatment.id,
+        TreatmentProcedure.patient_id == treatment.patient_id,
+        TreatmentProcedure.status != "Cancelado",
+    )
+    if procedure_ids:
+        statement = statement.where(TreatmentProcedure.id.in_(procedure_ids))
+    procedures = session.scalars(statement.order_by(TreatmentProcedure.created_at)).all()
+    if procedure_ids and len({procedure.id for procedure in procedures}) != len(set(procedure_ids)):
+        raise TreatmentError("Uno o más procedimientos no pertenecen al tratamiento o no son elegibles.", 422)
+    return procedures
+
+
+def _next_budget_number(session: Session, context: AuthContext) -> str:
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtext(str(context.user.company_id)))))
+    existing = session.scalar(
+        select(func.count(Budget.id)).where(Budget.company_id == context.user.company_id)
+    ) or 0
+    return f"PRE-{int(existing) + 1:06d}"
+
+
 def _recalculate_editable_budgets(
     session: Session,
     context: AuthContext,
@@ -1744,9 +2163,28 @@ def _recalculate_editable_budgets(
     ).all()
     if not budgets:
         return
-    procedures = _active_procedures_for_budget(session, treatment.id)
-    gross = _money(sum((procedure.total_value for procedure in procedures), Decimal("0")))
     for budget in budgets:
+        existing_details = session.scalars(
+            select(BudgetDetail)
+            .where(BudgetDetail.budget_id == budget.id)
+            .order_by(BudgetDetail.order)
+        ).all()
+        procedure_ids = [detail.procedure_id for detail in existing_details if detail.procedure_id]
+        if procedure_ids:
+            procedures = session.scalars(
+                select(TreatmentProcedure)
+                .where(
+                    TreatmentProcedure.company_id == context.user.company_id,
+                    TreatmentProcedure.treatment_id == treatment.id,
+                    TreatmentProcedure.patient_id == treatment.patient_id,
+                    TreatmentProcedure.status != "Cancelado",
+                    TreatmentProcedure.id.in_(procedure_ids),
+                )
+                .order_by(TreatmentProcedure.created_at)
+            ).all()
+        else:
+            procedures = _active_procedures_for_budget(session, treatment.id)
+        gross = _money(sum((procedure.total_value for procedure in procedures), Decimal("0")))
         discount = _calculate_discount(gross, budget.discount_type, budget.discount_value)
         budget.gross_value = gross
         budget.discount_calculated_value = discount
@@ -1802,18 +2240,41 @@ def _has_valid_payments(session: Session, treatment_id: UUID) -> bool:
 
 def create_budget(session: Session, context: AuthContext, treatment_id: UUID, payload: BudgetCreateRequest, metadata: RequestMetadata) -> BudgetResponse:
     treatment = _require_treatment(session, context, treatment_id, lock=True)
-    procedures = _active_procedures_for_budget(session, treatment.id)
+    if treatment.status in TREATMENT_FINAL_STATUSES:
+        raise TreatmentError("No se puede crear presupuesto para un tratamiento finalizado o cancelado.")
+    if payload.idempotency_key:
+        existing = session.scalar(
+            select(Budget).where(
+                Budget.company_id == context.user.company_id,
+                Budget.budget_idempotency_key == payload.idempotency_key,
+            )
+        )
+        if existing:
+            if existing.treatment_id != treatment.id:
+                raise TreatmentError("La clave de idempotencia ya fue usada para otro tratamiento.", 409)
+            return get_budget(session, context, existing.id)
+    procedures = _procedures_for_budget_payload(
+        session,
+        context,
+        treatment,
+        payload.procedure_ids,
+    )
     if not procedures:
         raise TreatmentError("No se puede crear presupuesto sin procedimientos.")
     gross = _money(sum((procedure.total_value for procedure in procedures), Decimal("0")))
     discount = _calculate_discount(gross, payload.discount_type, payload.discount_value)
-    version = (session.scalar(select(func.coalesce(func.max(Budget.version), 0)).where(Budget.treatment_id == treatment.id)) or 0) + 1
+    version = 1
+    budget_id = uuid4()
     budget = Budget(
+        id=budget_id,
         company_id=context.user.company_id,
         patient_id=treatment.patient_id,
         treatment_id=treatment.id,
-        number=f"P-{version}",
+        number=_next_budget_number(session, context),
+        series_id=budget_id,
         version=version,
+        is_current=False,
+        budget_idempotency_key=payload.idempotency_key,
         status="Borrador",
         gross_value=gross,
         discount_type=payload.discount_type,
@@ -1834,8 +2295,24 @@ def create_budget(session: Session, context: AuthContext, treatment_id: UUID, pa
         procedures=procedures,
     )
     treatment.status = "Presupuestado" if treatment.status == "Borrador" else treatment.status
-    _event(session, context, treatment.id, "BUDGET_CREATED", "Presupuesto creado.", {"budget_id": str(budget.id)})
-    _audit(session, context, metadata, entity="budget", entity_id=budget.id, action="BUDGET_CREATED")
+    detail = {
+        "budget_id": str(budget.id),
+        "series_id": str(budget.series_id),
+        "version": budget.version,
+        "procedure_ids": [str(procedure.id) for procedure in procedures],
+        "total": str(budget.final_value),
+        "idempotency_key": payload.idempotency_key,
+    }
+    _event(session, context, treatment.id, "BUDGET_CREATED", "Presupuesto creado.", detail)
+    _audit(
+        session,
+        context,
+        metadata,
+        entity="budget",
+        entity_id=budget.id,
+        action="BUDGET_CREATED_FROM_TREATMENT_PROCEDURES",
+        detail=detail,
+    )
     session.commit()
     return get_budget(session, context, budget.id)
 
@@ -1849,7 +2326,14 @@ def _budget_response(session: Session, budget: Budget) -> BudgetResponse:
         patient_id=budget.patient_id,
         treatment_id=budget.treatment_id,
         number=budget.number,
+        series_id=budget.series_id,
+        previous_budget_id=budget.previous_budget_id,
+        superseded_by_id=budget.superseded_by_id,
         version=budget.version,
+        is_current=budget.is_current,
+        is_editable=budget.status in {"Borrador", "Pendiente de aprobación"},
+        is_current_draft=budget.status == "Borrador",
+        version_reason=budget.version_reason,
         status=budget.status,
         gross_value=_money(budget.gross_value),
         discount_type=budget.discount_type,
@@ -1936,7 +2420,7 @@ def generate_budget_pdf(
         leftMargin=1.6 * cm,
         topMargin=1.4 * cm,
         bottomMargin=1.5 * cm,
-        title=f"Presupuesto {budget.number or budget.version}",
+        title=f"Presupuesto {budget.number or budget.version} V{budget.version}",
         author=company.name,
     )
     base = getSampleStyleSheet()
@@ -2046,7 +2530,7 @@ def generate_budget_pdf(
     logo = _image_if_exists(_branding_asset_path(company.logo_path), width=43 * mm, height=24 * mm)
     header_left = logo or _paragraph(company.name, styles["h2"])
     header_right = [
-        _paragraph("Presupuesto odontológico", styles["title"]),
+        _paragraph(f"Presupuesto odontológico · V{budget.version}", styles["title"]),
         Paragraph("<br/>".join(escape(line) for line in company_lines if line), styles["subtitle"]),
         Paragraph("<br/>".join(escape(line) for line in professional_lines if line), styles["subtitle"]),
     ]
@@ -2279,7 +2763,7 @@ def generate_budget_pdf(
         canvas.restoreState()
 
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
-    filename = f"presupuesto-{budget.number or budget.version}.pdf".replace("/", "-")
+    filename = f"presupuesto-{budget.number or budget.id}-v{budget.version}.pdf".replace("/", "-")
     return BudgetPdfResult(content=buffer.getvalue(), filename=filename)
 
 
@@ -2296,14 +2780,39 @@ def _can_access_treatment(session: Session, context: AuthContext, treatment_id: 
         return False
 
 
-def update_budget(session: Session, context: AuthContext, budget_id: UUID, payload: BudgetCreateRequest, metadata: RequestMetadata) -> BudgetResponse:
+def update_budget(session: Session, context: AuthContext, budget_id: UUID, payload: BudgetUpdateRequest, metadata: RequestMetadata) -> BudgetResponse:
     budget = session.scalar(select(Budget).where(Budget.id == budget_id, Budget.company_id == context.user.company_id).with_for_update())
     if budget is None:
         raise TreatmentError("Presupuesto no encontrado.", 404)
+    treatment = _require_treatment(session, context, budget.treatment_id, lock=True)
     if budget.status not in {"Borrador", "Pendiente de aprobación"}:
         raise TreatmentError("Un presupuesto aprobado/rechazado no permite edición económica directa.")
-    gross = _money(budget.gross_value)
+    existing_details = session.scalars(
+        select(BudgetDetail)
+        .where(BudgetDetail.budget_id == budget.id)
+        .order_by(BudgetDetail.order)
+    ).all()
+    procedure_ids = payload.procedure_ids or [
+        detail.procedure_id for detail in existing_details if detail.procedure_id
+    ]
+    procedures = _procedures_for_budget_payload(
+        session,
+        context,
+        treatment,
+        procedure_ids,
+    )
+    if not procedures:
+        raise TreatmentError("No se puede guardar un presupuesto sin procedimientos.")
+    gross = _money(sum((procedure.total_value for procedure in procedures), Decimal("0")))
     discount = _calculate_discount(gross, payload.discount_type, payload.discount_value)
+    session.execute(delete(BudgetDetail).where(BudgetDetail.budget_id == budget.id))
+    _add_budget_detail_snapshot(
+        session,
+        company_id=context.user.company_id,
+        budget_id=budget.id,
+        procedures=procedures,
+    )
+    budget.gross_value = gross
     budget.discount_type = payload.discount_type
     budget.discount_value = _money(payload.discount_value)
     budget.discount_calculated_value = discount
@@ -2311,8 +2820,15 @@ def update_budget(session: Session, context: AuthContext, budget_id: UUID, paylo
     budget.observations = payload.observations
     budget.expires_on = payload.expires_on
     budget.updated_by = context.user.id
-    _event(session, context, budget.treatment_id, "BUDGET_UPDATED", "Presupuesto actualizado.", {"budget_id": str(budget.id)})
-    _audit(session, context, metadata, entity="budget", entity_id=budget.id, action="BUDGET_UPDATED")
+    detail = {
+        "budget_id": str(budget.id),
+        "series_id": str(budget.series_id),
+        "version": budget.version,
+        "procedure_ids": [str(procedure.id) for procedure in procedures],
+        "total": str(budget.final_value),
+    }
+    _event(session, context, budget.treatment_id, "BUDGET_DRAFT_UPDATED", "Presupuesto actualizado.", detail)
+    _audit(session, context, metadata, entity="budget", entity_id=budget.id, action="BUDGET_DRAFT_UPDATED", detail=detail)
     session.commit()
     return get_budget(session, context, budget.id)
 
@@ -2323,20 +2839,190 @@ def change_budget_status(session: Session, context: AuthContext, budget_id: UUID
         raise TreatmentError("Presupuesto no encontrado.", 404)
     treatment = _require_treatment(session, context, budget.treatment_id, lock=True)
     if status == "Aprobado":
+        session.scalars(
+            select(Budget)
+            .where(
+                Budget.company_id == context.user.company_id,
+                Budget.series_id == budget.series_id,
+            )
+            .with_for_update()
+        ).all()
+        if budget.status == "Aprobado" and budget.is_current:
+            return get_budget(session, context, budget.id)
+        if budget.status not in {"Borrador", "Pendiente de aprobación"}:
+            raise TreatmentError("Solo se puede aprobar una versión en borrador o pendiente de aprobación.", 409)
+        detail_count = session.scalar(
+            select(func.count(BudgetDetail.id)).where(BudgetDetail.budget_id == budget.id)
+        )
+        if not detail_count:
+            raise TreatmentError("No se puede aprobar un presupuesto sin líneas.")
         if budget.final_value < 0:
             raise TreatmentError("No se puede aprobar un presupuesto con valor negativo.")
+        previous_current = session.scalars(
+            select(Budget)
+            .where(
+                Budget.company_id == context.user.company_id,
+                Budget.series_id == budget.series_id,
+                Budget.id != budget.id,
+                Budget.status == "Aprobado",
+                Budget.is_current.is_(True),
+            )
+            .with_for_update()
+        ).all()
+        for previous in previous_current:
+            previous.is_current = False
+            previous.superseded_by_id = budget.id
+            previous.updated_by = context.user.id
+            _audit(
+                session,
+                context,
+                metadata,
+                entity="budget",
+                entity_id=previous.id,
+                action="BUDGET_VERSION_SUPERSEDED",
+                detail={
+                    "series_id": str(previous.series_id),
+                    "version": previous.version,
+                    "superseded_by_id": str(budget.id),
+                },
+            )
+        if previous_current:
+            session.flush()
         budget.approved_at = datetime.now(timezone.utc)
         budget.approved_by = context.user.id
+        budget.status = "Aprobado"
+        budget.is_current = True
         treatment.status = "Aprobado" if treatment.status in {"Borrador", "Presupuestado"} else treatment.status
-    if status == "Rechazado":
+    elif status == "Rechazado":
+        if budget.status not in {"Borrador", "Pendiente de aprobación"}:
+            raise TreatmentError("Solo se puede rechazar una versión en borrador o pendiente de aprobación.", 409)
         budget.rejected_at = datetime.now(timezone.utc)
         budget.rejected_by = context.user.id
-    budget.status = status
+        budget.is_current = False
+        budget.status = status
+    else:
+        budget.status = status
     budget.updated_by = context.user.id
-    _event(session, context, treatment.id, action, f"Presupuesto {status}.", {"budget_id": str(budget.id)})
-    _audit(session, context, metadata, entity="budget", entity_id=budget.id, action=action)
+    detail = {
+        "budget_id": str(budget.id),
+        "series_id": str(budget.series_id),
+        "version": budget.version,
+        "status": status,
+        "total": str(budget.final_value),
+    }
+    _event(session, context, treatment.id, action, f"Presupuesto {status}.", detail)
+    _audit(session, context, metadata, entity="budget", entity_id=budget.id, action=action, detail=detail)
     session.commit()
     return get_budget(session, context, budget.id)
+
+
+def create_budget_version(
+    session: Session,
+    context: AuthContext,
+    budget_id: UUID,
+    payload: BudgetVersionCreateRequest,
+    metadata: RequestMetadata,
+) -> BudgetResponse:
+    source = session.scalar(
+        select(Budget)
+        .where(Budget.id == budget_id, Budget.company_id == context.user.company_id)
+        .with_for_update()
+    )
+    if source is None:
+        raise TreatmentError("Presupuesto no encontrado.", 404)
+    treatment = _require_treatment(session, context, source.treatment_id, lock=True)
+    if source.status not in {"Aprobado", "Rechazado", "Pendiente de aprobación"}:
+        raise TreatmentError("Solo se puede crear nueva versión desde un presupuesto revisado o bloqueado.", 422)
+    existing_draft = session.scalar(
+        select(Budget)
+        .where(
+            Budget.company_id == context.user.company_id,
+            Budget.series_id == source.series_id,
+            Budget.status == "Borrador",
+        )
+        .order_by(Budget.version.desc())
+        .with_for_update()
+    )
+    if existing_draft:
+        _audit(
+            session,
+            context,
+            metadata,
+            entity="budget",
+            entity_id=existing_draft.id,
+            action="BUDGET_VERSION_DRAFT_REUSED",
+            detail={
+                "series_id": str(existing_draft.series_id),
+                "version": existing_draft.version,
+                "requested_from_budget_id": str(source.id),
+            },
+        )
+        session.commit()
+        return get_budget(session, context, existing_draft.id)
+    if payload.idempotency_key:
+        existing = session.scalar(
+            select(Budget).where(
+                Budget.company_id == context.user.company_id,
+                Budget.budget_idempotency_key == payload.idempotency_key,
+            )
+        )
+        if existing:
+            if existing.series_id != source.series_id:
+                raise TreatmentError("La clave de idempotencia ya fue usada para otra serie.", 409)
+            return get_budget(session, context, existing.id)
+    source_details = session.scalars(
+        select(BudgetDetail).where(BudgetDetail.budget_id == source.id).order_by(BudgetDetail.order)
+    ).all()
+    if not source_details:
+        raise TreatmentError("No se puede versionar un presupuesto sin líneas.")
+    version = (session.scalar(select(func.coalesce(func.max(Budget.version), 0)).where(Budget.series_id == source.series_id)) or 0) + 1
+    new_budget = Budget(
+        company_id=context.user.company_id,
+        patient_id=source.patient_id,
+        treatment_id=source.treatment_id,
+        number=source.number,
+        series_id=source.series_id,
+        previous_budget_id=source.id,
+        version=version,
+        is_current=False,
+        version_reason=payload.reason,
+        budget_idempotency_key=payload.idempotency_key,
+        status="Borrador",
+        gross_value=source.gross_value,
+        discount_type=source.discount_type,
+        discount_value=source.discount_value,
+        discount_calculated_value=source.discount_calculated_value,
+        final_value=source.final_value,
+        observations=source.observations,
+        issued_at=datetime.now(timezone.utc),
+        expires_on=source.expires_on,
+        created_by=context.user.id,
+    )
+    session.add(new_budget)
+    session.flush()
+    for index, detail in enumerate(source_details, start=1):
+        session.add(
+            _budget_detail_clone(
+                company_id=context.user.company_id,
+                budget_id=new_budget.id,
+                detail=detail,
+                order=index,
+            )
+        )
+    treatment.updated_by = context.user.id
+    audit_detail = {
+        "source_budget_id": str(source.id),
+        "new_budget_id": str(new_budget.id),
+        "series_id": str(source.series_id),
+        "previous_version": source.version,
+        "new_version": new_budget.version,
+        "reason": payload.reason,
+        "idempotency_key": payload.idempotency_key,
+    }
+    _event(session, context, treatment.id, "BUDGET_VERSION_CREATED", "Nueva versión de presupuesto creada.", audit_detail)
+    _audit(session, context, metadata, entity="budget", entity_id=new_budget.id, action="BUDGET_VERSION_CREATED", detail=audit_detail)
+    session.commit()
+    return get_budget(session, context, new_budget.id)
 
 
 def create_payment(session: Session, context: AuthContext, treatment_id: UUID, payload: PaymentCreateRequest, metadata: RequestMetadata) -> PaymentResponse:
@@ -2345,10 +3031,21 @@ def create_payment(session: Session, context: AuthContext, treatment_id: UUID, p
     dentist = _require_dentist(session, context, payload.dentist_id, payload.site_id) if payload.dentist_id else None
     approved_budget = session.scalar(
         select(Budget)
-        .where(Budget.treatment_id == treatment.id, Budget.status.in_(APPROVED_BUDGET_STATUSES))
+        .where(
+            Budget.treatment_id == treatment.id,
+            Budget.status.in_(APPROVED_BUDGET_STATUSES),
+            Budget.is_current.is_(True),
+        )
         .order_by(Budget.version.desc())
         .limit(1)
     )
+    if approved_budget is None:
+        approved_budget = session.scalar(
+            select(Budget)
+            .where(Budget.treatment_id == treatment.id, Budget.status.in_(APPROVED_BUDGET_STATUSES))
+            .order_by(Budget.version.desc())
+            .limit(1)
+        )
     if approved_budget is None and treatment.status not in {"Aprobado", "En ejecución", "Finalizado"}:
         raise TreatmentError("Para registrar pagos se requiere presupuesto o tratamiento aprobado.")
     summary = _summary(session, treatment.id)

@@ -24,18 +24,18 @@ Cubren:
 - `create_budget` usa procedimientos activos y crea snapshot.
 - `update_procedure` bloquea cambios si hay presupuesto aprobado sin presupuesto editable.
 - `mark_procedure_done` marca procedimiento realizado y no crea evento odontográfico.
-- `sign_clinical_evolution` firma evolución y no confirma eventos odontográficos.
+- `sign_clinical_evolution` firma evolución y desde C017E.3 confirma únicamente eventos odontográficos vinculados/revisados.
 - `create_event` permite vincular evento odontográfico con tratamiento/procedimiento.
-- No existe todavía `source_odontogram_event_id` en procedimientos.
+- Desde C017E.1, `TreatmentProcedure` conserva `source_odontogram_event_id` y clave de idempotencia para el puente explícito.
 
-## Pruebas futuras C017E.1
+## Pruebas C017E.1
 
 ### Diagnóstico odontográfico → procedimiento planificado
 
 Debe probar:
 
 - Crear procedimiento desde evento confirmado.
-- Crear procedimiento desde evento en borrador si la política lo permite.
+- Rechazar evento en borrador.
 - Precargar pieza y superficies.
 - Un diagnóstico genera varios procedimientos.
 - Doble clic devuelve existente o conflicto controlado.
@@ -44,8 +44,13 @@ Debe probar:
 - Permisos insuficientes.
 - Evento de otra empresa rechazado.
 - Tratamiento de otro paciente rechazado.
+- Tratamiento nuevo aparece inmediatamente en `Tratamientos del paciente`.
+- La tarjeta del Dental Inspector separa tratamiento, procedimiento, ambos estados, alcance y valor.
+- `Ver tratamiento` abre el detalle real del tratamiento.
+- `Volver al paciente` retorna a la pestaña Tratamientos.
+- Marcar procedimiento `Realizado` no cambia el odontograma en C017E.1.
 
-## Pruebas futuras C017E.2
+## Pruebas C017E.2
 
 ### Procedimientos → presupuesto versionado
 
@@ -53,27 +58,49 @@ Debe probar:
 
 - Presupuesto captura snapshot dental.
 - Presupuesto captura snapshot económico.
-- Cambio antes de aprobar recalcula presupuesto editable.
+- El usuario puede seleccionar explícitamente qué procedimientos entran al presupuesto.
+- Doble clic o reintento con `budget_idempotency_key` no crea duplicados.
+- Cambio antes de aprobar recalcula presupuesto editable respetando sus procedimientos incluidos.
+- Presupuesto aprobado o rechazado no se edita directamente.
 - Cambio después de aprobar exige nueva versión.
-- Presupuesto rechazado no cuenta como venta.
-- Presupuesto vencido según política futura.
-- Procedimiento cancelado sale de presupuesto editable.
-- Procedimiento originado en odontograma conserva trazabilidad.
+- Nueva versión copia `BudgetDetail` snapshot del presupuesto origen.
+- Guardar cambios de una versión en borrador usa `PATCH` y no crea una versión adicional.
+- Guardar una V2 tres veces mantiene la serie con V1 y V2; no aparece V3.
+- Una serie con V2 en edición reutiliza ese borrador si se pulsa otra vez “Crear nueva versión”.
+- El historial permite abrir cada versión y muestra su total propio.
+- Una versión borrador se etiqueta como `En edición`, no como `Histórica`.
+- Aprobar nueva versión sustituye la vigente anterior de la misma serie.
+- Aprobar una versión nueva bloquea la serie y retira la vigencia anterior antes de marcar la nueva como vigente.
+- Una falla durante aprobación hace rollback completo.
+- El frontend captura errores de aprobación y mantiene la versión seleccionada sin overlay de Next.js.
+- Presupuesto rechazado no queda como versión vigente ni cuenta como venta aprobada.
+- Procedimiento cancelado sale de presupuesto editable cuando el presupuesto todavía no está bloqueado.
+- Procedimiento originado en odontograma conserva trazabilidad vía `TreatmentProcedure.source_odontogram_event_id`.
+- PDF muestra número y versión.
 
-## Pruebas futuras C017E.3
+## Pruebas C017E.3
 
 ### Procedimiento realizado → evolución → odontograma
 
 Debe probar:
 
-- Marcar procedimiento realizado genera evento odontográfico `DRAFT`.
+- Registrar realización clínica genera evento odontográfico `DRAFT`.
 - Evento generado conserva tratamiento, procedimiento, cita y evolución.
 - No se crea evento duplicado por reintento.
 - Firma de evolución confirma solo eventos vinculados revisados.
 - Firma no confirma borradores ajenos.
-- Fallo al generar evento aborta o reporta fallo según contrato.
+- Fallo al generar evento o resolver diagnóstico aborta la transacción.
 - Evento manual posterior no se vincula automáticamente.
 - Adenda no modifica evento confirmado.
+- Selector muestra `Restauración en resina realizada` para `DONE_RESIN`.
+- Modal muestra diagnóstico origen leído por `TreatmentProcedure.source_odontogram_event_id`.
+- `RESOLVE_ON_SIGN` conserva el diagnóstico en historial y lo excluye del estado vigente.
+- `KEEP_ACTIVE` conserva diagnóstico y resultado realizado como condiciones vigentes.
+- Procedimiento sin diagnóstico origen permite registrar resultado y no ofrece resolver.
+- Vista anatómica y mapa de cinco caras usan el mismo estado vigente.
+- Dental Inspector separa eventos históricos de condiciones vigentes.
+- No se modifican pagos.
+- No se modifican presupuestos.
 
 ## Pruebas futuras C017E.4
 

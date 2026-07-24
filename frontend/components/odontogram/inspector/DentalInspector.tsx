@@ -47,7 +47,7 @@ function statusBadgeClass(status: OdontogramEvent["status"]) {
 function statusLabel(status: OdontogramEvent["status"]) {
   if (status === "CONFIRMED") return "Confirmado";
   if (status === "DRAFT") return "Borrador";
-  return "Compensado";
+  return "Resuelto";
 }
 
 function money(value: string | number | null | undefined) {
@@ -376,6 +376,11 @@ function HistoryEventCard({
       </div>
       {event.observation && (
         <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{event.observation}</p>
+      )}
+      {event.status === "VOIDED_BY_COMPENSATING_EVENT" && (
+        <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+          Resuelto mediante evolución firmada. Se conserva en historial y no participa en el estado vigente.
+        </p>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         {eventCardBadges(event).map((badge) => (

@@ -100,6 +100,10 @@ export interface OdontogramEvent {
   observation: string | null;
   correction_reason: string | null;
   parent_event_id: string | null;
+  source_odontogram_event_id: string | null;
+  source_diagnosis_action: string | null;
+  reviewed_for_evolution: boolean;
+  reviewed_at: string | null;
   version: number;
   content_hash: string | null;
   confirmed_at: string | null;
@@ -134,4 +138,70 @@ export interface OdontogramCurrentState {
 export interface OdontogramToothHistoryResponse {
   tooth_code: string;
   items: OdontogramEvent[];
+}
+
+export interface OdontogramLinkedProcedure {
+  procedure_id: string;
+  treatment_id: string;
+  treatment_name: string;
+  treatment_status: string;
+  patient_id: string;
+  source_odontogram_event_id: string;
+  catalog_procedure_id: string | null;
+  name: string;
+  category: string | null;
+  status: string;
+  unit_value: string;
+  quantity: string;
+  total_value: string;
+  scope_type: string;
+  zone: string | null;
+  tooth: string | null;
+  surfaces: string[] | null;
+  scope_label: string;
+  created_at: string;
+}
+
+export interface OdontogramLinkedProcedureListResponse {
+  items: OdontogramLinkedProcedure[];
+  total: number;
+}
+
+export interface OdontogramPlannedProcedureCreateInput {
+  idempotency_key: string;
+  treatment_id?: string | null;
+  new_treatment?: {
+    name: string;
+    description?: string | null;
+    specialty?: string | null;
+    responsible_dentist_id?: string | null;
+    main_site_id?: string | null;
+    observations?: string | null;
+  } | null;
+  catalog_procedure_id?: string | null;
+  name?: string | null;
+  category?: string | null;
+  dentist_id?: string | null;
+  site_id?: string | null;
+  unit_value: string;
+  quantity: string;
+  estimated_date?: string | null;
+  observations?: string | null;
+  requires_tooth?: boolean;
+  scope_type: string;
+  zone?: string | null;
+  tooth?: string | null;
+  surfaces?: string[] | null;
+  allow_similar_duplicate?: boolean;
+}
+
+export interface OdontogramPlannedProcedureCreateResponse {
+  procedure: import("@/types/treatment").Procedure | null;
+  linked_procedures: OdontogramLinkedProcedure[];
+  source_odontogram_event_id: string;
+  treatment_id: string | null;
+  idempotency_key: string;
+  idempotent_replay: boolean;
+  similar_duplicate_detected: boolean;
+  message: string;
 }

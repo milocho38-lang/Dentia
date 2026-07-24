@@ -40,6 +40,9 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C017E — Propuesta de relaciones entidad-relación](integration/C017E-Entity-Relationship-Proposal.md)
 - [C017E — Estados y transiciones](integration/C017E-State-Transitions.md)
 - [C017E — Plan de pruebas](integration/C017E-Test-Plan.md)
+- [C017E.1 — Diagnóstico odontográfico → procedimiento planificado](integration/C017E1-Odontogram-Diagnosis-to-Planned-Procedure.md)
+- [C017E.2 — Procedimientos → presupuesto versionado e inmutable](integration/C017E2-Procedures-to-Versioned-Budget.md)
+- [C017E.3 — Procedimiento realizado → evolución clínica → odontograma confirmado](integration/C017E3-Completed-Procedure-to-Evolution-Odontogram.md)
 
 ## Convención documental
 

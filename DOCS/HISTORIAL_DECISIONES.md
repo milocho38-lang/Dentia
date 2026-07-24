@@ -134,6 +134,20 @@ Documento relacionado:
 
 ---
 
+## DEC-022 Presupuesto versionado e inmutable
+
+Los presupuestos aprobados o rechazados no se editarán directamente.
+
+Dentia utilizará una serie de presupuesto con versiones derivadas. Cada versión
+conserva sus líneas como snapshot económico y dental mediante `BudgetDetail`.
+Solo una versión aprobada puede ser vigente por serie.
+
+Documento relacionado:
+
+* C017E.2 — Procedimientos → presupuesto versionado e inmutable
+
+---
+
 ## DEC-009 Política de contraseñas
 
 La política oficial será:

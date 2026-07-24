@@ -124,6 +124,26 @@ Un presupuesto aprobado no debe modificarse directamente en:
 
 Los cambios requieren nueva versión o presupuesto derivado.
 
+Desde C017E.2, la versión se modela explícitamente en `Budget` mediante:
+
+- `budget_series_id`;
+- `previous_budget_id`;
+- `superseded_by_id`;
+- `es_version_vigente`;
+- `motivo_version`;
+- `budget_idempotency_key`.
+
+La versión nueva copia los `BudgetDetail` del presupuesto origen como snapshot. No vuelve a leer silenciosamente los procedimientos vivos para alterar lo que ya fue revisado.
+
+C017E.2-FIX1 establece una diferencia obligatoria:
+
+- Crear nueva versión: `POST /api/budgets/{budget_id}/duplicate-version`.
+- Guardar cambios de la versión en edición: `PATCH /api/budgets/{budget_id}`.
+
+Una serie solo puede tener una versión `Borrador` activa para edición. Si el usuario intenta crear otra versión mientras ya existe un borrador, se devuelve el borrador existente y no se crea V3 accidentalmente.
+
+Al aprobar una versión nueva, la transacción debe bloquear la serie, retirar la vigencia de la versión aprobada anterior y hacer `flush` antes de marcar la nueva versión como vigente. Esto evita que la restricción parcial de única versión aprobada vigente rechace temporalmente la operación por coexistencia de dos vigentes.
+
 ### Realización clínica
 
 Marcar un procedimiento como realizado no debe crear silenciosamente un evento odontográfico confirmado.
@@ -139,6 +159,28 @@ Firmar una evolución puede confirmar únicamente:
 - elementos revisados explícitamente antes de firmar.
 
 No debe confirmar todos los borradores del paciente ni todos los borradores de la pieza.
+
+### Resolución de diagnóstico origen
+
+Resolver un diagnóstico origen no significa eliminarlo.
+
+Cuando un procedimiento realizado se registra con `source_diagnosis_action = RESOLVE_ON_SIGN`, la firma de la evolución debe:
+
+- confirmar el evento odontográfico realizado;
+- resolver únicamente el diagnóstico apuntado por `TreatmentProcedure.source_odontogram_event_id` o por la relación persistida enviada desde el flujo;
+- conservar el diagnóstico en el historial;
+- excluir el diagnóstico resuelto del estado odontográfico vigente;
+- auditar `SOURCE_ODONTOGRAM_DIAGNOSIS_RESOLVED`.
+
+Está prohibido resolver diagnósticos por coincidencia de:
+
+- nombre;
+- pieza;
+- superficie;
+- fecha;
+- último diagnóstico visible.
+
+Si el diagnóstico origen no existe, no pertenece al paciente o no está confirmado, la firma debe fallar de forma atómica.
 
 ## Fuentes oficiales
 
@@ -160,7 +202,7 @@ No debe confirmar todos los borradores del paciente ni todos los borradores de l
 | Detalle odontográfico | `OdontogramEventDetail.id` | `company_id` | No directa | Por evento | Por evento | Capa | `scope_type`, `tooth_code`, `surfaces` | `event_id`, `catalog_item_id` | Depende del evento | Por evento padre |
 | Tratamiento | `Treatment.id` | `company_id` | `main_site_id` | `patient_id` | `responsible_dentist_id` | `Borrador`, `Presupuestado`, `Aprobado`, `En ejecución`, `Pausado`, `Finalizado`, `Cancelado` | No directa | Procedimientos, presupuestos, pagos | Final/cancelado restringe cambios | `TREATMENT_*` |
 | Procedimiento | `TreatmentProcedure.id` | `company_id` | `site_id` | `patient_id` | `dentist_id` | `Pendiente`, `Agendado`, `En proceso`, `Realizado`, `Cancelado` | `scope_type`, `tooth`, `surfaces` | `treatment_id`, `appointment_id`, catálogo | Realizado no se edita sin corrección | `PROCEDURE_*` |
-| Presupuesto | `Budget.id` | `company_id` | Por tratamiento | `patient_id` | Por tratamiento | `Borrador`, `Pendiente de aprobación`, `Aprobado`, `Rechazado`, `En ejecución`, `Finalizado` | Por detalles | `treatment_id` | Aprobado/rechazado no permite edición económica directa | `BUDGET_*` |
+| Presupuesto | `Budget.id` | `company_id` | Por tratamiento | `patient_id` | Por tratamiento | `Borrador`, `Pendiente de aprobación`, `Aprobado`, `Rechazado`, `En ejecución`, `Finalizado` | Por detalles | `treatment_id`, `budget_series_id`, `previous_budget_id`, `superseded_by_id` | Aprobado/rechazado no permite edición económica directa; nueva versión requerida | `BUDGET_*`, `BUDGET_VERSION_*` |
 | Detalle presupuesto | `BudgetDetail.id` | `company_id` | No directa | Por presupuesto | Por procedimiento | Snapshot | `scope_type`, `tooth`, `surfaces` | `budget_id`, `procedure_id` | Snapshot del presupuesto | Por presupuesto |
 | Evolución | `ClinicalEvolution.id` | `company_id` | `site_id` | `patient_id` | `dentist_id` | `DRAFT`, `SIGNED`, `VOIDED_BY_COMPENSATING_RECORD` | Por links a procedimientos | `appointment_id`, `treatment_id`, `followup_id` | Firmada no se edita; adenda | `CLINICAL_EVOLUTION_*` |
 | Procedimiento de evolución | `ClinicalEvolutionProcedure.id` | `company_id` | Por evolución | Por evolución | Por evolución | Acción `PLANNED`, `PERFORMED`, `REVIEWED`, `SUSPENDED` | Por procedimiento | `evolution_id`, `treatment_id`, `procedure_id` | Depende de evolución | Por evolución |
@@ -186,10 +228,24 @@ Ya existen:
 - `TreatmentPayment.budget_id`
 - `TreatmentPaymentProcedure.procedure_id`
 
-Relaciones ausentes:
+Relaciones implementadas desde C017E.1:
 
-- `TreatmentProcedure.source_odontogram_event_id`
+- `TreatmentProcedure.source_odontogram_event_id`;
 - relación explícita uno-a-muchos entre evento odontográfico origen y procedimientos generados;
+- idempotencia del puente mediante clave por empresa en procedimientos derivados.
+
+Relaciones implementadas desde C017E.2:
+
+- serie de presupuesto (`Budget.budget_series_id`);
+- versión anterior (`Budget.previous_budget_id`);
+- versión sustituida (`Budget.superseded_by_id`);
+- versión aprobada vigente (`Budget.es_version_vigente`);
+- idempotencia de creación/versionado (`Budget.budget_idempotency_key`);
+- selección explícita de procedimientos para presupuestar;
+- detalle único por procedimiento dentro del mismo presupuesto.
+
+Relaciones aún ausentes:
+
 - relación entre `BudgetDetail` y evento odontográfico origen preservada como snapshot;
 - relación entre procedimiento realizado y evento odontográfico generado;
 - relación explícita entre firma de evolución y eventos odontográficos confirmados por esa firma;
@@ -203,7 +259,7 @@ Relaciones ausentes:
 | 2 | Selecciona “Agregar al plan de tratamiento” | MANUAL | Abre formulario precargado |
 | 3 | Confirma procedimiento y tratamiento destino | MANUAL | Datos validados |
 | 4 | Se crea procedimiento planificado vinculado al evento origen | SEMIAUTOMÁTICO | `TreatmentProcedure` `Pendiente` |
-| 5 | Procedimiento entra a presupuesto | SEMIAUTOMÁTICO | `BudgetDetail` snapshot |
+| 5 | Procedimiento entra a presupuesto | SEMIAUTOMÁTICO | `BudgetDetail` snapshot versionado |
 | 6 | Presupuesto se aprueba | MANUAL | `Budget` `Aprobado`, tratamiento `Aprobado` |
 | 7 | Procedimiento se agenda o vincula a cita | SEMIAUTOMÁTICO | `Appointment.treatment_procedure_id` |
 | 8 | Durante atención se vincula a evolución | SEMIAUTOMÁTICO | `ClinicalEvolutionProcedure` |

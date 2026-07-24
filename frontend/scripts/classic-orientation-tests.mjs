@@ -171,10 +171,18 @@ assert.equal(real.events[0].kind, "RESTORATION");
 assert.equal(real.events[0].status, "COMPLETED");
 assert.deepEqual(real.events[0].surfaces, ["MESIAL", "OCCLUSAL", "DISTAL"]);
 
+real = adapt("46", { PERFORMED: [detail("resolved-result-46", "DONE_RESIN", "Restauración en resina realizada", "PERFORMED", ["OCCLUSAL"], "PERFORMED_PROCEDURE")] });
+let mapped = mapper.mapDualClinicalTooth(real);
+assert.equal(real.events.length, 1, "resolved diagnosis is absent from current dual model when backend current state excludes it");
+assert.equal(real.events[0].label, "Restauración en resina realizada");
+assert.equal(mapped.surfaceMarkers.length, 1);
+assert.equal(mapped.surfaceMarkers[0].role, "CENTER");
+assert.equal(mapped.surfaceMarkers[0].color.toUpperCase(), "#2563EB", "resolved 46 current map is blue");
+
 real = adapt("16", { PERFORMED: [detail("r4", "DONE_SEALANT", "Sellante", "PERFORMED", ["OCCLUSAL"], "PERFORMED_PROCEDURE")] });
 assert.equal(real.events[0].kind, "RESTORATION");
 assert.deepEqual(real.events[0].surfaces, ["OCCLUSAL"]);
-let mapped = mapper.mapDualClinicalTooth(real);
+mapped = mapper.mapDualClinicalTooth(real);
 assert.equal(mapped.surfaceMarkers[0].color.toUpperCase(), "#2563EB", "completed sealant is blue");
 
 real = adapt("14", { PLANNED: [detail("p1", "PLAN_SEALANT", "Sellante planificado", "PLANNED", ["OCCLUSAL"], "PLANNED_PROCEDURE")] });

@@ -11,6 +11,8 @@ from app.schemas.treatment_schema import (
     BudgetCreateRequest,
     BudgetListResponse,
     BudgetResponse,
+    BudgetUpdateRequest,
+    BudgetVersionCreateRequest,
     FinanceBreakdownResponse,
     FinanceDashboardResponse,
     LinkProcedureAppointmentRequest,
@@ -23,6 +25,8 @@ from app.schemas.treatment_schema import (
     ProcedureCatalogItemResponse,
     ProcedureCatalogListResponse,
     ProcedureCatalogUpdateRequest,
+    ProcedureClinicalCompletionRequest,
+    ProcedureClinicalCompletionResponse,
     ProcedureCreateRequest,
     ProcedureResponse,
     ProcedureUpdateRequest,
@@ -39,7 +43,9 @@ from app.services.treatment_service import (
     change_procedure_catalog_status,
     change_budget_status,
     change_treatment_status,
+    complete_procedure_clinically,
     create_budget,
+    create_budget_version,
     create_payment,
     create_procedure,
     create_procedure_catalog_item,
@@ -425,6 +431,31 @@ def mark_procedure_done_endpoint(
         raise handle_treatment_error(exc)
 
 
+@router.post(
+    "/api/treatments/{treatment_id}/procedures/{procedure_id}/clinical-completion",
+    response_model=ProcedureClinicalCompletionResponse,
+)
+def complete_procedure_clinically_endpoint(
+    treatment_id: UUID,
+    procedure_id: UUID,
+    payload: ProcedureClinicalCompletionRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("treatments.update"))],
+) -> ProcedureClinicalCompletionResponse:
+    try:
+        return complete_procedure_clinically(
+            session,
+            context,
+            treatment_id,
+            procedure_id,
+            payload,
+            get_request_metadata(request),
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
 @router.post("/api/treatments/{treatment_id}/procedures/{procedure_id}/cancel", response_model=ProcedureResponse)
 def cancel_procedure_endpoint(
     treatment_id: UUID,
@@ -516,7 +547,7 @@ def get_budget_pdf_endpoint(
 @router.patch("/api/budgets/{budget_id}", response_model=BudgetResponse)
 def update_budget_endpoint(
     budget_id: UUID,
-    payload: BudgetCreateRequest,
+    payload: BudgetUpdateRequest,
     request: Request,
     session: Annotated[Session, Depends(get_db)],
     context: Annotated[AuthContext, Depends(require_permission("budgets.update"))],
@@ -569,22 +600,17 @@ def reject_budget_endpoint(
 @router.post("/api/budgets/{budget_id}/duplicate-version", response_model=BudgetResponse, status_code=201)
 def duplicate_budget_endpoint(
     budget_id: UUID,
+    payload: BudgetVersionCreateRequest,
     request: Request,
     session: Annotated[Session, Depends(get_db)],
     context: Annotated[AuthContext, Depends(require_permission("budgets.create"))],
 ) -> BudgetResponse:
     try:
-        budget = get_budget(session, context, budget_id)
-        return create_budget(
+        return create_budget_version(
             session,
             context,
-            budget.treatment_id,
-            BudgetCreateRequest(
-                discount_type=budget.discount_type,
-                discount_value=budget.discount_value,
-                observations=budget.observations,
-                expires_on=budget.expires_on,
-            ),
+            budget_id,
+            payload,
             get_request_metadata(request),
         )
     except TreatmentError as exc:

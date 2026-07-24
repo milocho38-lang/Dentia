@@ -21,6 +21,7 @@ from app.models.clinical_record import (
     ClinicalTimelineEvent,
 )
 from app.models.company import Company
+from app.models.odontogram import OdontogramEvent, OdontogramEventDetail
 from app.models.site import Site
 from app.models.treatment import Treatment, TreatmentProcedure
 from app.schemas.clinical_record_schema import (
@@ -1142,6 +1143,162 @@ def _validate_evolution_ready_to_sign(evolution: ClinicalEvolution) -> None:
         )
 
 
+def _canonical_odontogram_event_payload(session: Session, event: OdontogramEvent) -> dict:
+    details = session.scalars(
+        select(OdontogramEventDetail)
+        .where(OdontogramEventDetail.event_id == event.id)
+        .order_by(OdontogramEventDetail.created_at, OdontogramEventDetail.id)
+    ).all()
+    return {
+        "id": str(event.id),
+        "company_id": str(event.company_id),
+        "patient_id": str(event.patient_id),
+        "clinical_record_id": str(event.clinical_record_id),
+        "odontogram_id": str(event.odontogram_id),
+        "evolution_id": str(event.evolution_id) if event.evolution_id else None,
+        "appointment_id": str(event.appointment_id) if event.appointment_id else None,
+        "treatment_id": str(event.treatment_id) if event.treatment_id else None,
+        "procedure_id": str(event.procedure_id) if event.procedure_id else None,
+        "source_odontogram_event_id": str(event.source_odontogram_event_id) if event.source_odontogram_event_id else None,
+        "source_diagnosis_action": event.source_diagnosis_action,
+        "site_id": str(event.site_id),
+        "dentist_id": str(event.dentist_id),
+        "event_type": event.event_type,
+        "status": event.status,
+        "clinical_date": event.clinical_date.isoformat(),
+        "timezone_name": event.timezone_name,
+        "observation": event.observation,
+        "version": event.version,
+        "details": [
+            {
+                "catalog_item_id": str(detail.catalog_item_id),
+                "scope_type": detail.scope_type,
+                "zone": detail.zone,
+                "tooth_code": detail.tooth_code,
+                "dentition": detail.dentition,
+                "surfaces": detail.surfaces,
+                "layer": detail.layer,
+                "status_after": detail.status_after,
+                "metadata": detail.detail_metadata,
+            }
+            for detail in details
+        ],
+    }
+
+
+def _confirm_reviewed_odontogram_events_for_evolution(
+    session: Session,
+    context: AuthContext,
+    evolution: ClinicalEvolution,
+    metadata: RequestMetadata,
+) -> list[UUID]:
+    now = datetime.now(timezone.utc)
+    events = session.scalars(
+        select(OdontogramEvent)
+        .where(
+            OdontogramEvent.company_id == context.user.company_id,
+            OdontogramEvent.patient_id == evolution.patient_id,
+            OdontogramEvent.evolution_id == evolution.id,
+            OdontogramEvent.status == "DRAFT",
+            OdontogramEvent.reviewed_for_evolution.is_(True),
+            OdontogramEvent.event_type == "PROCEDURE_PERFORMED",
+        )
+        .order_by(OdontogramEvent.clinical_date, OdontogramEvent.created_at, OdontogramEvent.id)
+        .with_for_update()
+    ).all()
+    confirmed_ids: list[UUID] = []
+    for event in events:
+        event.status = "CONFIRMED"
+        event.confirmed_by = context.user.id
+        event.confirmed_at = now
+        event.updated_by = context.user.id
+        event.version += 1
+        session.flush()
+        event.content_hash = _content_hash(_canonical_odontogram_event_payload(session, event))
+        confirmed_ids.append(event.id)
+
+        if event.source_odontogram_event_id and event.source_diagnosis_action == "RESOLVE_ON_SIGN":
+            source_event = session.scalar(
+                select(OdontogramEvent)
+                .where(
+                    OdontogramEvent.id == event.source_odontogram_event_id,
+                    OdontogramEvent.company_id == context.user.company_id,
+                    OdontogramEvent.patient_id == evolution.patient_id,
+                    OdontogramEvent.status == "CONFIRMED",
+                )
+                .with_for_update()
+            )
+            if source_event is None:
+                raise ClinicalRecordError(
+                    "No fue posible resolver el diagnóstico odontográfico de origen. La evolución no fue firmada.",
+                    409,
+                )
+            source_details = session.scalars(
+                select(OdontogramEventDetail)
+                .where(OdontogramEventDetail.event_id == source_event.id)
+                .order_by(OdontogramEventDetail.created_at, OdontogramEventDetail.id)
+            ).all()
+            completion_details = session.scalars(
+                select(OdontogramEventDetail)
+                .where(OdontogramEventDetail.event_id == event.id)
+                .order_by(OdontogramEventDetail.created_at, OdontogramEventDetail.id)
+            ).all()
+            source_event.status = "VOIDED_BY_COMPENSATING_EVENT"
+            source_event.updated_by = context.user.id
+            source_event.version += 1
+            _audit(
+                session,
+                context,
+                metadata,
+                action="SOURCE_ODONTOGRAM_DIAGNOSIS_RESOLVED",
+                entity="odontogram_event",
+                entity_id=source_event.id,
+                patient_id=evolution.patient_id,
+                detail={
+                    "source_odontogram_event_id": str(source_event.id),
+                    "completion_event_id": str(event.id),
+                    "evolution_id": str(evolution.id),
+                    "procedure_id": str(event.procedure_id) if event.procedure_id else None,
+                    "tooth_codes": sorted({
+                        detail.tooth_code for detail in source_details if detail.tooth_code
+                    }),
+                    "surfaces": sorted({
+                        surface
+                        for detail in source_details
+                        for surface in (detail.surfaces or [])
+                    }),
+                    "completion_tooth_codes": sorted({
+                        detail.tooth_code for detail in completion_details if detail.tooth_code
+                    }),
+                    "completion_surfaces": sorted({
+                        surface
+                        for detail in completion_details
+                        for surface in (detail.surfaces or [])
+                    }),
+                },
+            )
+
+        _audit(
+            session,
+            context,
+            metadata,
+            action="ODONTOGRAM_EVENT_CONFIRMED_FROM_EVOLUTION",
+            entity="odontogram_event",
+            entity_id=event.id,
+            patient_id=evolution.patient_id,
+            detail={
+                "evolution_id": str(evolution.id),
+                "procedure_id": str(event.procedure_id) if event.procedure_id else None,
+                "source_odontogram_event_id": str(event.source_odontogram_event_id)
+                if event.source_odontogram_event_id
+                else None,
+                "source_diagnosis_action": event.source_diagnosis_action,
+                "hash": event.content_hash,
+            },
+        )
+    return confirmed_ids
+
+
 def sign_clinical_evolution(
     session: Session,
     context: AuthContext,
@@ -1163,6 +1320,12 @@ def sign_clinical_evolution(
     if not payload.confirm_complete:
         raise ClinicalRecordError("Debes confirmar que el registro está completo.", 422)
     _validate_evolution_ready_to_sign(evolution)
+    confirmed_odontogram_event_ids = _confirm_reviewed_odontogram_events_for_evolution(
+        session,
+        context,
+        evolution,
+        metadata,
+    )
     evolution.status = "SIGNED"
     evolution.signed_at = datetime.now(timezone.utc)
     evolution.signed_by = context.user.id
@@ -1197,6 +1360,9 @@ def sign_clinical_evolution(
             "version": evolution.version,
             "status": evolution.status,
             "hash": evolution.content_hash,
+            "confirmed_odontogram_event_ids": [
+                str(event_id) for event_id in confirmed_odontogram_event_ids
+            ],
         },
     )
     session.commit()

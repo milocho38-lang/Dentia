@@ -48,6 +48,10 @@ export function listOdontogramEvents(patientId: string, status?: string) {
   );
 }
 
+export function getOdontogramEvent(eventId: string) {
+  return apiRequest<OdontogramEvent>(`/api/odontogram/events/${eventId}`);
+}
+
 export function createOdontogramEvent(
   patientId: string,
   data: OdontogramEventInput,

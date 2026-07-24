@@ -85,6 +85,8 @@ function surfaceAwareCatalogName(detail: OdontogramEventDetail) {
   }
 
   if (hint === "RESTORATION") {
+    if (code === "DONE_RESIN") return "Restauración en resina realizada";
+    if (code === "PLAN_RESIN") return "Restauración en resina planificada";
     return surfaces.length > 1 ? "Obturaciones múltiples" : "Obturación";
   }
 

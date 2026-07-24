@@ -2,19 +2,23 @@
 
 import Link from "next/link";
 import type React from "react";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert } from "@/components/shared/Alert";
 import { Modal } from "@/components/shared/Modal";
 import { Spinner } from "@/components/shared/Spinner";
 import { useAuth } from "@/hooks/useAuth";
+import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
+import { listClinicalEvolutions } from "@/services/clinicalRecordService";
+import { getOdontogramCatalog, getOdontogramEvent } from "@/services/odontogramService";
 import { searchPatients } from "@/services/patientService";
 import {
   approveBudget,
   approveTreatment,
   cancelProcedure,
   cancelTreatment,
+  completeProcedureClinically,
   closeTreatment,
   createBudget,
   createPayment,
@@ -35,9 +39,12 @@ import {
   rejectBudget,
   reversePayment,
   submitBudget,
+  updateBudget,
   updateProcedure,
 } from "@/services/treatmentService";
 import type { AgendaOptions, PatientOption } from "@/types/agenda";
+import type { ClinicalEvolution } from "@/types/clinicalRecord";
+import type { OdontogramCatalogItem, OdontogramEvent } from "@/types/odontogram";
 import type {
   Budget,
   Payment,
@@ -63,6 +70,46 @@ function localDate(value: string | null) {
   }).format(new Date(value));
 }
 
+const SURFACE_LABELS: Record<string, string> = {
+  VESTIBULAR: "Vestibular",
+  LINGUAL: "Lingual",
+  PALATAL: "Palatina",
+  MESIAL: "Mesial",
+  DISTAL: "Distal",
+  OCCLUSAL: "Oclusal",
+  INCISAL: "Incisal",
+};
+
+function odontogramEventMainLabel(event: OdontogramEvent | null) {
+  return event?.details.map((detail) => detail.catalog_name).filter(Boolean).join(", ") || "Diagnóstico odontográfico";
+}
+
+function odontogramEventScopeLabel(event: OdontogramEvent | null) {
+  const detail = event?.details.find((item) => item.tooth_code) ?? event?.details[0];
+  if (!detail) return "Sin alcance registrado";
+  const parts = [];
+  if (detail.tooth_code) parts.push(`Diente ${detail.tooth_code}`);
+  if (detail.surfaces?.length) {
+    parts.push(detail.surfaces.map((surface) => SURFACE_LABELS[surface] ?? surface).join(" · "));
+  } else if (detail.scope_type === "TOOTH") {
+    parts.push("Pieza completa");
+  } else {
+    parts.push("Superficie no especificada");
+  }
+  return parts.join(" · ");
+}
+
+function idempotencyKey(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function errorMessage(error: unknown, fallback = "No fue posible completar la solicitud.") {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error) return error.message;
+  return fallback;
+}
+
 function statusBadge(status: string) {
   const styles: Record<string, string> = {
     Borrador: "bg-slate-100 text-slate-700",
@@ -81,6 +128,18 @@ function statusBadge(status: string) {
     valido: "bg-emerald-100 text-emerald-800",
   };
   return styles[status] ?? "bg-slate-100 text-slate-700";
+}
+
+function budgetVersionState(budget: Budget) {
+  if (budget.status === "Borrador") return "En edición";
+  if (budget.status === "Aprobado" && budget.is_current) return "Vigente";
+  if (budget.status === "Aprobado" && !budget.is_current) return "Sustituido";
+  if (budget.status === "Rechazado") return "Rechazada";
+  return "Histórica";
+}
+
+function sortBudgetVersions(items: Budget[]) {
+  return [...items].sort((a, b) => b.version - a.version);
 }
 
 const scopeOptions = [
@@ -407,6 +466,12 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingProcedure, setEditingProcedure] = useState<Procedure | null>(null);
+  const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
+  const [budgetNotice, setBudgetNotice] = useState<string | null>(null);
+  const [budgetActionError, setBudgetActionError] = useState<string | null>(null);
+  const [budgetActionBusy, setBudgetActionBusy] = useState(false);
+  const [clinicalCompletionProcedure, setClinicalCompletionProcedure] =
+    useState<Procedure | null>(null);
   const [decision, setDecision] = useState<{
     type: "edit" | "delete";
     procedure: Procedure;
@@ -443,6 +508,15 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     load();
   }, [load]);
 
+  useEffect(() => {
+    setSelectedBudgetId((current) => {
+      if (current && budgets.some((budget) => budget.id === current)) return current;
+      const draft = sortBudgetVersions(budgets).find((budget) => budget.status === "Borrador");
+      const currentApproved = budgets.find((budget) => budget.status === "Aprobado" && budget.is_current);
+      return draft?.id ?? currentApproved?.id ?? budgets[0]?.id ?? null;
+    });
+  }, [budgets]);
+
   if (loading) {
     return <div className="flex justify-center py-20"><Spinner className="h-7 w-7 text-dentia-primary" /></div>;
   }
@@ -450,7 +524,18 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     return <Alert tone="error">{error ?? "Tratamiento no encontrado."}</Alert>;
   }
 
-  const latestBudget = budgets[0];
+  const currentApprovedBudget =
+    budgets.find((budget) => budget.status === "Aprobado" && budget.is_current) ??
+    null;
+  const selectedBudget =
+    budgets.find((budget) => budget.id === selectedBudgetId) ??
+    sortBudgetVersions(budgets).find((budget) => budget.status === "Borrador") ??
+    currentApprovedBudget ??
+    budgets[0] ??
+    null;
+  const budgetVersions = selectedBudget
+    ? sortBudgetVersions(budgets.filter((budget) => budget.series_id === selectedBudget.series_id))
+    : [];
   const returnPatientId = searchParams.get("returnPatientId") || treatment.patient_id;
   const patientBackHref = `/pacientes/${returnPatientId}?tab=treatments`;
 
@@ -483,11 +568,11 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     URL.revokeObjectURL(url);
   }
 
-  const budgetHasDiscount = latestBudget
-    ? Number(latestBudget.discount_calculated_value) > 0
+  const selectedBudgetHasDiscount = selectedBudget
+    ? Number(selectedBudget.discount_calculated_value) > 0
     : false;
-  const budgetLocked = latestBudget
-    ? ["Aprobado", "En ejecución", "Finalizado"].includes(latestBudget.status)
+  const budgetLocked = currentApprovedBudget
+    ? ["Aprobado", "En ejecución", "Finalizado"].includes(currentApprovedBudget.status)
     : false;
 
   async function submitProcedureEdit(procedure: Procedure, data: ProcedurePayload) {
@@ -501,8 +586,12 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
   }
 
   async function confirmApprovedEdit() {
-    if (!decision || !latestBudget) return;
-    await duplicateBudgetVersion(latestBudget.id);
+    if (!decision || !currentApprovedBudget) return;
+    const draftBudget = await duplicateBudgetVersion(currentApprovedBudget.id, {
+      reason: "Ajuste sobre presupuesto aprobado.",
+      idempotency_key: idempotencyKey("budget-version"),
+    });
+    setSelectedBudgetId(draftBudget.id);
     if (decision.type === "edit") {
       const procedure = decision.procedure;
       await updateProcedure(treatmentId, procedure.id, procedureToPayload(procedure));
@@ -516,6 +605,67 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     setDecision(null);
     setEditingProcedure(null);
     await refresh();
+  }
+
+  async function runBudgetAction(action: () => Promise<void>) {
+    setBudgetActionBusy(true);
+    setBudgetActionError(null);
+    try {
+      await action();
+    } catch (error) {
+      setBudgetActionError(errorMessage(error));
+    } finally {
+      setBudgetActionBusy(false);
+    }
+  }
+
+  async function handleSubmitSelectedBudget(budget: Budget) {
+    await runBudgetAction(async () => {
+      const updated = await submitBudget(budget.id);
+      setSelectedBudgetId(updated.id);
+      setBudgetNotice(`Versión ${updated.version} enviada a aprobación.`);
+      await refresh();
+    });
+  }
+
+  async function handleApproveSelectedBudget(budget: Budget) {
+    const previous = budgetVersions.find(
+      (version) => version.status === "Aprobado" && version.is_current && version.id !== budget.id,
+    );
+    if (!window.confirm(`Va a aprobar la versión ${budget.version} por ${money(budget.final_value)}.\n\n${previous ? `La versión ${previous.version} dejará de estar vigente, pero permanecerá en el historial.` : "Esta versión quedará como vigente."}`)) return;
+    await runBudgetAction(async () => {
+      const approved = await approveBudget(budget.id);
+      setSelectedBudgetId(approved.id);
+      setBudgetNotice(
+        previous
+          ? `Versión ${approved.version} aprobada correctamente. La versión ${previous.version} quedó sustituida.`
+          : `Versión ${approved.version} aprobada correctamente.`,
+      );
+      await refresh();
+    });
+  }
+
+  async function handleRejectSelectedBudget(budget: Budget) {
+    await runBudgetAction(async () => {
+      const rejected = await rejectBudget(budget.id);
+      setSelectedBudgetId(rejected.id);
+      setBudgetNotice(`Versión ${rejected.version} rechazada.`);
+      await refresh();
+    });
+  }
+
+  async function handleCreateBudgetVersion(budget: Budget) {
+    const reason = window.prompt("Motivo de la nueva versión");
+    if (!reason) return;
+    await runBudgetAction(async () => {
+      const draft = await duplicateBudgetVersion(budget.id, {
+        reason,
+        idempotency_key: idempotencyKey("budget-version"),
+      });
+      setSelectedBudgetId(draft.id);
+      setBudgetNotice(`Versión ${draft.version} abierta para edición.`);
+      await refresh();
+    });
   }
 
   async function handleDeleteProcedure(procedure: Procedure) {
@@ -653,7 +803,11 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                         <button onClick={() => handleDeleteProcedure(procedure)} className="ml-3 text-xs font-bold text-red-700 hover:underline">🗑 Eliminar</button>
                       )}
                       {hasPermission("treatments.update") && procedure.status !== "Realizado" && procedure.status !== "Cancelado" && (
-                        <button onClick={async () => { await markProcedureDone(treatmentId, procedure.id); await refresh(); }} className="ml-3 text-xs font-bold text-green-700 hover:underline">Realizado</button>
+                        procedure.scope_type === "TOOTH" || procedure.scope_type === "TOOTH_SURFACE" || procedure.source_odontogram_event_id ? (
+                          <button onClick={() => setClinicalCompletionProcedure(procedure)} className="ml-3 text-xs font-bold text-green-700 hover:underline">Registrar realización clínica</button>
+                        ) : (
+                          <button onClick={async () => { await markProcedureDone(treatmentId, procedure.id); await refresh(); }} className="ml-3 text-xs font-bold text-green-700 hover:underline">Realizado</button>
+                        )
                       )}
                       {hasPermission("treatments.update") && procedure.status !== "Realizado" && procedure.status !== "Cancelado" && (
                         <button
@@ -686,36 +840,82 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
         title="Presupuesto"
         description="Calcula el valor bruto, descuento y valor final con espacio suficiente para revisar antes de aprobar."
       >
-          {hasPermission("budgets.create") && <BudgetForm treatmentId={treatmentId} onDone={refresh} />}
-          {latestBudget ? (
+          {budgetNotice && <Alert tone="info">{budgetNotice}</Alert>}
+          {hasPermission("budgets.create") && !selectedBudget && (
+            <BudgetForm
+              mode="create"
+              treatmentId={treatmentId}
+              procedures={procedures}
+              onCreated={(budget) => {
+                setSelectedBudgetId(budget.id);
+                setBudgetNotice(`Presupuesto V${budget.version} creado correctamente.`);
+                return refresh();
+              }}
+            />
+          )}
+          {currentApprovedBudget && selectedBudget?.id !== currentApprovedBudget.id && (
+            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-emerald-700">
+                Versión aprobada vigente
+              </p>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm font-black text-slate-950">
+                  {currentApprovedBudget.number ?? "Sin número"} · V{currentApprovedBudget.version}
+                </p>
+                <p className="text-sm font-black text-emerald-800">{money(currentApprovedBudget.final_value)}</p>
+              </div>
+            </div>
+          )}
+          {selectedBudget ? (
             <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              {budgetActionError && (
+                <div className="mb-4">
+                  <Alert tone="error">{budgetActionError}</Alert>
+                </div>
+              )}
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <p className="text-xs font-black uppercase tracking-wide text-slate-500">
-                    Presupuesto vigente
+                    {selectedBudget.status === "Borrador" ? "Versión en edición" : "Versión seleccionada"}
                   </p>
                   <p className="mt-1 text-xl font-black text-slate-950">
-                    Versión {latestBudget.version}
+                    {selectedBudget.number ?? "Sin número"} · V{selectedBudget.version}
                   </p>
-                  <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${statusBadge(latestBudget.status)}`}>
-                    {latestBudget.status}
+                  {selectedBudget.version_reason && (
+                    <p className="mt-1 text-sm text-slate-500">{selectedBudget.version_reason}</p>
+                  )}
+                  <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${statusBadge(selectedBudget.status)}`}>
+                    {selectedBudget.status} · {budgetVersionState(selectedBudget)}
                   </span>
                 </div>
-                <div className={`grid min-w-full gap-3 sm:grid-cols-2 ${budgetHasDiscount ? "lg:min-w-[620px] lg:grid-cols-4" : "lg:min-w-[320px] lg:grid-cols-2"}`}>
-                  <BudgetMetric label="Subtotal" value={money(latestBudget.gross_value)} />
-                  {budgetHasDiscount && (
+                <div className={`grid min-w-full gap-3 sm:grid-cols-2 ${selectedBudgetHasDiscount ? "lg:min-w-[620px] lg:grid-cols-4" : "lg:min-w-[320px] lg:grid-cols-2"}`}>
+                  <BudgetMetric label="Subtotal" value={money(selectedBudget.gross_value)} />
+                  {selectedBudgetHasDiscount && (
                     <>
-                      <BudgetMetric label="Descuento" value={latestBudget.discount_type === "porcentaje" ? `${Number(latestBudget.discount_value)}%` : money(latestBudget.discount_value)} />
-                      <BudgetMetric label="Valor descuento" value={money(latestBudget.discount_calculated_value)} />
+                      <BudgetMetric label="Descuento" value={selectedBudget.discount_type === "porcentaje" ? `${Number(selectedBudget.discount_value)}%` : money(selectedBudget.discount_value)} />
+                      <BudgetMetric label="Valor descuento" value={money(selectedBudget.discount_calculated_value)} />
                     </>
                   )}
-                  <BudgetMetric label="Valor final" value={money(latestBudget.final_value)} highlight />
+                  <BudgetMetric label="Valor final" value={money(selectedBudget.final_value)} highlight />
                 </div>
               </div>
-              {latestBudget.observations && (
+              {selectedBudget.observations && (
                 <p className="mt-4 text-sm text-slate-600">
-                  {latestBudget.observations}
+                  {selectedBudget.observations}
                 </p>
+              )}
+              {selectedBudget.status === "Borrador" && hasPermission("budgets.update") && (
+                <BudgetForm
+                  mode="edit"
+                  budget={selectedBudget}
+                  treatmentId={treatmentId}
+                  procedures={procedures}
+                  onUpdated={(budget) => {
+                    setSelectedBudgetId(budget.id);
+                    setBudgetNotice(`Versión ${budget.version} guardada correctamente.`);
+                    return refresh();
+                  }}
+                />
               )}
               <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <table className="min-w-full divide-y divide-slate-100 text-sm">
@@ -729,7 +929,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {latestBudget.details.map((detail) => (
+                    {selectedBudget.details.map((detail) => (
                       <tr key={detail.id}>
                         <td className="px-4 py-3 font-bold text-slate-900">{detail.name}</td>
                         <td className="px-4 py-3 text-slate-600">{detail.scope_label}</td>
@@ -742,7 +942,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
               <div className="mt-5 flex flex-wrap gap-3">
                 <button
                   type="button"
-                  onClick={() => handleDownloadBudgetPdf(latestBudget)}
+                  onClick={() => handleDownloadBudgetPdf(selectedBudget)}
                   className="min-h-10 rounded-xl border border-green-200 px-4 text-sm font-bold text-green-700 hover:bg-green-50"
                 >
                   Descargar PDF
@@ -750,30 +950,63 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
               </div>
               {hasPermission("budgets.update") && (
                 <div className="mt-3 flex flex-wrap gap-3">
-                  {latestBudget.status === "Borrador" && (
+                  {selectedBudget.status === "Borrador" && (
                     <button
-                      onClick={async () => { await submitBudget(latestBudget.id); await refresh(); }}
+                      disabled={budgetActionBusy}
+                      onClick={() => handleSubmitSelectedBudget(selectedBudget)}
                       className="min-h-10 rounded-xl border border-sky-200 px-4 text-sm font-bold text-sky-700 hover:bg-sky-50"
                     >
                       Enviar aprobación
                     </button>
                   )}
-                  {latestBudget.status !== "Aprobado" && latestBudget.status !== "Rechazado" && (
+                  {selectedBudget.status !== "Aprobado" && selectedBudget.status !== "Rechazado" && (
                     <button
-                      onClick={async () => { await approveBudget(latestBudget.id); await refresh(); }}
+                      disabled={budgetActionBusy}
+                      onClick={() => handleApproveSelectedBudget(selectedBudget)}
                       className="min-h-10 rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white hover:bg-green-700"
                     >
-                      Aprobar
+                      Aprobar versión
                     </button>
                   )}
-                  {latestBudget.status !== "Aprobado" && latestBudget.status !== "Rechazado" && (
+                  {selectedBudget.status !== "Aprobado" && selectedBudget.status !== "Rechazado" && (
                     <button
-                      onClick={async () => { await rejectBudget(latestBudget.id); await refresh(); }}
+                      disabled={budgetActionBusy}
+                      onClick={() => handleRejectSelectedBudget(selectedBudget)}
                       className="min-h-10 rounded-xl border border-red-200 px-4 text-sm font-bold text-red-700 hover:bg-red-50"
                     >
                       Rechazar
                     </button>
                   )}
+                  {hasPermission("budgets.create") && ["Aprobado", "Rechazado", "Pendiente de aprobación"].includes(selectedBudget.status) && (
+                    <button
+                      disabled={budgetActionBusy}
+                      onClick={() => handleCreateBudgetVersion(selectedBudget)}
+                      className="min-h-10 rounded-xl border border-amber-200 px-4 text-sm font-bold text-amber-700 hover:bg-amber-50"
+                    >
+                      Crear nueva versión
+                    </button>
+                  )}
+                </div>
+              )}
+              {budgetVersions.length > 1 && (
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Historial de versiones</p>
+                  <div className="mt-3 space-y-2">
+                    {budgetVersions.map((budget) => (
+                      <button
+                        key={budget.id}
+                        type="button"
+                        onClick={() => setSelectedBudgetId(budget.id)}
+                        className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-left text-sm ${budget.id === selectedBudget.id ? "bg-green-50 ring-1 ring-green-200" : "bg-slate-50 hover:bg-slate-100"}`}
+                      >
+                        <span className="font-black text-slate-900">
+                          V{budget.version} · {budget.status}
+                          {" · "}{budgetVersionState(budget)}
+                        </span>
+                        <span className="font-bold text-slate-600">{money(budget.final_value)}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -846,6 +1079,17 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
             <p className="mt-1"><strong>Creado:</strong> {localDate(treatment.created_at)}</p>
           </div>
       </Panel>
+      <ClinicalCompletionDialog
+        open={Boolean(clinicalCompletionProcedure)}
+        treatmentId={treatmentId}
+        patientId={treatment.patient_id}
+        procedure={clinicalCompletionProcedure}
+        onClose={() => setClinicalCompletionProcedure(null)}
+        onDone={async () => {
+          setClinicalCompletionProcedure(null);
+          await refresh();
+        }}
+      />
       <Modal
         open={Boolean(decision)}
         title="Presupuesto aprobado"
@@ -890,6 +1134,238 @@ function Metric({ label, value, tone = "green" }: { label: string; value: string
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
     </div>
+  );
+}
+
+function ClinicalCompletionDialog({
+  open,
+  treatmentId,
+  patientId,
+  procedure,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  treatmentId: string;
+  patientId: string;
+  procedure: Procedure | null;
+  onClose: () => void;
+  onDone: () => Promise<void>;
+}) {
+  const [evolutions, setEvolutions] = useState<ClinicalEvolution[]>([]);
+  const [catalog, setCatalog] = useState<OdontogramCatalogItem[]>([]);
+  const [evolutionId, setEvolutionId] = useState("");
+  const [catalogItemId, setCatalogItemId] = useState("");
+  const [sourceAction, setSourceAction] = useState<"KEEP_ACTIVE" | "RESOLVE_ON_SIGN">("KEEP_ACTIVE");
+  const [sourceEvent, setSourceEvent] = useState<OdontogramEvent | null>(null);
+  const [observation, setObservation] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !procedure) return;
+    setLoading(true);
+    setError(null);
+    const sourcePromise = procedure.source_odontogram_event_id
+      ? getOdontogramEvent(procedure.source_odontogram_event_id)
+      : Promise.resolve(null);
+    Promise.all([listClinicalEvolutions(patientId), getOdontogramCatalog(), sourcePromise])
+      .then(([evolutionResponse, catalogItems, loadedSourceEvent]) => {
+        const draftEvolutions = evolutionResponse.items.filter((item) => item.status === "DRAFT");
+        const performedCatalog = catalogItems.filter((item) => item.type === "PERFORMED_PROCEDURE" && item.is_active);
+        setEvolutions(draftEvolutions);
+        setCatalog(performedCatalog);
+        setSourceEvent(loadedSourceEvent);
+        setEvolutionId(draftEvolutions[0]?.id ?? "");
+        setCatalogItemId(performedCatalog[0]?.id ?? "");
+        setSourceAction("KEEP_ACTIVE");
+        setObservation("");
+      })
+      .catch((err) => setError(errorMessage(err, "No fue posible cargar el contexto clínico.")))
+      .finally(() => setLoading(false));
+  }, [open, patientId, procedure]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!procedure) return;
+    if (!evolutionId || !catalogItemId) {
+      setError("Selecciona una evolución en borrador y el resultado odontográfico.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await completeProcedureClinically(treatmentId, procedure.id, {
+        clinical_evolution_id: evolutionId,
+        odontogram_catalog_item_id: catalogItemId,
+        idempotency_key: idempotencyKey("clinical-completion"),
+        source_odontogram_event_id: sourceEvent?.id ?? null,
+        source_diagnosis_action: sourceEvent ? sourceAction : "KEEP_ACTIVE",
+        scope_type: procedure.scope_type,
+        zone: procedure.zone,
+        tooth: procedure.tooth,
+        surfaces: procedure.surfaces,
+        dentition: "PERMANENT",
+        observation: observation || null,
+      });
+      await onDone();
+    } catch (err) {
+      setError(errorMessage(err, "No fue posible registrar la realización clínica."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const selectedEvolution = evolutions.find((item) => item.id === evolutionId);
+  const selectedCatalog = catalog.find((item) => item.id === catalogItemId);
+
+  return (
+    <Modal open={open} title="Registrar realización clínica" onClose={onClose}>
+      {!procedure ? null : (
+        <form onSubmit={submit} className="space-y-5">
+          <div className="rounded-2xl border border-green-100 bg-green-50 p-4 text-sm">
+            <p className="font-black text-slate-950">{procedure.name}</p>
+            <p className="mt-1 text-slate-600">{procedure.scope_label}</p>
+            <p className="mt-2 text-xs font-bold uppercase tracking-wide text-green-700">
+              El odontograma quedará en borrador y se confirmará al firmar la evolución.
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Spinner className="h-4 w-4 text-dentia-primary" />
+              Cargando contexto clínico…
+            </div>
+          ) : (
+            <>
+              {error && <Alert tone="error">{error}</Alert>}
+              <label>
+                <span className="mb-2 block text-sm font-bold text-slate-700">Evolución clínica en borrador</span>
+                <select
+                  value={evolutionId}
+                  onChange={(event) => setEvolutionId(event.target.value)}
+                  className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3"
+                >
+                  <option value="">Seleccionar evolución</option>
+                  {evolutions.map((evolution) => (
+                    <option key={evolution.id} value={evolution.id}>
+                      {localDate(evolution.attended_at)} · {evolution.dentist_name ?? "Sin odontólogo"}
+                    </option>
+                  ))}
+                </select>
+                {!evolutions.length && (
+                  <p className="mt-2 text-xs text-orange-700">
+                    Crea o continúa una evolución en borrador antes de registrar la realización clínica.
+                  </p>
+                )}
+              </label>
+
+              <label>
+                <span className="mb-2 block text-sm font-bold text-slate-700">Resultado odontográfico realizado</span>
+                <select
+                  value={catalogItemId}
+                  onChange={(event) => setCatalogItemId(event.target.value)}
+                  className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3"
+                >
+                  <option value="">Seleccionar resultado</option>
+                  {catalog.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+                {selectedCatalog && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Se registrará como procedimiento realizado en odontograma.
+                  </p>
+                )}
+              </label>
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+                  Diagnóstico odontográfico de origen
+                </p>
+                {sourceEvent ? (
+                  <div className="mt-2">
+                    <p className="text-sm font-black text-slate-950">{odontogramEventMainLabel(sourceEvent)}</p>
+                    <p className="mt-1 text-sm text-slate-600">{odontogramEventScopeLabel(sourceEvent)}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Confirmado el {localDate(sourceEvent.confirmed_at ?? sourceEvent.clinical_date)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">
+                    Este procedimiento no tiene un diagnóstico odontográfico de origen vinculado.
+                  </p>
+                )}
+              </section>
+
+              {sourceEvent && (
+                <div>
+                  <label>
+                    <span className="mb-2 block text-sm font-bold text-slate-700">
+                      Acción al firmar la evolución sobre {odontogramEventMainLabel(sourceEvent)}
+                    </span>
+                    <select
+                      value={sourceAction}
+                      onChange={(event) => setSourceAction(event.target.value as "KEEP_ACTIVE" | "RESOLVE_ON_SIGN")}
+                      className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3"
+                    >
+                      <option value="KEEP_ACTIVE">Mantener diagnóstico activo</option>
+                      <option value="RESOLVE_ON_SIGN">Resolver diagnóstico al firmar</option>
+                    </select>
+                  </label>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Resolver no elimina el diagnóstico: lo conserva en historial y lo excluye del estado vigente.
+                  </p>
+                </div>
+              )}
+
+              <label>
+                <span className="mb-2 block text-sm font-bold text-slate-700">Observación clínica</span>
+                <textarea
+                  value={observation}
+                  onChange={(event) => setObservation(event.target.value)}
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2"
+                  placeholder="Opcional. Ej.: restauración finalizada sin complicaciones."
+                />
+              </label>
+
+              <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                <p><strong>Evolución:</strong> {selectedEvolution ? localDate(selectedEvolution.attended_at) : "—"}</p>
+                <p className="mt-1"><strong>Diente/caras:</strong> {procedure.scope_label}</p>
+                <p className="mt-1"><strong>Resultado:</strong> {selectedCatalog?.name ?? "—"}</p>
+                {sourceEvent && sourceAction === "RESOLVE_ON_SIGN" && (
+                  <div className="mt-3 rounded-lg bg-white p-3">
+                    <p className="font-black text-slate-700">Al firmar la evolución se confirmará:</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5">
+                      <li>{selectedCatalog?.name ?? "Resultado realizado"} — {procedure.scope_label}</li>
+                      <li>Resolución de {odontogramEventMainLabel(sourceEvent)} — {odontogramEventScopeLabel(sourceEvent)}</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600 hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              disabled={saving || loading || !evolutionId || !catalogItemId}
+              className="min-h-10 rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {saving ? "Registrando…" : "Registrar y dejar listo para firma"}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 
@@ -1445,20 +1921,112 @@ function ProcedureForm({
   );
 }
 
-function BudgetForm({ treatmentId, onDone }: { treatmentId: string; onDone: () => Promise<void> }) {
-  const [discountType, setDiscountType] = useState("");
-  const [discountValue, setDiscountValue] = useState("0");
+function BudgetForm({
+  mode,
+  budget,
+  treatmentId,
+  procedures,
+  onCreated,
+  onUpdated,
+}: {
+  mode: "create" | "edit";
+  budget?: Budget;
+  treatmentId: string;
+  procedures: Procedure[];
+  onCreated?: (budget: Budget) => Promise<void>;
+  onUpdated?: (budget: Budget) => Promise<void>;
+}) {
+  const [discountType, setDiscountType] = useState(budget?.discount_type ?? "");
+  const [discountValue, setDiscountValue] = useState(budget?.discount_value ?? "0");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const eligibleProcedures = useMemo(
+    () => procedures.filter((procedure) => procedure.status !== "Cancelado"),
+    [procedures],
+  );
+  const [selectedProcedureIds, setSelectedProcedureIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setDiscountType(budget?.discount_type ?? "");
+    setDiscountValue(budget?.discount_value ?? "0");
+    const budgetProcedureIds = budget?.details
+      .map((detail) => detail.procedure_id)
+      .filter((id): id is string => Boolean(id)) ?? [];
+    setSelectedProcedureIds((current) => {
+      if (budgetProcedureIds.length) return budgetProcedureIds;
+      if (mode === "edit") return [];
+      if (current.length) return current.filter((id) => eligibleProcedures.some((procedure) => procedure.id === id));
+      return eligibleProcedures.map((procedure) => procedure.id);
+    });
+  }, [budget?.id, budget?.discount_type, budget?.discount_value, budget?.details, eligibleProcedures, mode]);
+
+  const selectedProcedures = eligibleProcedures.filter((procedure) => selectedProcedureIds.includes(procedure.id));
+  const subtotal = selectedProcedures.reduce((sum, procedure) => sum + Number(procedure.total_value), 0);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await createBudget(treatmentId, {
-      discount_type: discountType || null,
-      discount_value: discountValue,
-    });
-    await onDone();
+    setSaving(true);
+    setFormError(null);
+    try {
+      const payload = {
+        idempotency_key: mode === "create" ? idempotencyKey("budget-create") : null,
+        procedure_ids: selectedProcedureIds,
+        discount_type: discountType || null,
+        discount_value: discountValue,
+      };
+      if (mode === "edit" && budget) {
+        const updatedBudget = await updateBudget(budget.id, payload);
+        await onUpdated?.(updatedBudget);
+      } else {
+        const createdBudget = await createBudget(treatmentId, payload);
+        await onCreated?.(createdBudget);
+      }
+    } catch (error) {
+      setFormError(errorMessage(error));
+    } finally {
+      setSaving(false);
+    }
   }
   return (
     <form onSubmit={submit} className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-      <div className="grid gap-4 sm:grid-cols-[minmax(180px,1fr)_minmax(160px,1fr)_auto] sm:items-end">
+      {formError && (
+        <div className="mb-4">
+          <Alert tone="error">{formError}</Alert>
+        </div>
+      )}
+      <div>
+        <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+          {mode === "edit" && budget ? `Procedimientos de V${budget.version}` : "Procedimientos disponibles"}
+        </p>
+        <div className="mt-3 space-y-2">
+          {eligibleProcedures.map((procedure) => (
+            <label key={procedure.id} className="flex items-start gap-3 rounded-xl bg-white p-3 text-sm shadow-sm">
+              <input
+                type="checkbox"
+                checked={selectedProcedureIds.includes(procedure.id)}
+                onChange={(event) =>
+                  setSelectedProcedureIds((current) =>
+                    event.target.checked
+                      ? [...current, procedure.id]
+                      : current.filter((id) => id !== procedure.id),
+                  )
+                }
+                className="mt-1"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block font-black text-slate-900">{procedure.name}</span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-500">
+                  {procedure.scope_label} · {procedure.status} · Cant. {Number(procedure.quantity)} · {money(procedure.total_value)}
+                </span>
+              </span>
+            </label>
+          ))}
+          {!eligibleProcedures.length && (
+            <p className="rounded-xl bg-white p-3 text-sm text-slate-500">No hay procedimientos elegibles para presupuestar.</p>
+          )}
+        </div>
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(180px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)_auto] sm:items-end">
         <label>
           <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
             Tipo de descuento
@@ -1485,8 +2053,15 @@ function BudgetForm({ treatmentId, onDone }: { treatmentId: string; onDone: () =
             className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
           />
         </label>
-        <button className="min-h-11 whitespace-nowrap rounded-xl border border-green-200 bg-white px-4 text-sm font-bold text-green-700 hover:bg-green-50">
-          Guardar presupuesto
+        <div className="rounded-xl bg-white px-3 py-2 text-sm">
+          <p className="text-xs font-black uppercase tracking-wide text-slate-500">Subtotal seleccionado</p>
+          <p className="font-black text-slate-950">{money(String(subtotal))}</p>
+        </div>
+        <button
+          disabled={!selectedProcedureIds.length || saving}
+          className="min-h-11 whitespace-nowrap rounded-xl border border-green-200 bg-white px-4 text-sm font-bold text-green-700 hover:bg-green-50 disabled:opacity-50"
+        >
+          {saving ? "Guardando…" : mode === "edit" && budget ? `Guardar cambios de V${budget.version}` : "Crear presupuesto"}
         </button>
       </div>
     </form>

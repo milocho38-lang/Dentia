@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { OdontogramCatalogItem, OdontogramEvent, OdontogramToothState } from "@/types/odontogram";
+import type { OdontogramCatalogItem, OdontogramEvent, OdontogramLinkedProcedure, OdontogramToothState } from "@/types/odontogram";
 
 export type DentalInspectorTab = "summary" | "history" | "register" | "drafts";
 
@@ -12,9 +12,11 @@ export type DentalInspectorEventOption = {
 
 export type DentalInspectorProps = {
   toothCode: string;
+  patientId: string;
   toothState?: OdontogramToothState;
   history: OdontogramEvent[];
   drafts: OdontogramEvent[];
+  linkedProcedures: OdontogramLinkedProcedure[];
   selectedSurfaces: string[];
   warning: string | null;
   eventOptions: readonly DentalInspectorEventOption[];
@@ -35,4 +37,5 @@ export type DentalInspectorProps = {
   onSaveAsConfirmedChange: (value: boolean) => void;
   onSaveEvent: () => void;
   onConfirmDraft: (event: OdontogramEvent) => void;
+  onPlannedProcedureCreated: () => Promise<void> | void;
 };

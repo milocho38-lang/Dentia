@@ -292,9 +292,9 @@ class Budget(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint(
             "empresa_id",
-            "tratamiento_id",
+            "budget_series_id",
             "version",
-            name="uq_presupuestos_empresa_tratamiento_version",
+            name="uq_presupuestos_empresa_series_version",
         ),
         CheckConstraint("valor_final >= 0", name="ck_presupuestos_valor_final_no_negativo"),
         CheckConstraint("descuento_valor >= 0", name="ck_presupuestos_descuento_no_negativo"),
@@ -304,6 +304,23 @@ class Budget(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_presupuestos_empresa_estado", "empresa_id", "estado"),
         Index("ix_presupuestos_empresa_paciente", "empresa_id", "paciente_id"),
+        Index("ix_presupuestos_empresa_series", "empresa_id", "budget_series_id"),
+        Index("ix_presupuestos_previous", "previous_budget_id"),
+        Index("ix_presupuestos_superseded_by", "superseded_by_id"),
+        Index(
+            "uq_presupuestos_empresa_idempotency_key",
+            "empresa_id",
+            "budget_idempotency_key",
+            unique=True,
+            postgresql_where=text("budget_idempotency_key IS NOT NULL"),
+        ),
+        Index(
+            "uq_presupuestos_current_approved_series",
+            "empresa_id",
+            "budget_series_id",
+            unique=True,
+            postgresql_where=text("estado = 'Aprobado' AND es_version_vigente = true"),
+        ),
     )
 
     company_id: Mapped[UUID] = mapped_column(
@@ -328,7 +345,43 @@ class Budget(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
     number: Mapped[str | None] = mapped_column("numero", String(50), nullable=True)
+    series_id: Mapped[UUID] = mapped_column(
+        "budget_series_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("presupuestos.id", ondelete="RESTRICT", use_alter=True, name="fk_presupuestos_series"),
+        nullable=False,
+        index=True,
+    )
+    previous_budget_id: Mapped[UUID | None] = mapped_column(
+        "previous_budget_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("presupuestos.id", ondelete="SET NULL", use_alter=True, name="fk_presupuestos_previous"),
+        nullable=True,
+    )
+    superseded_by_id: Mapped[UUID | None] = mapped_column(
+        "superseded_by_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("presupuestos.id", ondelete="SET NULL", use_alter=True, name="fk_presupuestos_superseded_by"),
+        nullable=True,
+    )
     version: Mapped[int] = mapped_column("version", Integer, nullable=False, default=1)
+    is_current: Mapped[bool] = mapped_column(
+        "es_version_vigente",
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    version_reason: Mapped[str | None] = mapped_column(
+        "motivo_version",
+        Text,
+        nullable=True,
+    )
+    budget_idempotency_key: Mapped[str | None] = mapped_column(
+        "budget_idempotency_key",
+        String(120),
+        nullable=True,
+    )
     status: Mapped[str] = mapped_column("estado", String(40), nullable=False)
     gross_value: Mapped[Decimal] = mapped_column(
         "valor_bruto", Numeric(14, 2), nullable=False, default=0
@@ -388,6 +441,13 @@ class BudgetDetail(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "presupuesto_detalle"
     __table_args__ = (
         Index("ix_presupuesto_detalle_presupuesto", "presupuesto_id"),
+        Index(
+            "uq_presupuesto_detalle_presupuesto_procedimiento",
+            "presupuesto_id",
+            "procedimiento_id",
+            unique=True,
+            postgresql_where=text("procedimiento_id IS NOT NULL"),
+        ),
     )
 
     company_id: Mapped[UUID] = mapped_column(

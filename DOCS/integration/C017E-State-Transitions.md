@@ -14,7 +14,7 @@ Estados reales actuales en código:
 | No existe | `CONFIRMED` | Crear confirmado | `odontogram.update_draft` + `odontogram.confirm` | Detalles válidos | Hash de contenido | `ODONTOGRAM_EVENT_CREATED` | Corrección | Evitar duplicados por origen futuro |
 | `DRAFT` | `DRAFT` | Editar borrador | `odontogram.update_draft` | Autor o `DENTIST_ADMIN`, versión coincide | Reemplaza detalles, incrementa versión | `ODONTOGRAM_EVENT_UPDATED_DRAFT` | N/A | Control optimista por `version` |
 | `DRAFT` | `CONFIRMED` | Confirmar | `odontogram.confirm` | Autor o `DENTIST_ADMIN`, versión coincide | `confirmed_at`, `confirmed_by`, hash | `ODONTOGRAM_EVENT_CONFIRMED` | Corrección | No confirmar dos veces |
-| `CONFIRMED` | `VOIDED_BY_COMPENSATING_EVENT` | Corregir | `odontogram.correct` | Motivo requerido | Crea compensación/reemplazo si aplica | `ODONTOGRAM_EVENT_CORRECTED` | No editar original | Una corrección por intención futura |
+| `CONFIRMED` | `VOIDED_BY_COMPENSATING_EVENT` | Corregir o resolver diagnóstico origen | `odontogram.correct` o firma de evolución vinculada | Motivo requerido o `source_diagnosis_action = RESOLVE_ON_SIGN` | Excluye del estado vigente y conserva historial | `ODONTOGRAM_EVENT_CORRECTED` / `SOURCE_ODONTOGRAM_DIAGNOSIS_RESOLVED` | No editar original | Una corrección por intención futura |
 
 ## Procedimiento de tratamiento
 
@@ -39,6 +39,7 @@ Estados conceptuales del contrato:
 | No existe | `Pendiente` | Crear procedimiento | `treatments.update` | Tratamiento no final/cancelado | Recalcula presupuestos editables | `PROCEDURE_CREATED` | Editar/cancelar si permitido | Futura clave origen odontograma |
 | `Pendiente` | `Agendado` | Vincular cita | `treatments.update` / `appointments.update` | Cita del mismo paciente | Cita queda vinculada | `APPOINTMENT_LINKED_TREATMENT_PROCEDURE` | Desvinculación futura | Procedimiento+cita único |
 | `Pendiente`/`Agendado`/`En proceso` | `Realizado` | Marcar realizado | `treatments.update` | No cancelado | `performed_at`, tratamiento puede pasar a `En ejecución` | `PROCEDURE_MARKED_DONE` | Corrección futura | No repetir si ya realizado |
+| `Pendiente`/`Agendado`/`En proceso` | `Realizado` | Registrar realización clínica | `treatments.update` + permisos clínicos | Evolución `DRAFT`, odontograma activo, resultado odontográfico elegido explícitamente | Crea evento odontográfico `PROCEDURE_PERFORMED` en `DRAFT`, vinculado y revisado | `PROCEDURE_MARKED_COMPLETED`, `ODONTOGRAM_DRAFT_GENERATED`, `ODONTOGRAM_DRAFT_LINKED_TO_EVOLUTION`, `ODONTOGRAM_DRAFT_REVIEWED` | Firma o corrección futura | `completion_idempotency_key` |
 | No realizado | `Cancelado` | Cancelar | `treatments.update` | Motivo, presupuesto aprobado exige nueva versión | Recalcula presupuestos editables | `PROCEDURE_CANCELLED` | Nuevo procedimiento | No repetir |
 
 ## Tratamiento
@@ -77,11 +78,13 @@ El contrato menciona `Vencido` y `Sustituido`; no existen como estados reales ac
 
 | Desde | Hacia | Acción | Permiso | Precondición | Efectos secundarios | Auditoría | Reversión | Idempotencia |
 |---|---|---|---|---|---|---|---|---|
-| No existe | `Borrador` | Crear presupuesto | `budgets.create` | Hay procedimientos no cancelados | Snapshot `BudgetDetail` | `BUDGET_CREATED` | Eliminar no definido | Versión única por tratamiento |
+| No existe | `Borrador` | Crear presupuesto | `budgets.create` | Hay procedimientos no cancelados o selección explícita elegible | Snapshot `BudgetDetail`, serie propia, versión 1 | `BUDGET_CREATED`, `BUDGET_CREATED_FROM_TREATMENT_PROCEDURES` | Eliminar no definido | `budget_idempotency_key` opcional |
 | `Borrador` | `Pendiente de aprobación` | Enviar | `budgets.update` | Datos completos | Estado enviado | `BUDGET_SUBMITTED` | Volver no definido | No repetir |
-| `Borrador`/`Pendiente de aprobación` | `Aprobado` | Aprobar | `budgets.update` | Valor final >= 0 | `approved_at`, tratamiento aprobado | `BUDGET_APPROVED` | Nueva versión | No aprobar dos veces |
+| `Borrador`/`Pendiente de aprobación` | `Aprobado` | Aprobar | `budgets.update` | Valor final >= 0 y líneas existentes | Bloquea serie, retira vigencia anterior, `flush`, marca nueva vigente, tratamiento aprobado | `BUDGET_APPROVED`, `BUDGET_VERSION_SUPERSEDED` si aplica | Nueva versión | Índice único de vigente aprobada por serie como última barrera |
 | `Borrador`/`Pendiente de aprobación` | `Rechazado` | Rechazar | `budgets.update` | Usuario autorizado | `rejected_at` | `BUDGET_REJECTED` | Duplicar versión | No repetir |
-| Aprobado | Nueva versión | Duplicar/derivar | `budgets.create` | Cambio requerido | Nuevo presupuesto | `BUDGET_CREATED` | Rechazar versión | Versión incremental |
+| `Aprobado`/`Rechazado`/`Pendiente de aprobación` | Nueva versión `Borrador` | Crear nueva versión | `budgets.create` | Motivo requerido; no existe otro borrador en la serie | Copia snapshots del presupuesto origen, conserva serie, incrementa versión | `BUDGET_VERSION_CREATED` | Rechazar versión | `budget_idempotency_key` opcional |
+| `Borrador` | `Borrador` | Guardar cambios de versión | `budgets.update` | Presupuesto editable | Reemplaza detalles de esa versión, recalcula totales propios | `BUDGET_DRAFT_UPDATED` | Nueva versión o nuevo guardado | No incrementa versión |
+| `Aprobado`/`Rechazado`/`Pendiente de aprobación` | `Borrador` existente | Crear nueva versión con borrador activo | `budgets.create` | Ya existe borrador en serie | Devuelve el borrador existente, no crea V3 | `BUDGET_VERSION_DRAFT_REUSED` | Abrir borrador | No duplica |
 
 ## Evolución clínica
 
@@ -97,7 +100,7 @@ Estados reales actuales:
 |---|---|---|---|---|---|---|---|---|
 | No existe | `DRAFT` | Crear evolución | `clinical_evolutions.create` | Historia activa, cita única si aplica | Timeline | `CLINICAL_EVOLUTION_CREATED` | Editar borrador | Una principal por cita |
 | `DRAFT` | `DRAFT` | Editar | `clinical_evolutions.update_draft` | Versión coincide | Reemplaza links a procedimientos | `CLINICAL_EVOLUTION_DRAFT_UPDATED` | N/A | Control optimista |
-| `DRAFT` | `SIGNED` | Firmar | `clinical_evolutions.sign` | Confirmación completa, versión coincide | Hash, timeline | `CLINICAL_EVOLUTION_SIGNED` | Adenda | No firmar dos veces |
+| `DRAFT` | `SIGNED` | Firmar | `clinical_evolutions.sign` | Confirmación completa, versión coincide | Hash, timeline, confirma eventos odontográficos vinculados/revisados; si aplica resuelve diagnóstico origen | `CLINICAL_EVOLUTION_SIGNED`, `ODONTOGRAM_EVENT_CONFIRMED_FROM_EVOLUTION`, `SOURCE_ODONTOGRAM_DIAGNOSIS_RESOLVED` | Adenda | No firmar dos veces |
 | `SIGNED` | `SIGNED` + adenda | Agregar adenda | `clinical_evolutions.add_addendum` | Evolución firmada | Nueva adenda | `CLINICAL_EVOLUTION_ADDENDUM_CREATED` | Nueva adenda | No editar firma |
 
 ## Transiciones compuestas futuras

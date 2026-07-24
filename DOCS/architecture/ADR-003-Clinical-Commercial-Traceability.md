@@ -2,7 +2,17 @@
 
 ## Estado
 
-Aceptado para diseño. Pendiente de implementación por fases C017E.1–C017E.4.
+Aceptado para diseño e implementación por fases C017E.1–C017E.4.
+
+Implementado:
+
+- C017E.1: diagnóstico odontográfico → procedimiento planificado.
+- C017E.2: procedimientos → presupuesto versionado e inmutable.
+
+Pendiente:
+
+- C017E.3: procedimiento realizado → evolución → odontograma.
+- C017E.4: validación integral con pagos, reportes y cartera.
 
 ## Contexto
 
@@ -65,6 +75,7 @@ Los presupuestos aprobados no modificarán el estado clínico dental.
 - Reduce doble digitación sin crear automatismos clínicos peligrosos.
 - Permite que un diagnóstico origine varios procedimientos.
 - Mantiene presupuesto aprobado como snapshot inmutable.
+- Implementa presupuesto versionado por serie para cambios posteriores a aprobación o rechazo.
 - Mantiene odontograma, tratamiento, evolución y finanzas con fuentes separadas.
 - Permite auditoría clara de cada transición.
 - Evita que reintentos de red o doble clic creen duplicados.
@@ -76,6 +87,7 @@ Los presupuestos aprobados no modificarán el estado clínico dental.
 - Aumenta la complejidad de pruebas.
 - Obliga a definir cuándo una operación es automática, semiautomática o manual.
 - Requiere versionamiento o derivación para modificar presupuestos aprobados.
+- Requiere una política futura más robusta para consecutivos en alta concurrencia.
 
 ## Alternativas descartadas
 
