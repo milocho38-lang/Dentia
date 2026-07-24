@@ -26,17 +26,45 @@ export interface PlatformSiteSummary {
   status: string;
 }
 
+export interface PlatformRoleOption {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+}
+
+export interface PlatformUserSiteSummary {
+  id: string;
+  name: string;
+  is_default: boolean;
+}
+
+export interface PlatformDentistProfileSummary {
+  id: string;
+  name: string;
+  status: string;
+  is_active: boolean;
+  sites: PlatformUserSiteSummary[];
+}
+
 export interface PlatformUserSummary {
   id: string;
   name: string;
   email: string;
   status: string;
+  is_active: boolean;
+  role_ids: string[];
   roles: string[];
+  role_names: string[];
+  sites: PlatformUserSiteSummary[];
+  dentist_profile: PlatformDentistProfileSummary | null;
+  needs_dentist_profile: boolean;
 }
 
 export interface PlatformCompanyDetail extends PlatformCompanyListItem {
   sites: PlatformSiteSummary[];
   users: PlatformUserSummary[];
+  role_options: PlatformRoleOption[];
 }
 
 export interface PlatformCompanyInput {
@@ -58,4 +86,18 @@ export interface PlatformCompanyCreateResponse {
   company: PlatformCompanyDetail;
   admin_user: PlatformUserSummary;
   temporary_password: string;
+}
+
+export interface PlatformCompanyUserRoleUpdateInput {
+  role_ids: string[];
+  site_ids: string[];
+  default_site_id: string;
+  status: "Activo" | "Inactivo";
+  ensure_dentist_profile: boolean;
+}
+
+export interface PlatformCompanyUserRoleUpdateResponse {
+  success: boolean;
+  message: string;
+  user: PlatformUserSummary;
 }

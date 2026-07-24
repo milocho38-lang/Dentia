@@ -9,8 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, normalize_email
-from app.core.security_catalog import PERMISSIONS, ROLES
-from app.models.agenda import Dentist
+from app.core.security_catalog import PERMISSIONS, PLATFORM_PERMISSION_CODES, ROLES
+from app.models.agenda import Dentist, DentistSite
 from app.models.associations import RolePermission, UserRole, UserSite
 from app.models.audit_event import AuditEvent
 from app.models.auth_session import AuthSession
@@ -24,9 +24,14 @@ from app.schemas.platform_schema import (
     PlatformCompanyCreateRequest,
     PlatformCompanyCreateResponse,
     PlatformCompanyDetail,
+    PlatformCompanyUserRoleUpdateRequest,
+    PlatformCompanyUserRoleUpdateResponse,
+    PlatformDentistProfileSummary,
     PlatformCompanyListItem,
     PlatformCompanyListResponse,
+    PlatformRoleOption,
     PlatformSiteSummary,
+    PlatformUserSiteSummary,
     PlatformUserSummary,
 )
 from app.services.agenda_service import ensure_agenda_seed_data
@@ -208,11 +213,12 @@ def _list_item(session: Session, company: Company) -> PlatformCompanyListItem:
 
 
 def _user_summary(session: Session, user: User) -> PlatformUserSummary:
-    roles = list(
-        session.scalars(
-            select(Role.code)
+    role_rows = list(
+        session.execute(
+            select(Role.id, Role.code, Role.name)
             .join(UserRole, UserRole.role_id == Role.id)
             .where(
+                UserRole.company_id == user.company_id,
                 UserRole.user_id == user.id,
                 UserRole.is_active.is_(True),
                 Role.is_active.is_(True),
@@ -220,13 +226,121 @@ def _user_summary(session: Session, user: User) -> PlatformUserSummary:
             .order_by(Role.code)
         )
     )
+    site_rows = list(
+        session.execute(
+            select(Site.id, Site.name, UserSite.is_default)
+            .join(UserSite, UserSite.site_id == Site.id)
+            .where(
+                UserSite.company_id == user.company_id,
+                UserSite.user_id == user.id,
+                UserSite.is_active.is_(True),
+                Site.is_active.is_(True),
+            )
+            .order_by(UserSite.is_default.desc(), Site.name)
+        )
+    )
+    role_codes = [row.code for row in role_rows]
     return PlatformUserSummary(
         id=user.id,
         name=user.name,
         email=user.email,
         status=user.status,
-        roles=roles,
+        is_active=user.is_active,
+        role_ids=[row.id for row in role_rows],
+        roles=role_codes,
+        role_names=[row.name for row in role_rows],
+        sites=[
+            PlatformUserSiteSummary(
+                id=row.id,
+                name=row.name,
+                is_default=row.is_default,
+            )
+            for row in site_rows
+        ],
+        dentist_profile=_dentist_profile_summary(session, user),
+        needs_dentist_profile=_has_clinical_role(role_codes)
+        and _dentist_profile_summary(session, user) is None,
     )
+
+
+def _has_clinical_role(role_codes: list[str] | set[str]) -> bool:
+    return bool({"DENTIST", "DENTIST_ADMIN"} & set(role_codes))
+
+
+def _dentist_profile_summary(
+    session: Session,
+    user: User,
+) -> PlatformDentistProfileSummary | None:
+    dentist = session.scalar(
+        select(Dentist).where(
+            Dentist.company_id == user.company_id,
+            Dentist.user_id == user.id,
+        )
+    )
+    if dentist is None:
+        return None
+    sites = list(
+        session.execute(
+            select(Site.id, Site.name, DentistSite.is_active)
+            .join(DentistSite, DentistSite.site_id == Site.id)
+            .where(
+                DentistSite.company_id == user.company_id,
+                DentistSite.dentist_id == dentist.id,
+                DentistSite.is_active.is_(True),
+                Site.is_active.is_(True),
+            )
+            .order_by(Site.name)
+        )
+    )
+    return PlatformDentistProfileSummary(
+        id=dentist.id,
+        name=dentist.name,
+        status=dentist.status,
+        is_active=dentist.is_active,
+        sites=[
+            PlatformUserSiteSummary(id=row.id, name=row.name, is_default=False)
+            for row in sites
+        ],
+    )
+
+
+def _role_has_platform_permissions(session: Session, role_id: UUID) -> bool:
+    return bool(
+        session.scalar(
+            select(func.count())
+            .select_from(RolePermission)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(
+                RolePermission.role_id == role_id,
+                RolePermission.is_active.is_(True),
+                Permission.code.in_(PLATFORM_PERMISSION_CODES),
+            )
+        )
+    )
+
+
+def _business_role_options(session: Session, company_id: UUID) -> list[PlatformRoleOption]:
+    roles = list(
+        session.scalars(
+            select(Role)
+            .where(
+                Role.company_id == company_id,
+                Role.is_active.is_(True),
+                Role.code != "PLATFORM_ADMIN",
+            )
+            .order_by(Role.name)
+        )
+    )
+    return [
+        PlatformRoleOption(
+            id=role.id,
+            code=role.code,
+            name=role.name,
+            description=role.description,
+        )
+        for role in roles
+        if not _role_has_platform_permissions(session, role.id)
+    ]
 
 
 def _detail(session: Session, company: Company) -> PlatformCompanyDetail:
@@ -238,7 +352,7 @@ def _detail(session: Session, company: Company) -> PlatformCompanyDetail:
     )
     users = list(
         session.scalars(
-            select(User).where(User.company_id == company.id).order_by(User.name).limit(10)
+            select(User).where(User.company_id == company.id).order_by(User.name)
         )
     )
     return PlatformCompanyDetail(
@@ -255,6 +369,7 @@ def _detail(session: Session, company: Company) -> PlatformCompanyDetail:
             for site in sites
         ],
         users=[_user_summary(session, user) for user in users],
+        role_options=_business_role_options(session, company.id),
     )
 
 
@@ -276,6 +391,349 @@ def get_platform_company(session: Session, company_id: UUID) -> PlatformCompanyD
     if company is None:
         raise PlatformError("Empresa no encontrada.", 404)
     return _detail(session, company)
+
+
+def _get_company_and_user(
+    session: Session,
+    company_id: UUID,
+    user_id: UUID,
+    *,
+    lock_user: bool = False,
+) -> tuple[Company, User]:
+    company = session.get(Company, company_id)
+    if company is None:
+        raise PlatformError("Empresa no encontrada.", 404)
+    statement = select(User).where(
+        User.id == user_id,
+        User.company_id == company_id,
+    )
+    if lock_user:
+        statement = statement.with_for_update()
+    user = session.scalar(statement)
+    if user is None:
+        raise PlatformError("Usuario no pertenece a la empresa indicada.", 404)
+    return company, user
+
+
+def _validate_business_roles(
+    session: Session,
+    company_id: UUID,
+    role_ids: list[UUID],
+) -> list[Role]:
+    unique_ids = list(dict.fromkeys(role_ids))
+    roles = list(
+        session.scalars(
+            select(Role).where(
+                Role.company_id == company_id,
+                Role.id.in_(unique_ids),
+                Role.is_active.is_(True),
+            )
+        )
+    )
+    if len(roles) != len(unique_ids):
+        raise PlatformError("Uno o más roles no pertenecen a la empresa indicada.", 400)
+    if any(
+        role.code == "PLATFORM_ADMIN" or _role_has_platform_permissions(session, role.id)
+        for role in roles
+    ):
+        raise PlatformError(
+            "No se puede asignar Administrador de plataforma desde esta pantalla.",
+            403,
+        )
+    return roles
+
+
+def _validate_company_sites(
+    session: Session,
+    company_id: UUID,
+    site_ids: list[UUID],
+    default_site_id: UUID,
+) -> None:
+    unique_ids = set(site_ids)
+    if default_site_id not in unique_ids:
+        raise PlatformError("La sede predeterminada debe estar asignada.")
+    count = int(
+        session.scalar(
+            select(func.count())
+            .select_from(Site)
+            .where(
+                Site.company_id == company_id,
+                Site.id.in_(unique_ids),
+                Site.is_active.is_(True),
+            )
+        )
+        or 0
+    )
+    if count != len(unique_ids):
+        raise PlatformError("Una o más sedes no pertenecen a la empresa indicada.")
+
+
+def _active_role_codes(session: Session, user: User) -> set[str]:
+    return set(
+        session.scalars(
+            select(Role.code)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(
+                UserRole.company_id == user.company_id,
+                UserRole.user_id == user.id,
+                UserRole.is_active.is_(True),
+                Role.is_active.is_(True),
+            )
+        )
+    )
+
+
+def _active_site_ids(session: Session, user: User) -> set[UUID]:
+    return set(
+        session.scalars(
+            select(UserSite.site_id).where(
+                UserSite.company_id == user.company_id,
+                UserSite.user_id == user.id,
+                UserSite.is_active.is_(True),
+            )
+        )
+    )
+
+
+def _sync_business_roles(
+    session: Session,
+    *,
+    target: User,
+    roles: list[Role],
+    actor_id: UUID,
+) -> None:
+    requested = {role.id for role in roles}
+    role_by_id = {
+        role.id: role
+        for role in session.scalars(
+            select(Role).where(Role.company_id == target.company_id)
+        )
+    }
+    existing = {
+        assignment.role_id: assignment
+        for assignment in session.scalars(
+            select(UserRole)
+            .where(
+                UserRole.company_id == target.company_id,
+                UserRole.user_id == target.id,
+            )
+            .with_for_update()
+        )
+    }
+    for role_id, assignment in existing.items():
+        role = role_by_id.get(role_id)
+        if role and role.code == "PLATFORM_ADMIN":
+            continue
+        assignment.is_active = role_id in requested
+    for role_id in requested - existing.keys():
+        session.add(
+            UserRole(
+                company_id=target.company_id,
+                user_id=target.id,
+                role_id=role_id,
+                created_by=actor_id,
+            )
+        )
+
+
+def _sync_user_sites_for_platform(
+    session: Session,
+    *,
+    target: User,
+    site_ids: list[UUID],
+    default_site_id: UUID,
+    actor_id: UUID,
+) -> None:
+    requested = set(site_ids)
+    existing = {
+        assignment.site_id: assignment
+        for assignment in session.scalars(
+            select(UserSite)
+            .where(
+                UserSite.company_id == target.company_id,
+                UserSite.user_id == target.id,
+            )
+            .with_for_update()
+        )
+    }
+    for site_id, assignment in existing.items():
+        assignment.is_active = site_id in requested
+        assignment.is_default = site_id == default_site_id and site_id in requested
+    for site_id in requested - existing.keys():
+        session.add(
+            UserSite(
+                company_id=target.company_id,
+                user_id=target.id,
+                site_id=site_id,
+                is_default=site_id == default_site_id,
+                created_by=actor_id,
+            )
+        )
+    target.default_site_id = default_site_id
+
+
+def _ensure_dentist_profile(
+    session: Session,
+    *,
+    target: User,
+    site_ids: list[UUID],
+    actor_id: UUID,
+) -> tuple[Dentist, bool]:
+    dentist = session.scalar(
+        select(Dentist)
+        .where(
+            Dentist.company_id == target.company_id,
+            Dentist.user_id == target.id,
+        )
+        .with_for_update()
+    )
+    created = False
+    if dentist is None:
+        dentist = Dentist(
+            company_id=target.company_id,
+            user_id=target.id,
+            name=target.name,
+            status="Activo",
+            created_by=actor_id,
+        )
+        session.add(dentist)
+        session.flush()
+        created = True
+    else:
+        dentist.name = target.name
+        dentist.status = "Activo"
+        dentist.is_active = True
+    existing = {
+        assignment.site_id: assignment
+        for assignment in session.scalars(
+            select(DentistSite)
+            .where(
+                DentistSite.company_id == target.company_id,
+                DentistSite.dentist_id == dentist.id,
+            )
+            .with_for_update()
+        )
+    }
+    requested = set(site_ids)
+    for site_id, assignment in existing.items():
+        assignment.is_active = site_id in requested
+    for site_id in requested - existing.keys():
+        session.add(
+            DentistSite(
+                company_id=target.company_id,
+                dentist_id=dentist.id,
+                site_id=site_id,
+                created_by=actor_id,
+            )
+        )
+    return dentist, created
+
+
+def update_platform_company_user_roles(
+    session: Session,
+    context: AuthContext,
+    company_id: UUID,
+    user_id: UUID,
+    payload: PlatformCompanyUserRoleUpdateRequest,
+    metadata: RequestMetadata,
+) -> PlatformCompanyUserRoleUpdateResponse:
+    company, target = _get_company_and_user(
+        session,
+        company_id,
+        user_id,
+        lock_user=True,
+    )
+    roles = _validate_business_roles(session, company.id, payload.role_ids)
+    _validate_company_sites(
+        session,
+        company.id,
+        payload.site_ids,
+        payload.default_site_id,
+    )
+    before_roles = _active_role_codes(session, target)
+    before_sites = _active_site_ids(session, target)
+    before_status = target.status
+    new_role_codes = {role.code for role in roles}
+    if (
+        target.status == "Activo"
+        and "ADMINISTRATOR" in before_roles
+        and "ADMINISTRATOR" not in new_role_codes
+    ):
+        active_admin_count = int(
+            session.scalar(
+                select(func.count())
+                .select_from(User)
+                .join(UserRole, UserRole.user_id == User.id)
+                .join(Role, Role.id == UserRole.role_id)
+                .where(
+                    User.company_id == company.id,
+                    User.status == "Activo",
+                    User.is_active.is_(True),
+                    UserRole.is_active.is_(True),
+                    Role.code == "ADMINISTRATOR",
+                    Role.is_active.is_(True),
+                )
+            )
+            or 0
+        )
+        if active_admin_count <= 1:
+            raise PlatformError(
+                "No puedes retirar el último Administrador activo de la empresa.",
+                409,
+            )
+    _sync_business_roles(
+        session,
+        target=target,
+        roles=roles,
+        actor_id=context.user.id,
+    )
+    _sync_user_sites_for_platform(
+        session,
+        target=target,
+        site_ids=payload.site_ids,
+        default_site_id=payload.default_site_id,
+        actor_id=context.user.id,
+    )
+    target.status = payload.status
+    target.is_active = payload.status == "Activo"
+    dentist_profile_created = False
+    dentist_id = None
+    if _has_clinical_role(new_role_codes) and payload.ensure_dentist_profile:
+        dentist, dentist_profile_created = _ensure_dentist_profile(
+            session,
+            target=target,
+            site_ids=payload.site_ids,
+            actor_id=context.user.id,
+        )
+        dentist_id = dentist.id
+    _audit(
+        session,
+        context,
+        metadata,
+        company_id=company.id,
+        entity="user",
+        entity_id=target.id,
+        action="PLATFORM_COMPANY_USER_ROLES_UPDATED",
+        detail={
+            "target_user_id": str(target.id),
+            "company_id": str(company.id),
+            "roles_before": sorted(before_roles),
+            "roles_after": sorted(new_role_codes),
+            "sites_before": sorted(str(site_id) for site_id in before_sites),
+            "sites_after": sorted(str(site_id) for site_id in payload.site_ids),
+            "default_site_after": str(payload.default_site_id),
+            "status_before": before_status,
+            "status_after": target.status,
+            "dentist_profile_id": str(dentist_id) if dentist_id else None,
+            "dentist_profile_created": dentist_profile_created,
+        },
+    )
+    session.commit()
+    user = _user_summary(session, target)
+    message = "Roles empresariales actualizados. El usuario debe cerrar sesión y volver a iniciar para actualizar sus permisos."
+    if user.needs_dentist_profile:
+        message += " El usuario tiene rol clínico, pero aún no tiene perfil de odontólogo vinculado."
+    return PlatformCompanyUserRoleUpdateResponse(message=message, user=user)
 
 
 def create_platform_company(

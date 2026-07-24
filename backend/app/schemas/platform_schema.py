@@ -122,17 +122,45 @@ class PlatformSiteSummary(BaseModel):
     status: str
 
 
+class PlatformRoleOption(BaseModel):
+    id: UUID
+    code: str
+    name: str
+    description: str | None
+
+
+class PlatformUserSiteSummary(BaseModel):
+    id: UUID
+    name: str
+    is_default: bool
+
+
+class PlatformDentistProfileSummary(BaseModel):
+    id: UUID
+    name: str
+    status: str
+    is_active: bool
+    sites: list[PlatformUserSiteSummary]
+
+
 class PlatformUserSummary(BaseModel):
     id: UUID
     name: str
     email: str
     status: str
+    is_active: bool
+    role_ids: list[UUID]
     roles: list[str]
+    role_names: list[str]
+    sites: list[PlatformUserSiteSummary]
+    dentist_profile: PlatformDentistProfileSummary | None = None
+    needs_dentist_profile: bool = False
 
 
 class PlatformCompanyDetail(PlatformCompanyListItem):
     sites: list[PlatformSiteSummary]
     users: list[PlatformUserSummary]
+    role_options: list[PlatformRoleOption]
 
 
 class PlatformCompanyCreateResponse(BaseModel):
@@ -145,3 +173,31 @@ class PlatformCompanyActionResponse(BaseModel):
     success: bool = True
     message: str
     company: PlatformCompanyDetail
+
+
+class PlatformCompanyUserRoleUpdateRequest(BaseModel):
+    role_ids: list[UUID] = Field(min_length=1)
+    site_ids: list[UUID] = Field(min_length=1)
+    default_site_id: UUID
+    status: str
+    ensure_dentist_profile: bool = False
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        value = value.strip()
+        if value not in {"Activo", "Inactivo"}:
+            raise ValueError("Estado no válido.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_default_site(self):
+        if self.default_site_id not in self.site_ids:
+            raise ValueError("La sede predeterminada debe estar asignada.")
+        return self
+
+
+class PlatformCompanyUserRoleUpdateResponse(BaseModel):
+    success: bool = True
+    message: str
+    user: PlatformUserSummary

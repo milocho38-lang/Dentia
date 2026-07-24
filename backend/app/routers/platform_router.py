@@ -12,6 +12,8 @@ from app.schemas.platform_schema import (
     PlatformCompanyCreateResponse,
     PlatformCompanyDetail,
     PlatformCompanyListResponse,
+    PlatformCompanyUserRoleUpdateRequest,
+    PlatformCompanyUserRoleUpdateResponse,
 )
 from app.services.auth_service import AuthContext
 from app.services.platform_service import (
@@ -20,6 +22,7 @@ from app.services.platform_service import (
     create_platform_company,
     get_platform_company,
     list_platform_companies,
+    update_platform_company_user_roles,
 )
 
 
@@ -72,6 +75,33 @@ def company_detail_endpoint(
 ) -> PlatformCompanyDetail:
     try:
         return get_platform_company(session, company_id)
+    except PlatformError as exc:
+        raise handle(exc)
+
+
+@router.patch(
+    "/companies/{company_id}/users/{user_id}/roles",
+    response_model=PlatformCompanyUserRoleUpdateResponse,
+)
+def update_company_user_roles_endpoint(
+    company_id: UUID,
+    user_id: UUID,
+    payload: PlatformCompanyUserRoleUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+) -> PlatformCompanyUserRoleUpdateResponse:
+    try:
+        return update_platform_company_user_roles(
+            session,
+            context,
+            company_id,
+            user_id,
+            payload,
+            get_request_metadata(request),
+        )
     except PlatformError as exc:
         raise handle(exc)
 

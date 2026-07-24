@@ -3,6 +3,8 @@ import type {
   PlatformCompanyCreateResponse,
   PlatformCompanyDetail,
   PlatformCompanyInput,
+  PlatformCompanyUserRoleUpdateInput,
+  PlatformCompanyUserRoleUpdateResponse,
   PlatformCompanyListItem,
 } from "@/types/platform";
 
@@ -36,5 +38,20 @@ export function reactivatePlatformCompany(id: string) {
   return apiRequest<{ company: PlatformCompanyDetail; message: string }>(
     `/api/platform/companies/${id}/reactivate`,
     { method: "POST" },
+  );
+}
+
+export function updatePlatformCompanyUserRoles(
+  companyId: string,
+  userId: string,
+  data: PlatformCompanyUserRoleUpdateInput,
+) {
+  return apiRequest<PlatformCompanyUserRoleUpdateResponse>(
+    `/api/platform/companies/${companyId}/users/${userId}/roles`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
   );
 }
