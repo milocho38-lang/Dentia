@@ -712,6 +712,7 @@ def _evolution_response(
         dentist_name=_dentist_name(session, evolution.dentist_id),
         attended_at=evolution.attended_at,
         timezone_name=evolution.timezone_name,
+        evolution_text=evolution.evolution_text,
         reason=evolution.reason,
         subjective=evolution.subjective,
         objective=evolution.objective,
@@ -857,6 +858,7 @@ def _apply_evolution_payload(
     evolution.dentist_id = dentist.id
     evolution.attended_at = attended_at
     evolution.timezone_name = timezone_name
+    evolution.evolution_text = payload.evolution_text
     evolution.reason = payload.reason
     evolution.subjective = payload.subjective
     evolution.objective = payload.objective
@@ -899,6 +901,7 @@ def _canonical_evolution_payload(
         "dentist_id": str(evolution.dentist_id),
         "attended_at": evolution.attended_at.isoformat(),
         "timezone_name": evolution.timezone_name,
+        "evolution_text": evolution.evolution_text,
         "reason": evolution.reason,
         "subjective": evolution.subjective,
         "objective": evolution.objective,
@@ -925,6 +928,47 @@ def _canonical_evolution_payload(
 def _content_hash(payload: dict) -> str:
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _evolution_summary(evolution: ClinicalEvolution, *, limit: int = 180) -> str:
+    source = (
+        evolution.evolution_text
+        or evolution.reason
+        or evolution.performed_procedure
+        or evolution.assessment
+        or evolution.objective
+        or evolution.indications
+        or ""
+    ).strip()
+    if not source:
+        return "Sin resumen clínico aún."
+    normalized = " ".join(source.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 1].rstrip()}…"
+
+
+def _payload_has_clinical_content(
+    payload: ClinicalEvolutionCreateRequest | ClinicalEvolutionDraftUpdateRequest,
+) -> bool:
+    return any(
+        (
+            payload.evolution_text,
+            payload.reason,
+            payload.subjective,
+            payload.objective,
+            payload.assessment,
+            payload.performed_procedure,
+            payload.anesthesia,
+            payload.materials,
+            payload.administered_medications,
+            payload.findings,
+            payload.complications,
+            payload.indications,
+            payload.recommendations,
+            payload.observations,
+        )
+    )
 
 
 def _add_timeline_event(
@@ -1004,6 +1048,8 @@ def create_clinical_evolution(
 ) -> ClinicalEvolutionResponse:
     _require_permission(context, "clinical_evolutions.create")
     _require_permission(context, "clinical_records.view_sensitive")
+    if not _payload_has_clinical_content(payload):
+        raise ClinicalRecordError("Registra la Evolución clínica antes de guardar.", 422)
     record = _require_record(session, context, patient_id)
     site = _require_site_for_action(session, context, payload.site_id)
     dentist = _require_dentist_for_action(session, context, payload.dentist_id)
@@ -1046,7 +1092,7 @@ def create_clinical_evolution(
         entity_type="clinical_evolution",
         entity_id=evolution.id,
         title="Evolución clínica creada",
-        summary="Borrador de evolución clínica.",
+        summary=_evolution_summary(evolution),
         clinical_date=evolution.attended_at,
         site_id=evolution.site_id,
         dentist_id=evolution.dentist_id,
@@ -1109,6 +1155,8 @@ def update_clinical_evolution_draft(
             "Esta evolución fue modificada o firmada por otro usuario. Recarga la versión más reciente.",
             409,
         )
+    if not _payload_has_clinical_content(payload):
+        raise ClinicalRecordError("Registra la Evolución clínica antes de guardar.", 422)
     _apply_evolution_payload(session, context, evolution, payload)
     _replace_evolution_procedures(session, context, evolution, payload.procedures)
     evolution.version += 1
@@ -1129,6 +1177,8 @@ def update_clinical_evolution_draft(
 
 
 def _validate_evolution_ready_to_sign(evolution: ClinicalEvolution) -> None:
+    if evolution.evolution_text and evolution.evolution_text.strip():
+        return
     if not any(
         [
             evolution.objective,
@@ -1138,7 +1188,7 @@ def _validate_evolution_ready_to_sign(evolution: ClinicalEvolution) -> None:
         ]
     ):
         raise ClinicalRecordError(
-            "Para firmar registra al menos objetivo, evaluación, procedimiento realizado o indicaciones.",
+            "Para firmar registra la Evolución clínica o completa información clínica estructurada histórica.",
             422,
         )
 
@@ -1342,7 +1392,7 @@ def sign_clinical_evolution(
             entity_type="clinical_evolution",
             entity_id=evolution.id,
             title="Evolución clínica firmada",
-            summary="Registro clínico firmado y cerrado.",
+            summary=_evolution_summary(evolution),
             clinical_date=evolution.attended_at,
             site_id=evolution.site_id,
             dentist_id=evolution.dentist_id,

@@ -349,6 +349,7 @@ class ClinicalEvolutionBaseInput(BaseModel):
     site_id: UUID | None = None
     dentist_id: UUID | None = None
     attended_at: datetime | None = None
+    evolution_text: str | None = Field(default=None, max_length=12000)
     reason: str | None = Field(default=None, max_length=4000)
     subjective: str | None = Field(default=None, max_length=6000)
     objective: str | None = Field(default=None, max_length=6000)
@@ -369,6 +370,7 @@ class ClinicalEvolutionBaseInput(BaseModel):
 
     @field_validator(
         "reason",
+        "evolution_text",
         "subjective",
         "objective",
         "assessment",
@@ -452,6 +454,7 @@ class ClinicalEvolutionResponse(BaseModel):
     dentist_name: str | None = None
     attended_at: datetime
     timezone_name: str
+    evolution_text: str | None
     reason: str | None
     subjective: str | None
     objective: str | None

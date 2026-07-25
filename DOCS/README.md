@@ -15,6 +15,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [Architecture Decision Records](adr/)
 - [Roadmap](roadmap/)
 - [Integraciones](integration/)
+- [Clínica](clinical/)
 
 ## Design System
 
@@ -43,6 +44,10 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C017E.1 — Diagnóstico odontográfico → procedimiento planificado](integration/C017E1-Odontogram-Diagnosis-to-Planned-Procedure.md)
 - [C017E.2 — Procedimientos → presupuesto versionado e inmutable](integration/C017E2-Procedures-to-Versioned-Budget.md)
 - [C017E.3 — Procedimiento realizado → evolución clínica → odontograma confirmado](integration/C017E3-Completed-Procedure-to-Evolution-Odontogram.md)
+
+## Clínica
+
+- [C017F.1 — Evolución clínica simplificada](clinical/C017F1-Simplified-Clinical-Evolution.md)
 
 ## Convención documental
 

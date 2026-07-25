@@ -177,6 +177,7 @@ export interface ClinicalEvolutionInput {
   site_id?: string | null;
   dentist_id?: string | null;
   attended_at?: string | null;
+  evolution_text?: string | null;
   reason?: string | null;
   subjective?: string | null;
   objective?: string | null;

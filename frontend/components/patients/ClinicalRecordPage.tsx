@@ -136,6 +136,7 @@ function emptyEvolution(
     site_id: activeSiteId ?? null,
     dentist_id: dentistId ?? null,
     attended_at: new Date().toISOString(),
+    evolution_text: "",
     reason: "",
     subjective: "",
     objective: "",
@@ -154,6 +155,37 @@ function emptyEvolution(
     treatment_id: null,
     procedures: [],
   };
+}
+
+function clinicalEvolutionSummary(evolution: ClinicalEvolution) {
+  return (
+    evolution.evolution_text ||
+    evolution.reason ||
+    evolution.performed_procedure ||
+    evolution.assessment ||
+    evolution.objective ||
+    evolution.indications ||
+    "Sin resumen clínico aún."
+  );
+}
+
+function hasEvolutionClinicalContent(draft: ClinicalEvolutionInput) {
+  return Boolean(
+    draft.evolution_text?.trim() ||
+      draft.reason?.trim() ||
+      draft.subjective?.trim() ||
+      draft.objective?.trim() ||
+      draft.assessment?.trim() ||
+      draft.performed_procedure?.trim() ||
+      draft.anesthesia?.trim() ||
+      draft.materials?.trim() ||
+      draft.administered_medications?.trim() ||
+      draft.findings?.trim() ||
+      draft.complications?.trim() ||
+      draft.indications?.trim() ||
+      draft.recommendations?.trim() ||
+      draft.observations?.trim(),
+  );
 }
 
 function formatDate(value: string | null, withTime = false) {
@@ -1100,6 +1132,7 @@ function ClinicalEvolutionsSection({
         site_id: selectedEvolution.site_id,
         dentist_id: selectedEvolution.dentist_id,
         attended_at: selectedEvolution.attended_at,
+        evolution_text: selectedEvolution.evolution_text ?? "",
         reason: selectedEvolution.reason ?? "",
         subjective: selectedEvolution.subjective ?? "",
         objective: selectedEvolution.objective ?? "",
@@ -1159,6 +1192,10 @@ function ClinicalEvolutionsSection({
   }
 
   async function saveDraft() {
+    if (!hasEvolutionClinicalContent(draft)) {
+      onError("Escribe la Evolución clínica antes de guardar.");
+      return;
+    }
     onSavingChange(true);
     onError(null);
     onMessage(null);
@@ -1185,8 +1222,22 @@ function ClinicalEvolutionsSection({
 
   async function signDraft() {
     if (!selectedEvolution) return;
-    const confirmed = window.confirm(
+    const signSummary = [
+      "Va a firmar y cerrar esta evolución.",
+      "",
+      "Evolución clínica:",
+      selectedEvolution.evolution_text || clinicalEvolutionSummary(selectedEvolution),
+      "",
+      selectedEvolution.procedures.length
+        ? `Procedimientos vinculados: ${selectedEvolution.procedures
+            .map((procedure) => procedure.procedure_name ?? "Procedimiento")
+            .join(", ")}`
+        : "Procedimientos vinculados: ninguno.",
+      "",
       "Después de firmar esta evolución no podrá editarse. Las correcciones posteriores deberán registrarse mediante una adenda.",
+    ].join("\n");
+    const confirmed = window.confirm(
+      signSummary,
     );
     if (!confirmed) return;
     onSavingChange(true);
@@ -1291,10 +1342,7 @@ function ClinicalEvolutionsSection({
                     {evolution.site_name ?? "Sin sede"}
                   </p>
                   <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-                    {evolution.reason ||
-                      evolution.performed_procedure ||
-                      evolution.assessment ||
-                      "Sin resumen clínico aún."}
+                    {clinicalEvolutionSummary(evolution)}
                   </p>
                 </button>
               ))
@@ -1401,6 +1449,23 @@ function ClinicalEvolutionForm({
     draft.procedures.map((item) => item.procedure_id),
   );
   const disabled = !canUpdate || saving;
+  const hasLegacyStructuredContent = Boolean(
+    !draft.evolution_text?.trim() &&
+      (draft.reason?.trim() ||
+        draft.subjective?.trim() ||
+        draft.objective?.trim() ||
+        draft.assessment?.trim() ||
+        draft.performed_procedure?.trim() ||
+        draft.anesthesia?.trim() ||
+        draft.materials?.trim() ||
+        draft.administered_medications?.trim() ||
+        draft.findings?.trim() ||
+        draft.complications?.trim() ||
+        draft.indications?.trim() ||
+        draft.recommendations?.trim() ||
+        draft.observations?.trim()),
+  );
+  const requiresNextControl = Boolean(draft.next_control_at || draft.next_control_reason);
 
   function toggleProcedure(procedure: Procedure, checked: boolean) {
     if (checked) {
@@ -1515,41 +1580,94 @@ function ClinicalEvolutionForm({
         </label>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <TextArea label="Motivo de la atención" value={draft.reason ?? ""} onChange={(value) => onPatch({ reason: value })} />
-        <TextArea label="Subjetivo" value={draft.subjective ?? ""} onChange={(value) => onPatch({ subjective: value })} />
-        <TextArea label="Objetivo / Examen" value={draft.objective ?? ""} onChange={(value) => onPatch({ objective: value })} />
-        <TextArea label="Evaluación / Diagnóstico" value={draft.assessment ?? ""} onChange={(value) => onPatch({ assessment: value })} />
-        <TextArea label="Procedimiento realizado" value={draft.performed_procedure ?? ""} onChange={(value) => onPatch({ performed_procedure: value })} />
-        <TextArea label="Anestesia y materiales" value={`${draft.anesthesia ?? ""}${draft.materials ? `\nMateriales: ${draft.materials}` : ""}`} onChange={(value) => onPatch({ anesthesia: value })} />
-        <TextArea label="Medicamentos administrados" value={draft.administered_medications ?? ""} onChange={(value) => onPatch({ administered_medications: value })} />
-        <TextArea label="Hallazgos y complicaciones" value={`${draft.findings ?? ""}${draft.complications ? `\nComplicaciones: ${draft.complications}` : ""}`} onChange={(value) => onPatch({ findings: value })} />
-        <TextArea label="Indicaciones" value={draft.indications ?? ""} onChange={(value) => onPatch({ indications: value })} />
-        <TextArea label="Recomendaciones" value={draft.recommendations ?? ""} onChange={(value) => onPatch({ recommendations: value })} />
-      </div>
+      <TextArea
+        label="Evolución clínica *"
+        value={draft.evolution_text ?? ""}
+        onChange={(value) => onPatch({ evolution_text: value })}
+        disabled={disabled}
+        rows={8}
+        placeholder="Describa la valoración, procedimiento realizado, hallazgos, indicaciones y evolución del paciente."
+      />
+      <p className="-mt-3 text-xs text-slate-500">
+        Esta es la narrativa principal de la atención. Los datos estructurados vinculados se conservan aparte.
+      </p>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <label>
-          <span className="mb-2 block text-sm font-bold text-slate-700">
-            Próximo control
-          </span>
+      <details
+        open={hasLegacyStructuredContent}
+        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+      >
+        <summary className="cursor-pointer text-sm font-black text-slate-900">
+          Información adicional
+        </summary>
+        <p className="mt-2 text-xs text-slate-500">
+          Opcional. Úsala solo si quieres conservar datos separados además de la narrativa.
+        </p>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <TextArea disabled={disabled} label="Motivo de la atención" value={draft.reason ?? ""} onChange={(value) => onPatch({ reason: value })} />
+          <TextArea disabled={disabled} label="Subjetivo" value={draft.subjective ?? ""} onChange={(value) => onPatch({ subjective: value })} />
+          <TextArea disabled={disabled} label="Objetivo / Examen" value={draft.objective ?? ""} onChange={(value) => onPatch({ objective: value })} />
+          <TextArea disabled={disabled} label="Evaluación / Diagnóstico" value={draft.assessment ?? ""} onChange={(value) => onPatch({ assessment: value })} />
+          <TextArea disabled={disabled} label="Procedimiento realizado" value={draft.performed_procedure ?? ""} onChange={(value) => onPatch({ performed_procedure: value })} />
+          <TextArea disabled={disabled} label="Anestesia" value={draft.anesthesia ?? ""} onChange={(value) => onPatch({ anesthesia: value })} />
+          <TextArea disabled={disabled} label="Materiales" value={draft.materials ?? ""} onChange={(value) => onPatch({ materials: value })} />
+          <TextArea disabled={disabled} label="Medicamentos administrados" value={draft.administered_medications ?? ""} onChange={(value) => onPatch({ administered_medications: value })} />
+          <TextArea disabled={disabled} label="Hallazgos" value={draft.findings ?? ""} onChange={(value) => onPatch({ findings: value })} />
+          <TextArea disabled={disabled} label="Complicaciones" value={draft.complications ?? ""} onChange={(value) => onPatch({ complications: value })} />
+          <TextArea disabled={disabled} label="Indicaciones" value={draft.indications ?? ""} onChange={(value) => onPatch({ indications: value })} />
+          <TextArea disabled={disabled} label="Recomendaciones" value={draft.recommendations ?? ""} onChange={(value) => onPatch({ recommendations: value })} />
+          <div className="lg:col-span-2">
+            <TextArea disabled={disabled} label="Observaciones" value={draft.observations ?? ""} onChange={(value) => onPatch({ observations: value })} />
+          </div>
+        </div>
+      </details>
+
+      <details
+        open={requiresNextControl}
+        className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+      >
+        <summary className="cursor-pointer text-sm font-black text-slate-900">
+          Próximo control
+        </summary>
+        <label className="mt-4 flex items-center gap-2 text-sm font-bold text-slate-700">
           <input
-            type="datetime-local"
-            value={toDatetimeLocalValue(draft.next_control_at)}
-            onChange={(event) =>
-              onPatch({ next_control_at: fromDatetimeLocalValue(event.target.value) })
-            }
+            type="checkbox"
+            checked={requiresNextControl}
             disabled={disabled}
-            className="min-h-11 w-full rounded-xl border border-slate-300 px-3"
+            onChange={(event) => {
+              if (!event.target.checked) {
+                onPatch({ next_control_at: null, next_control_reason: "" });
+              } else {
+                onPatch({ next_control_at: draft.next_control_at ?? new Date().toISOString() });
+              }
+            }}
           />
+          Requiere próximo control
         </label>
-        <TextInput
-          label="Motivo próximo control"
-          value={draft.next_control_reason ?? ""}
-          onChange={(value) => onPatch({ next_control_reason: value })}
-          disabled={disabled}
-        />
-      </div>
+        {requiresNextControl && (
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label>
+              <span className="mb-2 block text-sm font-bold text-slate-700">
+                Fecha/hora próximo control
+              </span>
+              <input
+                type="datetime-local"
+                value={toDatetimeLocalValue(draft.next_control_at)}
+                onChange={(event) =>
+                  onPatch({ next_control_at: fromDatetimeLocalValue(event.target.value) })
+                }
+                disabled={disabled}
+                className="min-h-11 w-full rounded-xl border border-slate-300 px-3"
+              />
+            </label>
+            <TextInput
+              label="Motivo próximo control"
+              value={draft.next_control_reason ?? ""}
+              onChange={(value) => onPatch({ next_control_reason: value })}
+              disabled={disabled}
+            />
+          </div>
+        )}
+      </details>
 
       {draft.treatment_id && (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1626,7 +1744,7 @@ function ClinicalEvolutionReadOnly({
   onAddendumContent: (value: string) => void;
   onSaveAddendum: () => Promise<void>;
 }) {
-  const fields = [
+  const rawHistoricalFields: Array<[string, string | null | undefined]> = [
     ["Motivo", evolution.reason],
     ["Subjetivo", evolution.subjective],
     ["Objetivo / Examen", evolution.objective],
@@ -1640,7 +1758,13 @@ function ClinicalEvolutionReadOnly({
     ["Indicaciones", evolution.indications],
     ["Recomendaciones", evolution.recommendations],
     ["Observaciones", evolution.observations],
-  ].filter(([, value]) => value);
+  ];
+  const historicalFields = rawHistoricalFields.filter(
+    (field): field is [string, string] => Boolean(field[1]),
+  );
+  const supportingFields = evolution.evolution_text
+    ? historicalFields
+    : [];
 
   return (
     <div className="space-y-5">
@@ -1663,18 +1787,58 @@ function ClinicalEvolutionReadOnly({
         )}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        {fields.map(([label, value]) => (
-          <div key={label} className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
-              {label}
-            </p>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
-              {value}
-            </p>
+      {evolution.evolution_text ? (
+        <div className="rounded-2xl border border-slate-200 p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-green-700">
+            Evolución clínica
+          </p>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-800">
+            {evolution.evolution_text}
+          </p>
+        </div>
+      ) : historicalFields.length > 0 ? (
+        <div>
+          <p className="mb-3 text-sm font-black text-slate-900">
+            Registro clínico histórico
+          </p>
+          <div className="grid gap-3 md:grid-cols-2">
+            {historicalFields.map(([label, value]) => (
+              <ClinicalFieldCard key={label} label={label} value={value} />
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+          Sin texto clínico registrado.
+        </div>
+      )}
+
+      {supportingFields.length > 0 && (
+        <details className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="cursor-pointer text-sm font-black text-slate-900">
+            Información adicional diligenciada
+          </summary>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {supportingFields.map(([label, value]) => (
+              <ClinicalFieldCard key={label} label={label} value={value} />
+            ))}
+          </div>
+        </details>
+      )}
+
+      {(evolution.next_control_at || evolution.next_control_reason) && (
+        <div className="rounded-2xl border border-slate-200 p-4">
+          <p className="font-bold text-slate-900">Próximo control</p>
+          <p className="mt-2 text-sm text-slate-700">
+            {evolution.next_control_at
+              ? formatDate(evolution.next_control_at, true)
+              : "Fecha no definida"}
+            {evolution.next_control_reason
+              ? ` · ${evolution.next_control_reason}`
+              : ""}
+          </p>
+        </div>
+      )}
 
       {evolution.procedures.length > 0 && (
         <div className="rounded-2xl border border-slate-200 p-4">
@@ -1734,6 +1898,25 @@ function ClinicalEvolutionReadOnly({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ClinicalFieldCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null | undefined;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+        {label}
+      </p>
+      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-800">
+        {value}
+      </p>
     </div>
   );
 }
@@ -2054,10 +2237,16 @@ function TextArea({
   label,
   value,
   onChange,
+  disabled = false,
+  rows = 4,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
+  rows?: number;
+  placeholder?: string;
 }) {
   return (
     <label className="block">
@@ -2065,8 +2254,10 @@ function TextArea({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        rows={4}
-        className="w-full rounded-xl border border-slate-300 px-3 py-2"
+        disabled={disabled}
+        rows={rows}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-slate-300 px-3 py-2 disabled:bg-slate-100"
       />
     </label>
   );

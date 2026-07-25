@@ -409,6 +409,9 @@ class ClinicalEvolution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     timezone_name: Mapped[str] = mapped_column(
         "zona_horaria", String(100), nullable=False, default="America/Bogota"
     )
+    evolution_text: Mapped[str | None] = mapped_column(
+        "texto_evolucion", Text, nullable=True
+    )
     reason: Mapped[str | None] = mapped_column("motivo", Text, nullable=True)
     subjective: Mapped[str | None] = mapped_column("subjetivo", Text, nullable=True)
     objective: Mapped[str | None] = mapped_column("objetivo", Text, nullable=True)
