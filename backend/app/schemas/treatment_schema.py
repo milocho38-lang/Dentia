@@ -51,6 +51,13 @@ PROCEDURE_SURFACES = {
     "OCCLUSAL",
     "INCISAL",
 }
+PROCEDURE_ODONTOGRAM_BEHAVIORS = {
+    "UNCONFIGURED",
+    "NO_CHANGE",
+    "OPTIONAL_DIAGNOSIS",
+    "REQUIRES_DIAGNOSIS",
+}
+PROCEDURE_DIAGNOSIS_MODES = {"NONE", "CREATE_NEW", "USE_EXISTING"}
 
 
 class TreatmentCreateRequest(BaseModel):
@@ -297,6 +304,50 @@ class ProcedureResponse(BaseModel):
     scope_label: str
 
 
+class ProcedureWithDiagnosisCreateRequest(ProcedureCreateRequest):
+    idempotency_key: str = Field(min_length=8, max_length=120)
+    diagnosis_mode: str = "CREATE_NEW"
+    diagnosis_catalog_item_id: UUID | None = None
+    existing_odontogram_event_id: UUID | None = None
+    dentition: str = "PERMANENT"
+    diagnosis_observation: str | None = Field(default=None, max_length=3000)
+    allow_existing_duplicate: bool = False
+
+    @field_validator("idempotency_key", "diagnosis_observation")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    @field_validator("diagnosis_mode")
+    @classmethod
+    def valid_diagnosis_mode(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_DIAGNOSIS_MODES:
+            raise ValueError("Modo de diagnóstico odontográfico no válido.")
+        return normalized
+
+    @field_validator("dentition")
+    @classmethod
+    def valid_dentition(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"PERMANENT", "PRIMARY", "SUPERNUMERARY"}:
+            raise ValueError("Dentición no válida.")
+        return normalized
+
+
+class ProcedureWithDiagnosisCreateResponse(BaseModel):
+    procedure: ProcedureResponse | None
+    diagnosis_event_id: UUID | None = None
+    diagnosis_created: bool = False
+    diagnosis_reused: bool = False
+    compatible_existing_event_id: UUID | None = None
+    idempotency_key: str
+    idempotent_replay: bool = False
+    message: str
+
+
 SOURCE_DIAGNOSIS_ACTIONS = {"KEEP_ACTIVE", "RESOLVE_ON_SIGN"}
 
 
@@ -499,9 +550,13 @@ class ProcedureCatalogBase(BaseModel):
     description: str | None = None
     suggested_value: Decimal | None = Field(default=None, ge=0)
     suggested_scope_type: str | None = None
+    odontogram_behavior: str = "UNCONFIGURED"
+    odontogram_scope_type: str | None = None
+    allowed_diagnosis_catalog_item_ids: list[UUID] = Field(default_factory=list)
+    default_performed_catalog_item_id: UUID | None = None
     is_active: bool = True
 
-    @field_validator("suggested_scope_type")
+    @field_validator("suggested_scope_type", "odontogram_scope_type")
     @classmethod
     def valid_suggested_scope_type(cls, value: str | None) -> str | None:
         if value is None:
@@ -510,6 +565,19 @@ class ProcedureCatalogBase(BaseModel):
         if normalized not in PROCEDURE_SCOPE_TYPES:
             raise ValueError("Tipo de alcance sugerido no válido.")
         return normalized
+
+    @field_validator("odontogram_behavior")
+    @classmethod
+    def valid_odontogram_behavior(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_ODONTOGRAM_BEHAVIORS:
+            raise ValueError("Comportamiento odontográfico no válido.")
+        return normalized
+
+    @field_validator("allowed_diagnosis_catalog_item_ids")
+    @classmethod
+    def unique_allowed_diagnoses(cls, value: list[UUID]) -> list[UUID]:
+        return list(dict.fromkeys(value))
 
     @field_validator("name", "category", "description")
     @classmethod
@@ -529,9 +597,13 @@ class ProcedureCatalogUpdateRequest(BaseModel):
     description: str | None = None
     suggested_value: Decimal | None = Field(default=None, ge=0)
     suggested_scope_type: str | None = None
+    odontogram_behavior: str | None = None
+    odontogram_scope_type: str | None = None
+    allowed_diagnosis_catalog_item_ids: list[UUID] | None = None
+    default_performed_catalog_item_id: UUID | None = None
     is_active: bool | None = None
 
-    @field_validator("suggested_scope_type")
+    @field_validator("suggested_scope_type", "odontogram_scope_type")
     @classmethod
     def valid_suggested_scope_type(cls, value: str | None) -> str | None:
         if value is None:
@@ -540,6 +612,23 @@ class ProcedureCatalogUpdateRequest(BaseModel):
         if normalized not in PROCEDURE_SCOPE_TYPES:
             raise ValueError("Tipo de alcance sugerido no válido.")
         return normalized
+
+    @field_validator("odontogram_behavior")
+    @classmethod
+    def valid_odontogram_behavior(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_ODONTOGRAM_BEHAVIORS:
+            raise ValueError("Comportamiento odontográfico no válido.")
+        return normalized
+
+    @field_validator("allowed_diagnosis_catalog_item_ids")
+    @classmethod
+    def unique_allowed_diagnoses(cls, value: list[UUID] | None) -> list[UUID] | None:
+        if value is None:
+            return None
+        return list(dict.fromkeys(value))
 
     @field_validator("name", "category", "description")
     @classmethod
@@ -556,6 +645,11 @@ class ProcedureCatalogItemResponse(BaseModel):
     description: str | None
     suggested_value: Decimal | None
     suggested_scope_type: str | None
+    odontogram_behavior: str
+    odontogram_scope_type: str | None
+    allowed_diagnosis_catalog_item_ids: list[UUID]
+    allowed_diagnoses: list[dict] = Field(default_factory=list)
+    default_performed_catalog_item_id: UUID | None
     is_active: bool
     created_at: datetime
     updated_at: datetime

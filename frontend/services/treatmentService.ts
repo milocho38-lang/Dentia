@@ -10,6 +10,8 @@ import type {
   ProcedureCatalogListResponse,
   ProcedureClinicalCompletionInput,
   ProcedureClinicalCompletionResponse,
+  ProcedureWithDiagnosisInput,
+  ProcedureWithDiagnosisResponse,
   Treatment,
   TreatmentListResponse,
 } from "@/types/treatment";
@@ -73,6 +75,10 @@ export function createProcedureCatalogItem(data: {
   description?: string | null;
   suggested_value?: string | null;
   suggested_scope_type?: string | null;
+  odontogram_behavior?: string;
+  odontogram_scope_type?: string | null;
+  allowed_diagnosis_catalog_item_ids?: string[];
+  default_performed_catalog_item_id?: string | null;
   is_active?: boolean;
 }) {
   return apiRequest<ProcedureCatalogItem>("/api/procedure-catalog", {
@@ -90,6 +96,10 @@ export function updateProcedureCatalogItem(
     description?: string | null;
     suggested_value?: string | null;
     suggested_scope_type?: string | null;
+    odontogram_behavior?: string;
+    odontogram_scope_type?: string | null;
+    allowed_diagnosis_catalog_item_ids?: string[];
+    default_performed_catalog_item_id?: string | null;
     is_active?: boolean;
   },
 ) {
@@ -135,6 +145,20 @@ export function createProcedure(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+}
+
+export function createProcedureWithDiagnosis(
+  treatmentId: string,
+  data: ProcedureWithDiagnosisInput,
+) {
+  return apiRequest<ProcedureWithDiagnosisResponse>(
+    `/api/treatments/${treatmentId}/procedures/with-diagnosis`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    },
+  );
 }
 
 export function updateProcedure(

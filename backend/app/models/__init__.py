@@ -35,6 +35,8 @@ from app.models.site import Site
 from app.models.treatment import (
     Budget,
     BudgetDetail,
+    ProcedureCatalogDiagnosis,
+    ProcedureCatalogItem,
     Treatment,
     TreatmentEvent,
     TreatmentPayment,
@@ -76,6 +78,8 @@ __all__ = [
     "Site",
     "Budget",
     "BudgetDetail",
+    "ProcedureCatalogDiagnosis",
+    "ProcedureCatalogItem",
     "Treatment",
     "TreatmentEvent",
     "TreatmentPayment",

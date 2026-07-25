@@ -91,6 +91,40 @@ export interface ProcedureClinicalCompletionResponse {
   message: string;
 }
 
+export interface ProcedureWithDiagnosisInput {
+  catalog_procedure_id: string;
+  idempotency_key: string;
+  diagnosis_mode: "NONE" | "CREATE_NEW" | "USE_EXISTING";
+  diagnosis_catalog_item_id?: string | null;
+  existing_odontogram_event_id?: string | null;
+  diagnosis_observation?: string | null;
+  allow_existing_duplicate?: boolean;
+  dentition?: string;
+  name: string;
+  category?: string | null;
+  dentist_id?: string | null;
+  site_id?: string | null;
+  unit_value: string;
+  quantity: string;
+  estimated_date?: string | null;
+  observations?: string | null;
+  scope_type?: string;
+  zone?: string | null;
+  tooth?: string | null;
+  surfaces?: string[] | null;
+}
+
+export interface ProcedureWithDiagnosisResponse {
+  procedure: Procedure | null;
+  diagnosis_event_id: string | null;
+  diagnosis_created: boolean;
+  diagnosis_reused: boolean;
+  compatible_existing_event_id: string | null;
+  idempotency_key: string;
+  idempotent_replay: boolean;
+  message: string;
+}
+
 export interface ProcedureCatalogItem {
   id: string;
   name: string;
@@ -98,6 +132,17 @@ export interface ProcedureCatalogItem {
   description: string | null;
   suggested_value: string | null;
   suggested_scope_type: string | null;
+  odontogram_behavior: "UNCONFIGURED" | "NO_CHANGE" | "OPTIONAL_DIAGNOSIS" | "REQUIRES_DIAGNOSIS";
+  odontogram_scope_type: string | null;
+  allowed_diagnosis_catalog_item_ids: string[];
+  allowed_diagnoses: Array<{
+    id: string;
+    code: string;
+    name: string;
+    type: string;
+    category: string | null;
+  }>;
+  default_performed_catalog_item_id: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

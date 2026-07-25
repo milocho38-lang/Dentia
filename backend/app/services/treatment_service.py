@@ -37,6 +37,7 @@ from app.models.site import Site
 from app.models.treatment import (
     Budget,
     BudgetDetail,
+    ProcedureCatalogDiagnosis,
     ProcedureCatalogItem,
     Treatment,
     TreatmentEvent,
@@ -71,7 +72,10 @@ from app.schemas.treatment_schema import (
     PROCEDURE_SCOPE_TYPES,
     PROCEDURE_SURFACES,
     PROCEDURE_ZONES,
+    PROCEDURE_ODONTOGRAM_BEHAVIORS,
     ProcedureCreateRequest,
+    ProcedureWithDiagnosisCreateRequest,
+    ProcedureWithDiagnosisCreateResponse,
     ProcedureResponse,
     ProcedureUpdateRequest,
     TreatmentCreateRequest,
@@ -91,6 +95,7 @@ APPROVED_BUDGET_STATUSES = {"Aprobado", "En ejecución", "Finalizado"}
 EDITABLE_BUDGET_STATUSES = {"Borrador", "Pendiente de aprobación"}
 VALID_PAYMENT_STATUS = "valido"
 REVERSED_PAYMENT_STATUS = "reversado"
+ODONTOGRAM_DIAGNOSIS_TYPES = {"DIAGNOSIS", "FINDING"}
 CENT = Decimal("0.01")
 VALID_FDI_PERMANENT_TEETH = {
     f"{quadrant}{tooth}"
@@ -506,6 +511,67 @@ def _require_patient_odontogram(session: Session, context: AuthContext, patient_
     return odontogram
 
 
+def _get_or_create_patient_odontogram(
+    session: Session,
+    context: AuthContext,
+    patient_id: UUID,
+) -> Odontogram:
+    odontogram = session.scalar(
+        select(Odontogram)
+        .where(
+            Odontogram.company_id == context.user.company_id,
+            Odontogram.patient_id == patient_id,
+            Odontogram.status == "ACTIVE",
+        )
+        .with_for_update()
+    )
+    if odontogram is not None:
+        return odontogram
+    clinical_record = session.scalar(
+        select(ClinicalRecord).where(
+            ClinicalRecord.company_id == context.user.company_id,
+            ClinicalRecord.patient_id == patient_id,
+        )
+    )
+    if clinical_record is None:
+        raise TreatmentError(
+            "El paciente debe tener historia clínica antes de registrar diagnóstico odontográfico.",
+            409,
+        )
+    odontogram = Odontogram(
+        company_id=context.user.company_id,
+        patient_id=patient_id,
+        clinical_record_id=clinical_record.id,
+        status="ACTIVE",
+        preferred_dentition="PERMANENT",
+        created_by=context.user.id,
+    )
+    session.add(odontogram)
+    session.flush()
+    return odontogram
+
+
+def _require_diagnosis_catalog_item(
+    session: Session,
+    context: AuthContext,
+    catalog_item_id: UUID,
+) -> OdontogramCatalogItem:
+    item = session.scalar(
+        select(OdontogramCatalogItem).where(
+            OdontogramCatalogItem.id == catalog_item_id,
+            OdontogramCatalogItem.is_active.is_(True),
+            OdontogramCatalogItem.type.in_(ODONTOGRAM_DIAGNOSIS_TYPES),
+            or_(
+                OdontogramCatalogItem.company_id.is_(None),
+                OdontogramCatalogItem.company_id == context.user.company_id,
+            ),
+        )
+    )
+    if item is None:
+        raise TreatmentError("Seleccione un diagnóstico o hallazgo odontográfico válido.", 422)
+    return item
+
+
 def _require_performed_catalog_item(
     session: Session,
     context: AuthContext,
@@ -589,7 +655,43 @@ def _require_dentist(
     return dentist
 
 
-def _catalog_response(item: ProcedureCatalogItem) -> ProcedureCatalogItemResponse:
+def _catalog_allowed_diagnoses(
+    session: Session,
+    context: AuthContext,
+    item_id: UUID,
+) -> list[dict]:
+    rows = session.execute(
+        select(ProcedureCatalogDiagnosis, OdontogramCatalogItem)
+        .join(
+            OdontogramCatalogItem,
+            OdontogramCatalogItem.id == ProcedureCatalogDiagnosis.odontogram_catalog_item_id,
+        )
+        .where(
+            ProcedureCatalogDiagnosis.company_id == context.user.company_id,
+            ProcedureCatalogDiagnosis.procedure_catalog_id == item_id,
+            ProcedureCatalogDiagnosis.is_active.is_(True),
+            OdontogramCatalogItem.is_active.is_(True),
+        )
+        .order_by(OdontogramCatalogItem.name.asc())
+    ).all()
+    return [
+        {
+            "id": str(catalog.id),
+            "code": catalog.code,
+            "name": catalog.name,
+            "type": catalog.type,
+            "category": catalog.category,
+        }
+        for _, catalog in rows
+    ]
+
+
+def _catalog_response(
+    item: ProcedureCatalogItem,
+    session: Session | None = None,
+    context: AuthContext | None = None,
+) -> ProcedureCatalogItemResponse:
+    allowed = _catalog_allowed_diagnoses(session, context, item.id) if session and context else []
     return ProcedureCatalogItemResponse(
         id=item.id,
         name=item.name,
@@ -597,6 +699,13 @@ def _catalog_response(item: ProcedureCatalogItem) -> ProcedureCatalogItemRespons
         description=item.description,
         suggested_value=_money(item.suggested_value) if item.suggested_value is not None else None,
         suggested_scope_type=item.suggested_scope_type,
+        odontogram_behavior=item.odontogram_behavior or "UNCONFIGURED",
+        odontogram_scope_type=item.odontogram_scope_type,
+        allowed_diagnosis_catalog_item_ids=[
+            UUID(str(diagnosis["id"])) for diagnosis in allowed
+        ],
+        allowed_diagnoses=allowed,
+        default_performed_catalog_item_id=item.default_performed_catalog_item_id,
         is_active=item.is_active,
         created_at=item.created_at,
         updated_at=item.updated_at,
@@ -672,9 +781,67 @@ def list_procedure_catalog(
         )
     ).all()
     return ProcedureCatalogListResponse(
-        items=[_catalog_response(item) for item in items],
+        items=[_catalog_response(item, session, context) for item in items],
         total=len(items),
     )
+
+
+def _validate_procedure_catalog_odontogram_config(
+    session: Session,
+    context: AuthContext,
+    *,
+    behavior: str,
+    scope_type: str | None,
+    diagnosis_ids: list[UUID],
+    default_performed_catalog_item_id: UUID | None,
+) -> None:
+    if behavior not in PROCEDURE_ODONTOGRAM_BEHAVIORS:
+        raise TreatmentError("Comportamiento odontográfico no válido.", 422)
+    if scope_type and scope_type not in PROCEDURE_SCOPE_TYPES:
+        raise TreatmentError("Alcance odontográfico esperado no válido.", 422)
+    if behavior == "REQUIRES_DIAGNOSIS":
+        if not scope_type:
+            raise TreatmentError("Un procedimiento que requiere diagnóstico debe definir alcance odontográfico esperado.", 422)
+        if not diagnosis_ids:
+            raise TreatmentError("Un procedimiento que requiere diagnóstico debe tener diagnósticos permitidos.", 422)
+    if behavior in {"NO_CHANGE", "UNCONFIGURED"} and diagnosis_ids:
+        raise TreatmentError("Este comportamiento no admite diagnósticos odontográficos permitidos.", 422)
+    for diagnosis_id in diagnosis_ids:
+        _require_diagnosis_catalog_item(session, context, diagnosis_id)
+    if default_performed_catalog_item_id:
+        _require_performed_catalog_item(session, context, default_performed_catalog_item_id)
+
+
+def _sync_catalog_diagnoses(
+    session: Session,
+    context: AuthContext,
+    item: ProcedureCatalogItem,
+    diagnosis_ids: list[UUID],
+) -> None:
+    existing = session.scalars(
+        select(ProcedureCatalogDiagnosis).where(
+            ProcedureCatalogDiagnosis.company_id == context.user.company_id,
+            ProcedureCatalogDiagnosis.procedure_catalog_id == item.id,
+        )
+    ).all()
+    by_catalog = {row.odontogram_catalog_item_id: row for row in existing}
+    desired = set(diagnosis_ids)
+    for diagnosis_id in desired:
+        row = by_catalog.get(diagnosis_id)
+        if row:
+            row.is_active = True
+        else:
+            session.add(
+                ProcedureCatalogDiagnosis(
+                    company_id=context.user.company_id,
+                    procedure_catalog_id=item.id,
+                    odontogram_catalog_item_id=diagnosis_id,
+                    is_active=True,
+                )
+            )
+    for diagnosis_id, row in by_catalog.items():
+        if diagnosis_id not in desired:
+            row.is_active = False
 
 
 def create_procedure_catalog_item(
@@ -685,6 +852,16 @@ def create_procedure_catalog_item(
 ) -> ProcedureCatalogItemResponse:
     normalized_name = _normalize_catalog_name(payload.name)
     _ensure_catalog_name_available(session, context, normalized_name)
+    behavior = payload.odontogram_behavior
+    diagnosis_ids = payload.allowed_diagnosis_catalog_item_ids
+    _validate_procedure_catalog_odontogram_config(
+        session,
+        context,
+        behavior=behavior,
+        scope_type=payload.odontogram_scope_type,
+        diagnosis_ids=diagnosis_ids,
+        default_performed_catalog_item_id=payload.default_performed_catalog_item_id,
+    )
     item = ProcedureCatalogItem(
         company_id=context.user.company_id,
         name=payload.name,
@@ -693,11 +870,15 @@ def create_procedure_catalog_item(
         description=payload.description,
         suggested_value=_money(payload.suggested_value) if payload.suggested_value is not None else None,
         suggested_scope_type=payload.suggested_scope_type,
+        odontogram_behavior=behavior,
+        odontogram_scope_type=payload.odontogram_scope_type,
+        default_performed_catalog_item_id=payload.default_performed_catalog_item_id,
         is_active=payload.is_active,
         created_by=context.user.id,
     )
     session.add(item)
     session.flush()
+    _sync_catalog_diagnoses(session, context, item, diagnosis_ids)
     _audit(
         session,
         context,
@@ -705,11 +886,17 @@ def create_procedure_catalog_item(
         entity="procedure_catalog",
         entity_id=item.id,
         action="PROCEDURE_CATALOG_CREATED",
-        detail={"name": item.name, "category": item.category},
+        detail={
+            "name": item.name,
+            "category": item.category,
+            "odontogram_behavior": item.odontogram_behavior,
+            "odontogram_scope_type": item.odontogram_scope_type,
+            "allowed_diagnosis_catalog_item_ids": diagnosis_ids,
+        },
     )
     session.commit()
     session.refresh(item)
-    return _catalog_response(item)
+    return _catalog_response(item, session, context)
 
 
 def update_procedure_catalog_item(
@@ -730,6 +917,9 @@ def update_procedure_catalog_item(
         "category": "category",
         "description": "description",
         "suggested_scope_type": "suggested_scope_type",
+        "odontogram_behavior": "odontogram_behavior",
+        "odontogram_scope_type": "odontogram_scope_type",
+        "default_performed_catalog_item_id": "default_performed_catalog_item_id",
         "is_active": "is_active",
     }.items():
         if key in data:
@@ -738,6 +928,30 @@ def update_procedure_catalog_item(
         item.suggested_value = (
             _money(data["suggested_value"]) if data["suggested_value"] is not None else None
         )
+    if {
+        "odontogram_behavior",
+        "odontogram_scope_type",
+        "allowed_diagnosis_catalog_item_ids",
+        "default_performed_catalog_item_id",
+    }.intersection(data):
+        diagnosis_ids = (
+            data["allowed_diagnosis_catalog_item_ids"]
+            if "allowed_diagnosis_catalog_item_ids" in data
+            else [
+                UUID(str(diagnosis["id"]))
+                for diagnosis in _catalog_allowed_diagnoses(session, context, item.id)
+            ]
+        )
+        _validate_procedure_catalog_odontogram_config(
+            session,
+            context,
+            behavior=item.odontogram_behavior or "UNCONFIGURED",
+            scope_type=item.odontogram_scope_type,
+            diagnosis_ids=diagnosis_ids,
+            default_performed_catalog_item_id=item.default_performed_catalog_item_id,
+        )
+        if "allowed_diagnosis_catalog_item_ids" in data:
+            _sync_catalog_diagnoses(session, context, item, diagnosis_ids)
     item.updated_by = context.user.id
     _audit(
         session,
@@ -750,7 +964,7 @@ def update_procedure_catalog_item(
     )
     session.commit()
     session.refresh(item)
-    return _catalog_response(item)
+    return _catalog_response(item, session, context)
 
 
 def change_procedure_catalog_status(
@@ -773,7 +987,7 @@ def change_procedure_catalog_status(
     )
     session.commit()
     session.refresh(item)
-    return _catalog_response(item)
+    return _catalog_response(item, session, context)
 
 
 def _require_treatment(
@@ -1570,6 +1784,356 @@ def create_procedure(
         .where(TreatmentProcedure.id == procedure.id)
     ).one()
     return _procedure_response(*row)
+
+
+def _find_existing_confirmed_diagnosis_event(
+    session: Session,
+    context: AuthContext,
+    *,
+    patient_id: UUID,
+    catalog_item_id: UUID,
+    scope_type: str,
+    zone: str | None,
+    tooth: str | None,
+    surfaces: list[str] | None,
+) -> OdontogramEvent | None:
+    rows = session.execute(
+        select(OdontogramEvent, OdontogramEventDetail)
+        .join(OdontogramEventDetail, OdontogramEventDetail.event_id == OdontogramEvent.id)
+        .where(
+            OdontogramEvent.company_id == context.user.company_id,
+            OdontogramEvent.patient_id == patient_id,
+            OdontogramEvent.status == "CONFIRMED",
+            OdontogramEvent.event_type.in_(["DIAGNOSIS_ADDED", "FINDING_ADDED"]),
+            OdontogramEventDetail.company_id == context.user.company_id,
+            OdontogramEventDetail.catalog_item_id == catalog_item_id,
+            OdontogramEventDetail.scope_type == scope_type,
+            OdontogramEventDetail.zone.is_(None) if zone is None else OdontogramEventDetail.zone == zone,
+            OdontogramEventDetail.tooth_code.is_(None) if tooth is None else OdontogramEventDetail.tooth_code == tooth,
+        )
+        .order_by(OdontogramEvent.clinical_date.desc(), OdontogramEvent.created_at.desc())
+    ).all()
+    normalized_surfaces = _canonical_surfaces(surfaces)
+    for event, detail in rows:
+        if _canonical_surfaces(detail.surfaces) == normalized_surfaces:
+            return event
+    return None
+
+
+def _require_existing_diagnosis_event(
+    session: Session,
+    context: AuthContext,
+    *,
+    patient_id: UUID,
+    event_id: UUID,
+    catalog_item_id: UUID,
+    scope_type: str,
+    zone: str | None,
+    tooth: str | None,
+    surfaces: list[str] | None,
+) -> OdontogramEvent:
+    event = session.scalar(
+        select(OdontogramEvent).where(
+            OdontogramEvent.id == event_id,
+            OdontogramEvent.company_id == context.user.company_id,
+            OdontogramEvent.patient_id == patient_id,
+            OdontogramEvent.status == "CONFIRMED",
+            OdontogramEvent.event_type.in_(["DIAGNOSIS_ADDED", "FINDING_ADDED"]),
+        )
+    )
+    if event is None:
+        raise TreatmentError("Diagnóstico odontográfico existente no encontrado o no confirmado.", 404)
+    matching = _find_existing_confirmed_diagnosis_event(
+        session,
+        context,
+        patient_id=patient_id,
+        catalog_item_id=catalog_item_id,
+        scope_type=scope_type,
+        zone=zone,
+        tooth=tooth,
+        surfaces=surfaces,
+    )
+    if matching is None or matching.id != event.id:
+        raise TreatmentError("El diagnóstico seleccionado no coincide con la pieza, superficies o catálogo del procedimiento.", 409)
+    return event
+
+
+def _create_confirmed_treatment_diagnosis_event(
+    session: Session,
+    context: AuthContext,
+    treatment: Treatment,
+    procedure: TreatmentProcedure,
+    catalog_item: OdontogramCatalogItem,
+    payload: ProcedureWithDiagnosisCreateRequest,
+    *,
+    scope_type: str,
+    zone: str | None,
+    tooth: str | None,
+    surfaces: list[str] | None,
+) -> OdontogramEvent:
+    if not procedure.site_id:
+        raise TreatmentError("Seleccione una sede para confirmar el diagnóstico odontográfico.", 422)
+    if not procedure.dentist_id:
+        raise TreatmentError("Seleccione un odontólogo para confirmar el diagnóstico odontográfico.", 422)
+    site = _require_site(session, context, procedure.site_id)
+    company = session.scalar(select(Company).where(Company.id == context.user.company_id))
+    odontogram = _get_or_create_patient_odontogram(session, context, treatment.patient_id)
+    now = datetime.now(timezone.utc)
+    event = OdontogramEvent(
+        company_id=context.user.company_id,
+        patient_id=treatment.patient_id,
+        clinical_record_id=odontogram.clinical_record_id,
+        odontogram_id=odontogram.id,
+        treatment_id=treatment.id,
+        procedure_id=procedure.id,
+        site_id=procedure.site_id,
+        dentist_id=procedure.dentist_id,
+        event_type="DIAGNOSIS_ADDED" if catalog_item.type == "DIAGNOSIS" else "FINDING_ADDED",
+        status="CONFIRMED",
+        clinical_date=now,
+        timezone_name=_effective_timezone(company, site),
+        observation=payload.diagnosis_observation,
+        confirmed_by=context.user.id,
+        confirmed_at=now,
+        created_by=context.user.id,
+    )
+    session.add(event)
+    session.flush()
+    session.add(
+        OdontogramEventDetail(
+            company_id=context.user.company_id,
+            event_id=event.id,
+            catalog_item_id=catalog_item.id,
+            scope_type=scope_type,
+            zone=zone,
+            tooth_code=tooth,
+            dentition=payload.dentition,
+            surfaces=surfaces,
+            layer="DIAGNOSIS" if catalog_item.type == "DIAGNOSIS" else "FINDING",
+            detail_metadata={"origin": "TREATMENT_PROCEDURE_CREATION"},
+        )
+    )
+    session.flush()
+    event.content_hash = _content_hash(_canonical_odontogram_event_payload(session, event))
+    return event
+
+
+def create_procedure_with_diagnosis(
+    session: Session,
+    context: AuthContext,
+    treatment_id: UUID,
+    payload: ProcedureWithDiagnosisCreateRequest,
+    metadata: RequestMetadata,
+) -> ProcedureWithDiagnosisCreateResponse:
+    _require_bridge_permission(context, "treatments.update")
+    replay = session.scalar(
+        select(TreatmentProcedure).where(
+            TreatmentProcedure.company_id == context.user.company_id,
+            TreatmentProcedure.odontogram_idempotency_key == payload.idempotency_key,
+        )
+    )
+    if replay:
+        row = session.execute(
+            select(TreatmentProcedure, Dentist, Site)
+            .outerjoin(Dentist, Dentist.id == TreatmentProcedure.dentist_id)
+            .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
+            .where(TreatmentProcedure.id == replay.id)
+        ).one()
+        return ProcedureWithDiagnosisCreateResponse(
+            procedure=_procedure_response(*row),
+            diagnosis_event_id=replay.source_odontogram_event_id,
+            diagnosis_created=False,
+            diagnosis_reused=bool(replay.source_odontogram_event_id),
+            idempotency_key=payload.idempotency_key,
+            idempotent_replay=True,
+            message="Solicitud idempotente ya procesada.",
+        )
+
+    treatment = _require_treatment(session, context, treatment_id, lock=True)
+    if treatment.status in TREATMENT_FINAL_STATUSES:
+        raise TreatmentError("No se pueden agregar procedimientos a este tratamiento.")
+    if not payload.catalog_procedure_id:
+        raise TreatmentError("Seleccione un procedimiento del catálogo para usar integración odontográfica.", 422)
+    catalog_item = _require_catalog_item(session, context, payload.catalog_procedure_id, active_only=True)
+    behavior = catalog_item.odontogram_behavior or "UNCONFIGURED"
+    if behavior == "UNCONFIGURED":
+        raise TreatmentError("El procedimiento no tiene configuración odontográfica. Use creación normal o configure el catálogo.", 422)
+
+    if payload.site_id:
+        _require_site(session, context, payload.site_id)
+    if payload.dentist_id:
+        _require_dentist(session, context, payload.dentist_id, payload.site_id)
+    scope_type, zone, tooth, surfaces = _validate_dental_scope(
+        payload.scope_type,
+        payload.zone,
+        payload.tooth,
+        payload.surfaces,
+    )
+    expected_scope = catalog_item.odontogram_scope_type or catalog_item.suggested_scope_type
+    if expected_scope and scope_type != expected_scope:
+        raise TreatmentError("El alcance no coincide con la configuración odontográfica del procedimiento.", 422)
+
+    diagnosis_mode = payload.diagnosis_mode
+    if behavior == "NO_CHANGE":
+        diagnosis_mode = "NONE"
+    if behavior == "REQUIRES_DIAGNOSIS" and diagnosis_mode == "NONE":
+        raise TreatmentError("Este procedimiento requiere confirmar o vincular un diagnóstico odontográfico.", 422)
+    diagnosis_event: OdontogramEvent | None = None
+    diagnosis_created = False
+    diagnosis_reused = False
+    compatible_existing: OdontogramEvent | None = None
+    diagnosis_catalog_item: OdontogramCatalogItem | None = None
+    allowed_ids = set(
+        session.scalars(
+            select(ProcedureCatalogDiagnosis.odontogram_catalog_item_id).where(
+                ProcedureCatalogDiagnosis.company_id == context.user.company_id,
+                ProcedureCatalogDiagnosis.procedure_catalog_id == catalog_item.id,
+                ProcedureCatalogDiagnosis.is_active.is_(True),
+            )
+        ).all()
+    )
+    if diagnosis_mode != "NONE":
+        _require_bridge_permission(context, "odontogram.view")
+        if diagnosis_mode == "CREATE_NEW":
+            _require_bridge_permission(context, "odontogram.update_draft")
+            _require_bridge_permission(context, "odontogram.confirm")
+        if not payload.diagnosis_catalog_item_id:
+            raise TreatmentError("Seleccione el diagnóstico odontográfico que justifica el procedimiento.", 422)
+        if payload.diagnosis_catalog_item_id not in allowed_ids:
+            raise TreatmentError("El diagnóstico no está permitido para este procedimiento de catálogo.", 422)
+        diagnosis_catalog_item = _require_diagnosis_catalog_item(session, context, payload.diagnosis_catalog_item_id)
+        compatible_existing = _find_existing_confirmed_diagnosis_event(
+            session,
+            context,
+            patient_id=treatment.patient_id,
+            catalog_item_id=diagnosis_catalog_item.id,
+            scope_type=scope_type,
+            zone=zone,
+            tooth=tooth,
+            surfaces=surfaces,
+        )
+        if diagnosis_mode == "CREATE_NEW" and compatible_existing and not payload.allow_existing_duplicate:
+            return ProcedureWithDiagnosisCreateResponse(
+                procedure=None,
+                diagnosis_event_id=None,
+                compatible_existing_event_id=compatible_existing.id,
+                idempotency_key=payload.idempotency_key,
+                message="Ya existe un diagnóstico confirmado compatible. Confirme si desea reutilizarlo o crear otro.",
+            )
+        if diagnosis_mode == "USE_EXISTING":
+            if not payload.existing_odontogram_event_id:
+                raise TreatmentError("Seleccione el diagnóstico existente que desea reutilizar.", 422)
+            diagnosis_event = _require_existing_diagnosis_event(
+                session,
+                context,
+                patient_id=treatment.patient_id,
+                event_id=payload.existing_odontogram_event_id,
+                catalog_item_id=diagnosis_catalog_item.id,
+                scope_type=scope_type,
+                zone=zone,
+                tooth=tooth,
+                surfaces=surfaces,
+            )
+            diagnosis_reused = True
+
+    procedure = TreatmentProcedure(
+        company_id=context.user.company_id,
+        treatment_id=treatment.id,
+        patient_id=treatment.patient_id,
+        catalog_procedure_id=catalog_item.id,
+        name=payload.name,
+        category=payload.category if payload.category is not None else catalog_item.category,
+        dentist_id=payload.dentist_id,
+        site_id=payload.site_id,
+        unit_value=_money(payload.unit_value),
+        quantity=payload.quantity,
+        total_value=_money(payload.unit_value * payload.quantity),
+        status="Pendiente",
+        estimated_date=payload.estimated_date,
+        observations=payload.observations,
+        requires_tooth=scope_type in {"TOOTH", "TOOTH_SURFACE"} or payload.requires_tooth,
+        scope_type=scope_type,
+        zone=zone,
+        tooth=tooth,
+        surfaces=surfaces,
+        odontogram_idempotency_key=payload.idempotency_key,
+        created_by=context.user.id,
+    )
+    session.add(procedure)
+    treatment.updated_by = context.user.id
+    session.flush()
+    if diagnosis_mode == "CREATE_NEW" and diagnosis_catalog_item:
+        diagnosis_event = _create_confirmed_treatment_diagnosis_event(
+            session,
+            context,
+            treatment,
+            procedure,
+            diagnosis_catalog_item,
+            payload,
+            scope_type=scope_type,
+            zone=zone,
+            tooth=tooth,
+            surfaces=surfaces,
+        )
+        diagnosis_created = True
+    if diagnosis_event:
+        procedure.source_odontogram_event_id = diagnosis_event.id
+    session.flush()
+    _recalculate_editable_budgets(session, context, treatment)
+    detail = {
+        "procedure_id": str(procedure.id),
+        "treatment_id": str(treatment.id),
+        "diagnosis_event_id": str(diagnosis_event.id) if diagnosis_event else None,
+        "diagnosis_created": diagnosis_created,
+        "diagnosis_reused": diagnosis_reused,
+        "catalog_procedure_id": str(catalog_item.id),
+        "scope_type": scope_type,
+        "zone": zone,
+        "tooth": tooth,
+        "surfaces": surfaces,
+    }
+    _event(session, context, treatment.id, "TREATMENT_PROCEDURE_CREATED", "Procedimiento creado desde tratamiento.", detail)
+    _audit(session, context, metadata, entity="treatment_procedure", entity_id=procedure.id, action="TREATMENT_PROCEDURE_CREATED", detail=detail)
+    if diagnosis_event:
+        _audit(
+            session,
+            context,
+            metadata,
+            entity="odontogram_event",
+            entity_id=diagnosis_event.id,
+            action="ODONTOGRAM_DIAGNOSIS_CREATED_FROM_TREATMENT" if diagnosis_created else "ODONTOGRAM_EXISTING_DIAGNOSIS_LINKED_TO_PROCEDURE",
+            detail=detail,
+        )
+        _audit(
+            session,
+            context,
+            metadata,
+            entity="treatment_procedure",
+            entity_id=procedure.id,
+            action="PROCEDURE_LINKED_TO_ODONTOGRAM_DIAGNOSIS",
+            detail=detail,
+        )
+    session.commit()
+    row = session.execute(
+        select(TreatmentProcedure, Dentist, Site)
+        .outerjoin(Dentist, Dentist.id == TreatmentProcedure.dentist_id)
+        .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
+        .where(TreatmentProcedure.id == procedure.id)
+    ).one()
+    return ProcedureWithDiagnosisCreateResponse(
+        procedure=_procedure_response(*row),
+        diagnosis_event_id=diagnosis_event.id if diagnosis_event else None,
+        diagnosis_created=diagnosis_created,
+        diagnosis_reused=diagnosis_reused,
+        idempotency_key=payload.idempotency_key,
+        message=(
+            "Procedimiento creado y diagnóstico odontográfico confirmado."
+            if diagnosis_created
+            else "Procedimiento creado y diagnóstico existente vinculado."
+            if diagnosis_reused
+            else "Procedimiento creado sin cambios odontográficos."
+        ),
+    )
 
 
 def update_procedure(

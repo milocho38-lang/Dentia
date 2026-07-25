@@ -313,3 +313,21 @@ La política de bloqueo de autenticación será:
 Documento relacionado:
 
 * D007 - Seguridad y Autenticación
+
+---
+
+## DEC-022 Tratamiento como punto de entrada al odontograma
+
+Dentia permitirá crear procedimientos planificados desde un tratamiento y, cuando el catálogo lo permita o exija, registrar explícitamente el diagnóstico u hallazgo odontográfico confirmado que justifica el procedimiento.
+
+La relación queda trazada mediante el evento odontográfico origen del procedimiento.
+
+Regla obligatoria:
+
+* No se infieren diagnósticos por nombre de procedimiento.
+* El usuario debe seleccionar y confirmar el diagnóstico/hallazgo.
+* No se crean presupuestos, pagos, evoluciones ni procedimientos realizados en este flujo.
+
+Documento relacionado:
+
+* DOCS/clinical/C017F2-Treatment-First-Odontogram.md

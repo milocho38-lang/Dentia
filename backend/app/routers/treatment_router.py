@@ -30,6 +30,8 @@ from app.schemas.treatment_schema import (
     ProcedureCreateRequest,
     ProcedureResponse,
     ProcedureUpdateRequest,
+    ProcedureWithDiagnosisCreateRequest,
+    ProcedureWithDiagnosisCreateResponse,
     StatusReasonRequest,
     TreatmentCreateRequest,
     TreatmentListResponse,
@@ -48,6 +50,7 @@ from app.services.treatment_service import (
     create_budget_version,
     create_payment,
     create_procedure,
+    create_procedure_with_diagnosis,
     create_procedure_catalog_item,
     create_treatment,
     delete_procedure,
@@ -375,6 +378,30 @@ def create_procedure_endpoint(
 ) -> ProcedureResponse:
     try:
         return create_procedure(session, context, treatment_id, payload, get_request_metadata(request))
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.post(
+    "/api/treatments/{treatment_id}/procedures/with-diagnosis",
+    response_model=ProcedureWithDiagnosisCreateResponse,
+    status_code=201,
+)
+def create_procedure_with_diagnosis_endpoint(
+    treatment_id: UUID,
+    payload: ProcedureWithDiagnosisCreateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("treatments.update"))],
+) -> ProcedureWithDiagnosisCreateResponse:
+    try:
+        return create_procedure_with_diagnosis(
+            session,
+            context,
+            treatment_id,
+            payload,
+            get_request_metadata(request),
+        )
     except TreatmentError as exc:
         raise handle_treatment_error(exc)
 

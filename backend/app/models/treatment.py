@@ -28,6 +28,7 @@ from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
 class Treatment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "tratamientos"
     __table_args__ = (
+        Index("ix_tratamientos_empresa_id", "empresa_id"),
         Index("ix_tratamientos_empresa_paciente", "empresa_id", "paciente_id"),
         Index("ix_tratamientos_empresa_estado", "empresa_id", "estado"),
         Index(
@@ -43,7 +44,6 @@ class Treatment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         PGUUID(as_uuid=True),
         ForeignKey("empresas.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     patient_id: Mapped[UUID] = mapped_column(
         "paciente_id",
@@ -101,6 +101,7 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("valor_unitario >= 0", name="ck_proc_valor_unitario_no_negativo"),
         CheckConstraint("cantidad > 0", name="ck_proc_cantidad_positiva"),
         CheckConstraint("valor_total >= 0", name="ck_proc_valor_total_no_negativo"),
+        Index("ix_tratamiento_procedimientos_empresa_id", "empresa_id"),
         Index("ix_proc_empresa_tratamiento", "empresa_id", "tratamiento_id"),
         Index("ix_proc_empresa_estado", "empresa_id", "estado"),
         Index("ix_proc_empresa_odontologo", "empresa_id", "odontologo_id"),
@@ -127,7 +128,6 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         PGUUID(as_uuid=True),
         ForeignKey("empresas.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     treatment_id: Mapped[UUID] = mapped_column(
         "tratamiento_id",
@@ -248,6 +248,7 @@ class ProcedureCatalogItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_catalogo_proc_empresa_activo", "empresa_id", "activo"),
         Index("ix_catalogo_proc_empresa_categoria", "empresa_id", "categoria"),
         Index("ix_catalogo_proc_empresa_id", "empresa_id"),
+        Index("ix_catalogo_proc_empresa_odontograma", "empresa_id", "odontogram_behavior"),
     )
 
     company_id: Mapped[UUID] = mapped_column(
@@ -272,6 +273,21 @@ class ProcedureCatalogItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     suggested_scope_type: Mapped[str | None] = mapped_column(
         "tipo_alcance_sugerido", String(30), nullable=True
     )
+    odontogram_behavior: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="UNCONFIGURED",
+        server_default="UNCONFIGURED",
+    )
+    odontogram_scope_type: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+    )
+    default_performed_catalog_item_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("odontograma_catalogo.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     is_active: Mapped[bool] = mapped_column(
         "activo", Boolean, nullable=False, default=True, server_default="true"
     )
@@ -284,6 +300,45 @@ class ProcedureCatalogItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         PGUUID(as_uuid=True),
         ForeignKey("usuarios.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+
+class ProcedureCatalogDiagnosis(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "catalogo_procedimientos_diagnosticos"
+    __table_args__ = (
+        UniqueConstraint(
+            "catalogo_procedimiento_id",
+            "odontograma_catalog_item_id",
+            name="uq_catalogo_proc_diagnostico_item",
+        ),
+        Index("ix_catalogo_proc_diag_empresa_proc", "empresa_id", "catalogo_procedimiento_id"),
+        Index("ix_catalogo_proc_diag_catalog_item", "odontograma_catalog_item_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        "empresa_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("empresas.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    procedure_catalog_id: Mapped[UUID] = mapped_column(
+        "catalogo_procedimiento_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("catalogo_procedimientos.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    odontogram_catalog_item_id: Mapped[UUID] = mapped_column(
+        "odontograma_catalog_item_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("odontograma_catalogo.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    is_active: Mapped[bool] = mapped_column(
+        "activo",
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
     )
 
 

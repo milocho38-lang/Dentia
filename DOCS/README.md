@@ -48,6 +48,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 ## Clínica
 
 - [C017F.1 — Evolución clínica simplificada](clinical/C017F1-Simplified-Clinical-Evolution.md)
+- [C017F.2 — Tratamiento como punto de entrada al odontograma](clinical/C017F2-Treatment-First-Odontogram.md)
 
 ## Convención documental
 

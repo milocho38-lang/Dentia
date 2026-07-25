@@ -24,6 +24,7 @@ import {
   createPayment,
   createProcedure,
   createProcedureCatalogItem,
+  createProcedureWithDiagnosis,
   createTreatment,
   deleteProcedure,
   downloadBudgetPdf,
@@ -191,6 +192,13 @@ type ProcedurePayload = {
   zone?: string | null;
   tooth?: string | null;
   surfaces?: string[] | null;
+  idempotency_key?: string;
+  diagnosis_mode?: "NONE" | "CREATE_NEW" | "USE_EXISTING";
+  diagnosis_catalog_item_id?: string | null;
+  existing_odontogram_event_id?: string | null;
+  diagnosis_observation?: string | null;
+  allow_existing_duplicate?: boolean;
+  dentition?: string;
 };
 
 function procedureToPayload(procedure: Procedure): ProcedurePayload {
@@ -720,7 +728,28 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                 return item;
               }}
               onSubmit={async (payload) => {
-                await createProcedure(treatmentId, payload);
+                if (payload.idempotency_key && payload.diagnosis_mode && payload.diagnosis_mode !== "NONE" && payload.catalog_procedure_id) {
+                  const response = await createProcedureWithDiagnosis(treatmentId, {
+                    ...payload,
+                    catalog_procedure_id: payload.catalog_procedure_id,
+                    idempotency_key: payload.idempotency_key,
+                    diagnosis_mode: payload.diagnosis_mode,
+                  });
+                  if (!response.procedure && response.compatible_existing_event_id) {
+                    const reuse = window.confirm(`${response.message}\n\n¿Reutilizar el diagnóstico existente?`);
+                    if (reuse) {
+                      await createProcedureWithDiagnosis(treatmentId, {
+                        ...payload,
+                        catalog_procedure_id: payload.catalog_procedure_id,
+                        idempotency_key: `${payload.idempotency_key}-reuse`,
+                        diagnosis_mode: "USE_EXISTING",
+                        existing_odontogram_event_id: response.compatible_existing_event_id,
+                      });
+                    }
+                  }
+                } else {
+                  await createProcedure(treatmentId, payload);
+                }
                 await refresh();
               }}
             />
@@ -1443,6 +1472,10 @@ function ProcedureForm({
   const [tooth, setTooth] = useState(initial?.tooth ?? "");
   const [surfaces, setSurfaces] = useState<string[]>(initial?.surfaces ?? []);
   const [observations, setObservations] = useState(initial?.observations ?? "");
+  const [diagnosisMode, setDiagnosisMode] = useState<"NONE" | "CREATE_NEW">("NONE");
+  const [diagnosisCatalogItemId, setDiagnosisCatalogItemId] = useState("");
+  const [diagnosisObservation, setDiagnosisObservation] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
   const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [highlightedCatalogIndex, setHighlightedCatalogIndex] = useState(0);
@@ -1468,9 +1501,19 @@ function ProcedureForm({
     setTooth(initial?.tooth ?? "");
     setSurfaces(initial?.surfaces ?? []);
     setObservations(initial?.observations ?? "");
+    setDiagnosisMode("NONE");
+    setDiagnosisCatalogItemId("");
+    setDiagnosisObservation("");
+    setFormError(null);
   }, [initial]);
 
   const selectedCatalog = catalog.find((item) => item.id === catalogProcedureId) ?? null;
+  const odontogramBehavior = selectedCatalog?.odontogram_behavior ?? "UNCONFIGURED";
+  const needsDiagnosis =
+    !initial && odontogramBehavior === "REQUIRES_DIAGNOSIS";
+  const canAttachDiagnosis =
+    !initial && ["REQUIRES_DIAGNOSIS", "OPTIONAL_DIAGNOSIS"].includes(odontogramBehavior);
+  const allowedDiagnoses = selectedCatalog?.allowed_diagnoses ?? [];
   const exactCatalogMatch = catalog.find((item) => item.name.toLowerCase() === name.trim().toLowerCase()) ?? null;
   const visibleCatalog = catalog
     .filter((item) => item.name.toLowerCase().includes(name.trim().toLowerCase()))
@@ -1487,6 +1530,23 @@ function ProcedureForm({
       setTooth("");
       setSurfaces([]);
     }
+    if (item.odontogram_scope_type) {
+      setScopeType(item.odontogram_scope_type);
+      setZone("");
+      setTooth("");
+      setSurfaces([]);
+    }
+    if (item.odontogram_behavior === "REQUIRES_DIAGNOSIS") {
+      setDiagnosisMode("CREATE_NEW");
+      setDiagnosisCatalogItemId(item.allowed_diagnoses[0]?.id ?? "");
+    } else if (item.odontogram_behavior === "OPTIONAL_DIAGNOSIS") {
+      setDiagnosisMode("NONE");
+      setDiagnosisCatalogItemId(item.allowed_diagnoses[0]?.id ?? "");
+    } else {
+      setDiagnosisMode("NONE");
+      setDiagnosisCatalogItemId("");
+    }
+    setFormError(null);
   }
 
   function handleNameChange(value: string) {
@@ -1499,6 +1559,8 @@ function ProcedureForm({
     } else {
       setCatalogProcedureId("");
       setCategory("");
+      setDiagnosisMode("NONE");
+      setDiagnosisCatalogItemId("");
     }
   }
 
@@ -1563,6 +1625,36 @@ function ProcedureForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    setFormError(null);
+    if (needsDiagnosis && diagnosisMode === "NONE") {
+      setFormError("Este procedimiento requiere confirmar un diagnóstico odontográfico.");
+      return;
+    }
+    if (diagnosisMode !== "NONE" && !diagnosisCatalogItemId) {
+      setFormError("Seleccione el diagnóstico odontográfico que justifica el procedimiento.");
+      return;
+    }
+    if (diagnosisMode !== "NONE" && !siteId) {
+      setFormError("Seleccione una sede para confirmar el diagnóstico odontográfico.");
+      return;
+    }
+    if (diagnosisMode !== "NONE" && !dentistId) {
+      setFormError("Seleccione un odontólogo para confirmar el diagnóstico odontográfico.");
+      return;
+    }
+    if (diagnosisMode !== "NONE") {
+      const diagnosisName = allowedDiagnoses.find((item) => item.id === diagnosisCatalogItemId)?.name ?? "diagnóstico seleccionado";
+      const confirmText = [
+        "Se creará el procedimiento planificado y se registrará un diagnóstico odontográfico confirmado.",
+        "",
+        `Procedimiento: ${name}`,
+        `Diagnóstico: ${diagnosisName}`,
+        `Alcance: ${scopeType}${tooth ? ` · Diente ${tooth}` : ""}${surfaces.length ? ` · ${surfaces.join(", ")}` : ""}`,
+        "",
+        "No se creará presupuesto, pago, evolución ni procedimiento realizado.",
+      ].join("\n");
+      if (!window.confirm(confirmText)) return;
+    }
     await onSubmit({
       catalog_procedure_id: catalogProcedureId || null,
       name,
@@ -1576,6 +1668,14 @@ function ProcedureForm({
       zone: scopeType === "ZONE" ? zone : null,
       tooth: scopeType === "TOOTH" || scopeType === "TOOTH_SURFACE" ? tooth : null,
       surfaces: scopeType === "TOOTH_SURFACE" ? surfaces : null,
+      idempotency_key:
+        diagnosisMode !== "NONE"
+          ? `treatment-procedure-diagnosis-${crypto.randomUUID()}`
+          : undefined,
+      diagnosis_mode: diagnosisMode,
+      diagnosis_catalog_item_id: diagnosisMode !== "NONE" ? diagnosisCatalogItemId : null,
+      diagnosis_observation: diagnosisMode !== "NONE" ? diagnosisObservation || null : null,
+      dentition: "PERMANENT",
     });
     if (!initial) {
       setCatalogProcedureId("");
@@ -1590,12 +1690,17 @@ function ProcedureForm({
       setTooth("");
       setSurfaces([]);
       setObservations("");
+      setDiagnosisMode("NONE");
+      setDiagnosisCatalogItemId("");
+      setDiagnosisObservation("");
+      setFormError(null);
     }
   }
 
   return (
     <>
       <form onSubmit={submit} className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+        {formError && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{formError}</div>}
         <div className="grid gap-4 lg:grid-cols-3">
           <label className="relative">
             <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
@@ -1673,7 +1778,19 @@ function ProcedureForm({
             )}
             <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
               {selectedCatalog ? (
-                <span>{selectedCatalog.category ?? "Sin categoría"}</span>
+                <>
+                  <span>{selectedCatalog.category ?? "Sin categoría"}</span>
+                  {selectedCatalog.odontogram_behavior === "REQUIRES_DIAGNOSIS" && (
+                    <span className="rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-700">
+                      Requiere diagnóstico odontográfico
+                    </span>
+                  )}
+                  {selectedCatalog.odontogram_behavior === "OPTIONAL_DIAGNOSIS" && (
+                    <span className="rounded-full bg-orange-50 px-2 py-0.5 font-bold text-orange-700">
+                      Diagnóstico odontográfico opcional
+                    </span>
+                  )}
+                </>
               ) : name.trim() && !exactCatalogMatch ? (
                 <button
                   type="button"
@@ -1712,6 +1829,68 @@ function ProcedureForm({
             </select>
           </label>
         </div>
+
+        {canAttachDiagnosis && (
+          <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50/60 p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-black text-orange-950">Condición odontográfica asociada</p>
+                <p className="mt-1 text-xs text-orange-800">
+                  Se registra solo si el odontólogo lo confirma explícitamente. Dentia no infiere diagnósticos por el nombre del procedimiento.
+                </p>
+              </div>
+              {!needsDiagnosis && (
+                <label className="flex items-center gap-2 text-xs font-bold text-orange-900">
+                  <input
+                    type="checkbox"
+                    checked={diagnosisMode !== "NONE"}
+                    onChange={(event) => setDiagnosisMode(event.target.checked ? "CREATE_NEW" : "NONE")}
+                  />
+                  Registrar diagnóstico
+                </label>
+              )}
+            </div>
+            {diagnosisMode !== "NONE" && (
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <label>
+                  <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-orange-800">
+                    Diagnóstico o hallazgo permitido
+                  </span>
+                  <select
+                    value={diagnosisCatalogItemId}
+                    onChange={(event) => setDiagnosisCatalogItemId(event.target.value)}
+                    className="min-h-11 w-full rounded-xl border border-orange-200 bg-white px-3 text-sm"
+                    required
+                  >
+                    <option value="">Seleccionar diagnóstico</option>
+                    {allowedDiagnoses.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  {!allowedDiagnoses.length && (
+                    <p className="mt-1 text-xs font-bold text-red-700">
+                      El catálogo requiere configuración de diagnósticos permitidos.
+                    </p>
+                  )}
+                </label>
+                <label>
+                  <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-orange-800">
+                    Observación clínica opcional
+                  </span>
+                  <textarea
+                    value={diagnosisObservation}
+                    onChange={(event) => setDiagnosisObservation(event.target.value)}
+                    rows={2}
+                    className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm"
+                    placeholder="Detalle breve del diagnóstico confirmado"
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <label>

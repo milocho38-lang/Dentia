@@ -75,6 +75,14 @@ No se guarda contenido clínico completo en auditoría.
 La creación normal de procedimientos no acepta `source_odontogram_event_id`.
 La trazabilidad clínica-comercial debe pasar por el endpoint explícito del puente.
 
+Desde C017F.2 existe un segundo puente explícito para el flujo inverso:
+
+```text
+Tratamiento → Procedimiento planificado → Diagnóstico/Hallazgo confirmado
+```
+
+Este puente tampoco modifica la creación normal de procedimientos. Requiere catálogo odontográfico configurado, selección explícita del diagnóstico y confirmación del usuario.
+
 ## C017E.1-FIX1 — Sincronización y navegación contextual
 
 Después de crear un procedimiento desde el Dental Inspector:

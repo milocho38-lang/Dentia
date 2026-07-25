@@ -391,6 +391,9 @@ No se crean permisos nuevos en C017E.0.
 | `ODONTOGRAM_DRAFT_GENERATED` | procedimiento origen, evento generado, evolución/cita |
 | `EVOLUTION_SIGNED` | evolución, versión, hash |
 | `ODONTOGRAM_EVENT_CONFIRMED_FROM_EVOLUTION` | evolución, evento, procedimiento |
+| `ODONTOGRAM_DIAGNOSIS_CREATED_FROM_TREATMENT` | tratamiento, procedimiento, diagnóstico, pieza, superficies |
+| `ODONTOGRAM_EXISTING_DIAGNOSIS_LINKED_TO_PROCEDURE` | tratamiento, procedimiento, diagnóstico existente reutilizado |
+| `PROCEDURE_LINKED_TO_ODONTOGRAM_DIAGNOSIS` | procedimiento, evento odontográfico origen, modo de enlace |
 
 No guardar contenido clínico completo en auditoría.
 
@@ -405,6 +408,18 @@ No guardar contenido clínico completo en auditoría.
 | Cartera | Debe usar saldo financiero, no odontograma. |
 
 No se corrigen reportes en C017E.0.
+
+## C017F.2 — Flujo inverso controlado
+
+Dentia admite también el camino:
+
+```text
+Tratamiento → Procedimiento planificado → Diagnóstico/Hallazgo confirmado en odontograma
+```
+
+Este camino no es una inferencia automática. Requiere configuración explícita del catálogo de procedimientos y confirmación del usuario.
+
+No crea presupuestos, pagos, evoluciones ni procedimientos realizados.
 
 ## Plan de implementación futuro
 
