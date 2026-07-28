@@ -331,3 +331,58 @@ Regla obligatoria:
 Documento relacionado:
 
 * DOCS/clinical/C017F2-Treatment-First-Odontogram.md
+
+---
+
+## DEC-023 Informes clínicos narrativos inmutables
+
+Dentia permitirá emitir remisiones, informes clínicos, certificados y cartas generales desde el expediente del paciente.
+
+Regla obligatoria:
+
+* El documento finalizado es inmutable.
+* La descarga devuelve siempre el PDF almacenado y verificado por hash.
+* Los cambios posteriores de branding, paciente o profesional no alteran documentos ya finalizados.
+* La anulación conserva el histórico y requiere motivo.
+* El módulo no implementa recetas ni consentimientos.
+
+Documento relacionado:
+
+* DOCS/clinical/C017G1-Clinical-Reports-Referrals-Letters.md
+
+---
+
+## DEC-024 Recetario odontológico estructurado
+
+Dentia permitirá crear recetas odontológicas ordinarias desde el expediente del paciente.
+
+Regla obligatoria:
+
+* Las recetas usan medicamentos estructurados, no una caja de texto libre.
+* El nombre genérico/principio activo es el campo principal.
+* Dentia no recomienda medicamentos, no calcula dosis y no valida interacciones automáticamente.
+* El profesional debe confirmar revisión de alergias y medicamentos actuales antes de finalizar.
+* La receta finalizada es inmutable y se descarga desde PDF almacenado.
+* No se implementan medicamentos controlados ni recetarios oficiales en este MVP.
+
+Documento relacionado:
+
+* DOCS/clinical/C017G2-Odontological-Prescriptions.md
+
+---
+
+## DEC-023 Informes clínicos narrativos inmutables
+
+Dentia permitirá emitir remisiones, informes clínicos, certificados y cartas generales desde el expediente del paciente.
+
+Regla obligatoria:
+
+* El documento finalizado es inmutable.
+* La descarga devuelve siempre el PDF almacenado y verificado por hash.
+* Los cambios posteriores de branding, paciente o profesional no alteran documentos ya finalizados.
+* La anulación conserva el histórico y requiere motivo.
+* El módulo no implementa recetas ni consentimientos.
+
+Documento relacionado:
+
+* DOCS/clinical/C017G1-Clinical-Reports-Referrals-Letters.md

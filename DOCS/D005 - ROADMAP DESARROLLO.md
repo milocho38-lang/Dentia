@@ -391,6 +391,32 @@ Incluye:
 
 ---
 
+## C017G.1 - Informes clínicos, remisiones y cartas
+
+Incluye:
+
+- Documentos narrativos desde el paciente.
+- Borrador, finalizado y anulado.
+- PDF institucional inmutable.
+- Firma gráfica configurada.
+- Historial, duplicación y descarga.
+- Auditoría clínica documental.
+
+---
+
+## C017G.2 - Recetario odontológico
+
+Incluye:
+
+- Medicamentos estructurados.
+- Revisión obligatoria de alertas clínicas.
+- Borrador, finalización y anulación.
+- PDF institucional inmutable.
+- Consecutivo RX independiente.
+- Auditoría clínica documental.
+
+---
+
 # FASE 5
 # Odontograma
 
@@ -830,6 +856,36 @@ C001 a C038
 ```
 
 Ese conjunto constituye el MVP oficial.
+
+---
+
+# Compuerta de piloto real
+
+Antes de iniciar un piloto real con una clínica durante varias semanas sin
+acompañamiento técnico permanente, Dentia debe pasar la compuerta:
+
+## C018R.1 — Auditoría de preparación para piloto real
+
+Documentos oficiales:
+
+- `DOCS/readiness/C018R1-Pilot-Readiness-Audit.md`
+- `DOCS/readiness/C018R1-Pilot-Checklist.md`
+- `DOCS/readiness/C018R1-Blocking-Issues.md`
+- `DOCS/readiness/C018R1-Deployment-Plan.md`
+
+Regla:
+
+No declarar Dentia como listo para piloto si existe un P0 abierto.
+
+Condiciones mínimas:
+
+- Git limpio y funcionalidades del piloto en GitHub.
+- Producción ejecutando el commit validado.
+- Alembic en head.
+- Backup completo de PostgreSQL y storage.
+- Prueba multiempresa A/B.
+- Configuración completa de la clínica piloto.
+- Flujo clínico-comercial básico validado con usuario real.
 
 ---
 

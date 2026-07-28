@@ -425,6 +425,160 @@ procedimiento
 
 ---
 
+# Tabla: documentos_clinicos
+
+Documentos narrativos institucionales vinculados al expediente del paciente.
+
+## Campos
+
+| Campo                 | Tipo        |
+| --------------------- | ----------- |
+| id                    | UUID        |
+| empresa_id            | UUID        |
+| sede_id               | UUID        |
+| paciente_id           | UUID        |
+| professional_user_id  | UUID NULL   |
+| dentist_profile_id    | UUID NULL   |
+| tratamiento_id        | UUID NULL   |
+| evolucion_id          | UUID NULL   |
+| cita_id               | UUID NULL   |
+| previous_document_id  | UUID NULL   |
+| tipo_documento        | VARCHAR(40) |
+| estado                | VARCHAR(30) |
+| numero_documento      | VARCHAR(40) |
+| consecutivo           | INTEGER     |
+| titulo                | VARCHAR     |
+| destinatario_nombre   | VARCHAR     |
+| destinatario_entidad  | VARCHAR     |
+| destinatario_especialidad | VARCHAR |
+| asunto                | VARCHAR     |
+| contenido             | TEXT        |
+| fecha_clinica         | DATE        |
+| finalized_at          | DATETIME    |
+| finalized_by          | UUID NULL   |
+| voided_at             | DATETIME    |
+| voided_by             | UUID NULL   |
+| void_reason           | TEXT        |
+| institution_snapshot  | JSONB       |
+| patient_snapshot      | JSONB       |
+| professional_snapshot | JSONB       |
+| document_snapshot     | JSONB       |
+| pdf_storage_path      | VARCHAR     |
+| pdf_sha256            | VARCHAR     |
+| integrity_hash        | VARCHAR     |
+| version               | INTEGER     |
+| created_at            | DATETIME    |
+| created_by            | UUID        |
+| updated_at            | DATETIME    |
+| updated_by            | UUID NULL   |
+
+## Estados
+
+```text
+DRAFT
+FINALIZED
+VOIDED
+```
+
+## Tipos
+
+```text
+REFERRAL
+CLINICAL_REPORT
+CERTIFICATE
+GENERAL_LETTER
+```
+
+## Reglas
+
+El PDF finalizado conserva snapshots institucionales, del paciente, del profesional y del contenido. No debe regenerarse desde datos vivos.
+
+---
+
+# Tabla: recetas
+
+Recetas odontológicas ordinarias generadas desde el expediente del paciente.
+
+## Campos
+
+| Campo                  | Tipo        |
+| ---------------------- | ----------- |
+| id                     | UUID        |
+| empresa_id             | UUID        |
+| sede_id                | UUID        |
+| paciente_id            | UUID        |
+| professional_user_id   | UUID NULL   |
+| dentist_profile_id     | UUID NULL   |
+| tratamiento_id         | UUID NULL   |
+| evolucion_id           | UUID NULL   |
+| cita_id                | UUID NULL   |
+| previous_prescription_id | UUID NULL |
+| estado                 | VARCHAR     |
+| numero_receta          | VARCHAR     |
+| consecutivo            | INTEGER     |
+| fecha_clinica          | DATE        |
+| indicaciones_generales | TEXT        |
+| notas                  | TEXT        |
+| alergias_revisadas     | BOOLEAN     |
+| finalized_at           | DATETIME    |
+| finalized_by           | UUID NULL   |
+| voided_at              | DATETIME    |
+| voided_by              | UUID NULL   |
+| void_reason            | TEXT        |
+| institution_snapshot   | JSONB       |
+| patient_snapshot       | JSONB       |
+| professional_snapshot  | JSONB       |
+| prescription_snapshot  | JSONB       |
+| clinical_alerts_snapshot | JSONB     |
+| pdf_storage_path       | VARCHAR     |
+| pdf_sha256             | VARCHAR     |
+| integrity_hash         | VARCHAR     |
+| version                | INTEGER     |
+| created_at             | DATETIME    |
+| created_by             | UUID        |
+| updated_at             | DATETIME    |
+| updated_by             | UUID NULL   |
+
+## Estados
+
+```text
+DRAFT
+FINALIZED
+VOIDED
+```
+
+---
+
+# Tabla: receta_items
+
+Medicamentos estructurados asociados a una receta.
+
+## Campos
+
+| Campo                | Tipo    |
+| -------------------- | ------- |
+| id                   | UUID    |
+| empresa_id           | UUID    |
+| receta_id            | UUID    |
+| position             | INTEGER |
+| nombre_generico      | VARCHAR |
+| marca                | VARCHAR |
+| forma_farmaceutica   | VARCHAR |
+| concentracion        | VARCHAR |
+| dosis                | VARCHAR |
+| via                  | VARCHAR |
+| frecuencia           | VARCHAR |
+| duracion             | VARCHAR |
+| cantidad_total       | VARCHAR |
+| unidad_cantidad      | VARCHAR |
+| indicaciones         | TEXT    |
+
+## Reglas
+
+El nombre genérico es obligatorio y principal. La marca es opcional.
+
+---
+
 # Reglas Técnicas
 
 ## RT-006

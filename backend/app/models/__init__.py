@@ -22,7 +22,9 @@ from app.models.clinical_record import (
     ClinicalRecord,
     ClinicalTimelineEvent,
 )
+from app.models.clinical_document import ClinicalDocument
 from app.models.company import Company
+from app.models.prescription import Prescription, PrescriptionItem
 from app.models.odontogram import (
     Odontogram,
     OdontogramCatalogItem,
@@ -61,6 +63,7 @@ __all__ = [
     "ClinicalMedication",
     "ClinicalRecord",
     "ClinicalTimelineEvent",
+    "ClinicalDocument",
     "Company",
     "Dentist",
     "DentistSite",
@@ -69,6 +72,8 @@ __all__ = [
     "OdontogramEvent",
     "OdontogramEventDetail",
     "Permission",
+    "Prescription",
+    "PrescriptionItem",
     "Patient",
     "PatientResponsible",
     "PatientFollowup",

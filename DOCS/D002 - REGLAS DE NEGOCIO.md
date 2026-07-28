@@ -998,3 +998,186 @@ Reglas adicionales:
 * No habrá bloqueo permanente automático.
 * Un administrador autorizado podrá desbloquear la cuenta.
 * Existirá limitación adicional por IP.
+
+---
+
+## 25. Informes clínicos, remisiones y cartas
+
+### RN-103
+
+Los documentos clínicos narrativos permitidos inicialmente serán:
+
+* Remisión.
+* Informe clínico.
+* Certificado / constancia.
+* Carta general.
+
+---
+
+### RN-104
+
+Todo documento clínico narrativo deberá pertenecer a:
+
+* Empresa.
+* Sede.
+* Paciente.
+* Profesional firmante.
+
+La empresa se derivará siempre de la sesión activa.
+
+---
+
+### RN-105
+
+Los estados del documento serán:
+
+* Borrador.
+* Finalizado.
+* Anulado.
+
+Solo los borradores podrán editarse.
+
+---
+
+### RN-106
+
+Al finalizar un documento se deberá generar y almacenar un PDF institucional inmutable.
+
+Las descargas posteriores deberán retornar el PDF almacenado, no regenerar el documento desde datos vivos.
+
+---
+
+### RN-107
+
+Un documento finalizado no podrá editarse.
+
+Para reutilizarlo deberá duplicarse como nuevo borrador.
+
+---
+
+### RN-108
+
+La anulación de un documento finalizado deberá conservar el PDF y registrar motivo, usuario y fecha.
+
+---
+
+### RN-109
+
+Los documentos clínicos narrativos no implementan recetas, consentimientos, firma electrónica avanzada, IA ni envío automático por correo o WhatsApp.
+
+---
+
+## 26. Recetario odontológico
+
+### RN-110
+
+Las recetas odontológicas deberán contener uno o varios medicamentos estructurados.
+
+No se permitirá guardar la prescripción completa únicamente como texto libre.
+
+---
+
+### RN-111
+
+Cada medicamento deberá registrar como mínimo:
+
+* Nombre genérico o principio activo.
+* Forma.
+* Concentración.
+* Dosis.
+* Vía.
+* Frecuencia.
+* Duración.
+* Cantidad total.
+
+---
+
+### RN-112
+
+Dentia no recomendará medicamentos, no calculará dosis y no validará interacciones farmacológicas automáticamente en el MVP.
+
+---
+
+### RN-113
+
+Antes de finalizar una receta, el profesional deberá confirmar que revisó alergias, medicamentos actuales y antecedentes relevantes del paciente.
+
+---
+
+### RN-114
+
+Las recetas finalizadas serán inmutables.
+
+Las descargas posteriores deberán retornar el PDF histórico almacenado y verificado por hash.
+
+---
+
+### RN-115
+
+El módulo de recetas no implementa medicamentos controlados, estupefacientes, psicotrópicos, MIPRES, ROE, dispensación ni recetario oficial electrónico.
+
+---
+
+## 25. Informes clínicos, remisiones y cartas
+
+### RN-103
+
+Los documentos clínicos narrativos permitidos inicialmente serán:
+
+* Remisión.
+* Informe clínico.
+* Certificado / constancia.
+* Carta general.
+
+---
+
+### RN-104
+
+Todo documento clínico narrativo deberá pertenecer a:
+
+* Empresa.
+* Sede.
+* Paciente.
+* Profesional firmante.
+
+La empresa se derivará siempre de la sesión activa.
+
+---
+
+### RN-105
+
+Los estados del documento serán:
+
+* Borrador.
+* Finalizado.
+* Anulado.
+
+Solo los borradores podrán editarse.
+
+---
+
+### RN-106
+
+Al finalizar un documento se deberá generar y almacenar un PDF institucional inmutable.
+
+Las descargas posteriores deberán retornar el PDF almacenado, no regenerar el documento desde datos vivos.
+
+---
+
+### RN-107
+
+Un documento finalizado no podrá editarse.
+
+Para reutilizarlo deberá duplicarse como nuevo borrador.
+
+---
+
+### RN-108
+
+La anulación de un documento finalizado deberá conservar el PDF y registrar motivo, usuario y fecha.
+
+---
+
+### RN-109
+
+Los documentos clínicos narrativos no implementan recetas, consentimientos, firma electrónica avanzada, IA ni envío automático por correo o WhatsApp.

@@ -87,6 +87,8 @@ def calculate_age(birth_date: date | None, today: date | None = None) -> int | N
     if birth_date is None:
         return None
     current = today or date.today()
+    if birth_date > current:
+        return None
     return (
         current.year
         - birth_date.year

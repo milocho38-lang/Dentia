@@ -13,6 +13,16 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
 import { getClinicalSummary } from "@/services/clinicalRecordService";
+import {
+  createClinicalDocument,
+  downloadClinicalDocumentPdf,
+  duplicateClinicalDocument,
+  finalizeClinicalDocument,
+  listClinicalDocuments,
+  previewClinicalDocument,
+  updateClinicalDocument,
+  voidClinicalDocument,
+} from "@/services/clinicalDocumentService";
 import { getAppointmentFollowup } from "@/services/followupService";
 import {
   createResponsible,
@@ -33,6 +43,16 @@ import {
   listProcedures,
   listTreatments,
 } from "@/services/treatmentService";
+import {
+  createPrescription,
+  downloadPrescriptionPdf,
+  duplicatePrescription,
+  finalizePrescription,
+  listPrescriptions,
+  previewPrescription,
+  updatePrescription,
+  voidPrescription,
+} from "@/services/prescriptionService";
 import type { AgendaOptions } from "@/types/agenda";
 import type {
   PatientAppointment,
@@ -41,7 +61,9 @@ import type {
   ResponsibleInput,
 } from "@/types/patient";
 import type { ClinicalSummary } from "@/types/clinicalRecord";
+import type { ClinicalDocument, ClinicalDocumentInput, ClinicalDocumentType } from "@/types/clinicalDocument";
 import type { Followup } from "@/types/followup";
+import type { Prescription, PrescriptionInput, PrescriptionItemInput } from "@/types/prescription";
 import type { Budget, Payment, Procedure, TreatmentListItem } from "@/types/treatment";
 
 function formatDate(value: string | null, withTime = false) {
@@ -473,12 +495,27 @@ export function PatientDetail({ patientId }: { patientId: string }) {
 
         {activeTab === "documents" && (
           <PatientDocumentsWorkspace
+            patientId={patient.id}
             budgets={patientBudgets}
             payments={patientPayments}
+            treatments={patientTreatments}
+            options={agendaOptions}
             loading={workspaceLoading}
             error={workspaceError}
             canViewBudgets={hasPermission("budgets.view")}
             canViewPayments={hasPermission("payments.view")}
+            canViewClinicalDocuments={hasPermission("clinical_documents.view")}
+            canCreateClinicalDocuments={hasPermission("clinical_documents.create")}
+            canEditClinicalDocuments={hasPermission("clinical_documents.edit_draft")}
+            canFinalizeClinicalDocuments={hasPermission("clinical_documents.finalize")}
+            canDownloadClinicalDocuments={hasPermission("clinical_documents.download")}
+            canVoidClinicalDocuments={hasPermission("clinical_documents.void")}
+            canViewPrescriptions={hasPermission("prescriptions.view")}
+            canCreatePrescriptions={hasPermission("prescriptions.create")}
+            canEditPrescriptions={hasPermission("prescriptions.edit_draft")}
+            canFinalizePrescriptions={hasPermission("prescriptions.finalize")}
+            canDownloadPrescriptions={hasPermission("prescriptions.download")}
+            canVoidPrescriptions={hasPermission("prescriptions.void")}
           />
         )}
 
@@ -1071,21 +1108,310 @@ function PatientAgendaWorkspace({
 }
 
 function PatientDocumentsWorkspace({
+  patientId,
   budgets,
   payments,
+  treatments,
+  options,
   loading,
   error,
   canViewBudgets,
   canViewPayments,
+  canViewClinicalDocuments,
+  canCreateClinicalDocuments,
+  canEditClinicalDocuments,
+  canFinalizeClinicalDocuments,
+  canDownloadClinicalDocuments,
+  canVoidClinicalDocuments,
+  canViewPrescriptions,
+  canCreatePrescriptions,
+  canEditPrescriptions,
+  canFinalizePrescriptions,
+  canDownloadPrescriptions,
+  canVoidPrescriptions,
 }: {
+  patientId: string;
   budgets: Budget[];
   payments: Payment[];
+  treatments: TreatmentListItem[];
+  options: AgendaOptions | null;
   loading: boolean;
   error: string | null;
   canViewBudgets: boolean;
   canViewPayments: boolean;
+  canViewClinicalDocuments: boolean;
+  canCreateClinicalDocuments: boolean;
+  canEditClinicalDocuments: boolean;
+  canFinalizeClinicalDocuments: boolean;
+  canDownloadClinicalDocuments: boolean;
+  canVoidClinicalDocuments: boolean;
+  canViewPrescriptions: boolean;
+  canCreatePrescriptions: boolean;
+  canEditPrescriptions: boolean;
+  canFinalizePrescriptions: boolean;
+  canDownloadPrescriptions: boolean;
+  canVoidPrescriptions: boolean;
 }) {
-  const documents = [
+  const [clinicalDocuments, setClinicalDocuments] = useState<ClinicalDocument[]>([]);
+  const [clinicalLoading, setClinicalLoading] = useState(false);
+  const [clinicalError, setClinicalError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<ClinicalDocument | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [voiding, setVoiding] = useState<ClinicalDocument | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [form, setForm] = useState<ClinicalDocumentInput>(() => defaultClinicalDocumentForm(options));
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+  const [prescriptionLoading, setPrescriptionLoading] = useState(false);
+  const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
+  const [editingPrescription, setEditingPrescription] = useState<Prescription | null>(null);
+  const [prescriptionFormOpen, setPrescriptionFormOpen] = useState(false);
+  const [voidingPrescription, setVoidingPrescription] = useState<Prescription | null>(null);
+  const [prescriptionVoidReason, setPrescriptionVoidReason] = useState("");
+  const [prescriptionForm, setPrescriptionForm] = useState<PrescriptionInput>(() => defaultPrescriptionForm(options));
+  const [reviewedAlerts, setReviewedAlerts] = useState(false);
+
+  const loadClinicalDocuments = useCallback(async () => {
+    if (!canViewClinicalDocuments) return;
+    setClinicalLoading(true);
+    setClinicalError(null);
+    try {
+      const response = await listClinicalDocuments(patientId);
+      setClinicalDocuments(response.items);
+    } catch (caught) {
+      setClinicalError(caught instanceof Error ? caught.message : "No fue posible cargar informes y documentos.");
+    } finally {
+      setClinicalLoading(false);
+    }
+  }, [canViewClinicalDocuments, patientId]);
+
+  useEffect(() => {
+    loadClinicalDocuments();
+  }, [loadClinicalDocuments]);
+
+  const loadPrescriptions = useCallback(async () => {
+    if (!canViewPrescriptions) return;
+    setPrescriptionLoading(true);
+    setPrescriptionError(null);
+    try {
+      const response = await listPrescriptions(patientId);
+      setPrescriptions(response.items);
+    } catch (caught) {
+      setPrescriptionError(caught instanceof Error ? caught.message : "No fue posible cargar recetas.");
+    } finally {
+      setPrescriptionLoading(false);
+    }
+  }, [canViewPrescriptions, patientId]);
+
+  useEffect(() => {
+    loadPrescriptions();
+  }, [loadPrescriptions]);
+
+  function openNewDocument() {
+    setEditing(null);
+    setForm(defaultClinicalDocumentForm(options));
+    setFormOpen(true);
+  }
+
+  function openEditDocument(document: ClinicalDocument) {
+    setEditing(document);
+    setForm({
+      site_id: document.site_id,
+      dentist_profile_id: document.dentist_profile_id,
+      document_type: document.document_type,
+      title: document.title,
+      recipient_name: document.recipient_name,
+      recipient_entity: document.recipient_entity,
+      recipient_specialty: document.recipient_specialty,
+      subject: document.subject,
+      body: document.body,
+      clinical_date: document.clinical_date,
+      related_treatment_id: document.related_treatment_id,
+      related_evolution_id: document.related_evolution_id,
+      related_appointment_id: document.related_appointment_id,
+    });
+    setFormOpen(true);
+  }
+
+  async function saveClinicalDocument(event: FormEvent) {
+    event.preventDefault();
+    try {
+      if (editing) {
+        await updateClinicalDocument(editing.id, { ...form, version: editing.version });
+      } else {
+        await createClinicalDocument(patientId, form);
+      }
+      setFormOpen(false);
+      setEditing(null);
+      await loadClinicalDocuments();
+    } catch (caught) {
+      setClinicalError(caught instanceof Error ? caught.message : "No fue posible guardar el documento.");
+    }
+  }
+
+  async function previewDocument(document: ClinicalDocument) {
+    try {
+      const preview = await previewClinicalDocument(document.id);
+      const binary = atob(preview.content_base64);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (caught) {
+      setClinicalError(caught instanceof Error ? caught.message : "No fue posible previsualizar.");
+    }
+  }
+
+  async function finalizeDocument(document: ClinicalDocument) {
+    if (!window.confirm("Finalizar este documento generará un PDF histórico inmutable. ¿Continuar?")) return;
+    try {
+      await finalizeClinicalDocument(document.id);
+      await loadClinicalDocuments();
+    } catch (caught) {
+      setClinicalError(caught instanceof Error ? caught.message : "No fue posible finalizar el documento.");
+    }
+  }
+
+  async function duplicateDocument(document: ClinicalDocument) {
+    try {
+      await duplicateClinicalDocument(document.id);
+      await loadClinicalDocuments();
+    } catch (caught) {
+      setClinicalError(caught instanceof Error ? caught.message : "No fue posible duplicar el documento.");
+    }
+  }
+
+  async function confirmVoidDocument(event: FormEvent) {
+    event.preventDefault();
+    if (!voiding) return;
+    try {
+      await voidClinicalDocument(voiding.id, voidReason);
+      setVoiding(null);
+      setVoidReason("");
+      await loadClinicalDocuments();
+    } catch (caught) {
+      setClinicalError(caught instanceof Error ? caught.message : "No fue posible anular el documento.");
+    }
+  }
+
+  function openNewPrescription() {
+    setEditingPrescription(null);
+    setPrescriptionForm(defaultPrescriptionForm(options));
+    setReviewedAlerts(false);
+    setPrescriptionFormOpen(true);
+  }
+
+  function openEditPrescription(prescription: Prescription) {
+    setEditingPrescription(prescription);
+    setPrescriptionForm({
+      site_id: prescription.site_id,
+      dentist_profile_id: prescription.dentist_profile_id,
+      clinical_date: prescription.clinical_date,
+      related_treatment_id: prescription.related_treatment_id,
+      related_evolution_id: prescription.related_evolution_id,
+      related_appointment_id: prescription.related_appointment_id,
+      general_instructions: prescription.general_instructions,
+      notes: prescription.notes,
+      items: prescription.items.map((item) => ({
+        generic_name: item.generic_name,
+        brand_name: item.brand_name,
+        pharmaceutical_form: item.pharmaceutical_form,
+        concentration: item.concentration,
+        dose: item.dose,
+        route: item.route,
+        frequency: item.frequency,
+        duration: item.duration,
+        total_quantity: item.total_quantity,
+        quantity_unit: item.quantity_unit,
+        instructions: item.instructions,
+      })),
+    });
+    setReviewedAlerts(prescription.allergies_reviewed);
+    setPrescriptionFormOpen(true);
+  }
+
+  function updatePrescriptionItem(index: number, patch: Partial<PrescriptionItemInput>) {
+    setPrescriptionForm((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item,
+      ),
+    }));
+  }
+
+  function addPrescriptionItem() {
+    setPrescriptionForm((current) => ({
+      ...current,
+      items: [...current.items, emptyPrescriptionItem()],
+    }));
+  }
+
+  function removePrescriptionItem(index: number) {
+    setPrescriptionForm((current) => ({
+      ...current,
+      items: current.items.filter((_, itemIndex) => itemIndex !== index),
+    }));
+  }
+
+  async function savePrescription(event: FormEvent) {
+    event.preventDefault();
+    try {
+      if (editingPrescription) {
+        await updatePrescription(editingPrescription.id, { ...prescriptionForm, version: editingPrescription.version });
+      } else {
+        await createPrescription(patientId, prescriptionForm);
+      }
+      setPrescriptionFormOpen(false);
+      setEditingPrescription(null);
+      await loadPrescriptions();
+    } catch (caught) {
+      setPrescriptionError(caught instanceof Error ? caught.message : "No fue posible guardar la receta.");
+    }
+  }
+
+  async function previewRx(prescription: Prescription) {
+    try {
+      const preview = await previewPrescription(prescription.id);
+      const binary = atob(preview.content_base64);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (caught) {
+      setPrescriptionError(caught instanceof Error ? caught.message : "No fue posible previsualizar la receta.");
+    }
+  }
+
+  async function finalizeRx(prescription: Prescription) {
+    if (!window.confirm(prescriptionFinalizeMessage(prescription))) return;
+    try {
+      await finalizePrescription(prescription.id, true);
+      await loadPrescriptions();
+    } catch (caught) {
+      setPrescriptionError(caught instanceof Error ? caught.message : "No fue posible finalizar la receta.");
+    }
+  }
+
+  async function duplicateRx(prescription: Prescription) {
+    try {
+      await duplicatePrescription(prescription.id);
+      await loadPrescriptions();
+    } catch (caught) {
+      setPrescriptionError(caught instanceof Error ? caught.message : "No fue posible duplicar la receta.");
+    }
+  }
+
+  async function confirmVoidPrescription(event: FormEvent) {
+    event.preventDefault();
+    if (!voidingPrescription) return;
+    try {
+      await voidPrescription(voidingPrescription.id, prescriptionVoidReason);
+      setVoidingPrescription(null);
+      setPrescriptionVoidReason("");
+      await loadPrescriptions();
+    } catch (caught) {
+      setPrescriptionError(caught instanceof Error ? caught.message : "No fue posible anular la receta.");
+    }
+  }
+
+  const generatedDocuments = [
     ...(canViewBudgets
       ? budgets.map((budget) => ({
           id: budget.id,
@@ -1109,32 +1435,519 @@ function PatientDocumentsWorkspace({
   return (
     <WorkspacePanel
       title="Documentos del paciente"
-      description="Documentos generados desde Dentia. Preparado para consentimientos, constancias y órdenes futuras."
+      description="Documentos generados desde Dentia. Los informes clínicos se guardan como documentos históricos trazables."
+      action={
+        canCreateClinicalDocuments ? (
+          <button
+            type="button"
+            onClick={openNewDocument}
+            className="inline-flex min-h-10 items-center rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white"
+          >
+            Nuevo documento
+          </button>
+        ) : null
+      }
     >
       {error && <Alert tone="error">{error}</Alert>}
-      {loading ? (
-        <LoadingLine label="Cargando documentos…" />
-      ) : (
-        <ResponsiveTable
-          empty="Este paciente aún no tiene documentos generados."
-          headings={["Tipo", "Documento", "Fecha", "Acciones"]}
-          rows={documents.map((document) => [
-            document.type,
-            document.name,
-            formatDate(document.date, true),
+      {clinicalError && <Alert tone="error">{clinicalError}</Alert>}
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-base font-black text-slate-950">Informes y documentos</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Remisiones, informes clínicos, certificados y cartas vinculadas al paciente.
+          </p>
+        </div>
+        {clinicalLoading ? (
+          <LoadingLine label="Cargando informes y documentos…" />
+        ) : canViewClinicalDocuments ? (
+          <ResponsiveTable
+            empty="Este paciente aún no tiene informes o documentos clínicos."
+            headings={["Tipo", "Número", "Fecha", "Asunto", "Profesional", "Estado", "Acciones"]}
+            rows={clinicalDocuments.map((document) => [
+              clinicalDocumentTypeLabel(document.document_type),
+              document.document_number ?? "Borrador",
+              formatDate(document.clinical_date),
+              document.subject ?? document.title ?? "—",
+              document.professional_name ?? "—",
+              <StatusBadge key="status" value={clinicalDocumentStatusLabel(document.status)} />,
+              <div key="actions" className="flex flex-wrap gap-3">
+                {document.status === "DRAFT" && canEditClinicalDocuments && (
+                  <button type="button" onClick={() => openEditDocument(document)} className="font-bold text-green-700 hover:underline">Editar</button>
+                )}
+                {document.status === "DRAFT" && (
+                  <button type="button" onClick={() => previewDocument(document)} className="font-bold text-sky-700 hover:underline">Previsualizar</button>
+                )}
+                {document.status === "DRAFT" && canFinalizeClinicalDocuments && (
+                  <button type="button" onClick={() => finalizeDocument(document)} className="font-bold text-orange-700 hover:underline">Finalizar</button>
+                )}
+                {document.status !== "DRAFT" && canDownloadClinicalDocuments && (
+                  <button type="button" onClick={() => downloadBlob(() => downloadClinicalDocumentPdf(document.id), `${document.document_number ?? "documento"}.pdf`)} className="font-bold text-green-700 hover:underline">Descargar PDF</button>
+                )}
+                {document.status !== "DRAFT" && canCreateClinicalDocuments && (
+                  <button type="button" onClick={() => duplicateDocument(document)} className="font-bold text-sky-700 hover:underline">Duplicar</button>
+                )}
+                {document.status === "FINALIZED" && canVoidClinicalDocuments && (
+                  <button type="button" onClick={() => setVoiding(document)} className="font-bold text-red-700 hover:underline">Anular</button>
+                )}
+              </div>,
+            ])}
+          />
+        ) : (
+          <Alert tone="info">No tienes permiso para ver informes clínicos narrativos.</Alert>
+        )}
+      </section>
+
+      <section className="mt-6 space-y-3">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+          <div>
+            <h3 className="text-base font-black text-slate-950">Recetas</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Prescripciones odontológicas ordinarias con medicamentos estructurados y PDF histórico.
+            </p>
+          </div>
+          {canCreatePrescriptions && (
             <button
-              key={document.id}
               type="button"
-              onClick={document.action}
-              className="text-sm font-bold text-green-700 hover:underline"
+              onClick={openNewPrescription}
+              className="inline-flex min-h-10 items-center justify-center rounded-xl border border-green-200 bg-green-50 px-4 text-sm font-bold text-green-800"
             >
-              Descargar
-            </button>,
-          ])}
-        />
-      )}
+              Nueva receta
+            </button>
+          )}
+        </div>
+        <Alert tone="info">
+          Dentia no sustituye recetarios oficiales ni sistemas regulatorios para medicamentos controlados. No calcula dosis ni recomienda medicamentos.
+        </Alert>
+        {prescriptionError && <Alert tone="error">{prescriptionError}</Alert>}
+        {prescriptionLoading ? (
+          <LoadingLine label="Cargando recetas…" />
+        ) : canViewPrescriptions ? (
+          <ResponsiveTable
+            empty="Este paciente aún no tiene recetas."
+            headings={["Número", "Fecha", "Medicamentos", "Profesional", "Estado", "Acciones"]}
+            rows={prescriptions.map((prescription) => [
+              prescription.prescription_number ?? "Borrador",
+              formatDate(prescription.clinical_date),
+              prescriptionMedicationSummary(prescription),
+              prescription.professional_name ?? "—",
+              <StatusBadge key="status" value={prescriptionStatusLabel(prescription.status)} />,
+              <div key="actions" className="flex flex-wrap gap-3">
+                {prescription.status === "DRAFT" && canEditPrescriptions && (
+                  <button type="button" onClick={() => openEditPrescription(prescription)} className="font-bold text-green-700 hover:underline">Editar</button>
+                )}
+                {prescription.status === "DRAFT" && (
+                  <button type="button" onClick={() => previewRx(prescription)} className="font-bold text-sky-700 hover:underline">Previsualizar</button>
+                )}
+                {prescription.status === "DRAFT" && canFinalizePrescriptions && (
+                  <button type="button" onClick={() => finalizeRx(prescription)} className="font-bold text-orange-700 hover:underline">Finalizar</button>
+                )}
+                {prescription.status !== "DRAFT" && canDownloadPrescriptions && (
+                  <button type="button" onClick={() => downloadBlob(() => downloadPrescriptionPdf(prescription.id), `${prescription.prescription_number ?? "receta"}.pdf`)} className="font-bold text-green-700 hover:underline">Descargar PDF</button>
+                )}
+                {prescription.status !== "DRAFT" && canCreatePrescriptions && (
+                  <button type="button" onClick={() => duplicateRx(prescription)} className="font-bold text-sky-700 hover:underline">Duplicar</button>
+                )}
+                {prescription.status === "FINALIZED" && canVoidPrescriptions && (
+                  <button type="button" onClick={() => setVoidingPrescription(prescription)} className="font-bold text-red-700 hover:underline">Anular</button>
+                )}
+              </div>,
+            ])}
+          />
+        ) : (
+          <Alert tone="info">No tienes permiso para ver recetas.</Alert>
+        )}
+      </section>
+
+      <section className="mt-6 space-y-3">
+        <div>
+          <h3 className="text-base font-black text-slate-950">Otros documentos generados</h3>
+          <p className="mt-1 text-sm text-slate-500">Presupuestos y comprobantes emitidos desde módulos comerciales.</p>
+        </div>
+        {loading ? (
+          <LoadingLine label="Cargando documentos…" />
+        ) : (
+          <ResponsiveTable
+            empty="Este paciente aún no tiene presupuestos o comprobantes generados."
+            headings={["Tipo", "Documento", "Fecha", "Acciones"]}
+            rows={generatedDocuments.map((document) => [
+              document.type,
+              document.name,
+              formatDate(document.date, true),
+              <button
+                key={document.id}
+                type="button"
+                onClick={document.action}
+                className="text-sm font-bold text-green-700 hover:underline"
+              >
+                Descargar
+              </button>,
+            ])}
+          />
+        )}
+      </section>
+
+      <Modal
+        open={formOpen}
+        title={editing ? "Editar documento" : "Nuevo informe o documento"}
+        onClose={() => setFormOpen(false)}
+      >
+        <form onSubmit={saveClinicalDocument} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Tipo</span>
+              <select value={form.document_type} onChange={(event) => setForm((current) => ({ ...current, document_type: event.target.value as ClinicalDocumentType }))} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm">
+                <option value="REFERRAL">Remisión</option>
+                <option value="CLINICAL_REPORT">Informe clínico</option>
+                <option value="CERTIFICATE">Certificado / constancia</option>
+                <option value="GENERAL_LETTER">Carta general</option>
+              </select>
+            </label>
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Fecha</span>
+              <input type="date" value={form.clinical_date} onChange={(event) => setForm((current) => ({ ...current, clinical_date: event.target.value }))} className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" required />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Sede</span>
+              <select value={form.site_id} onChange={(event) => setForm((current) => ({ ...current, site_id: event.target.value }))} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm" required>
+                <option value="">Seleccionar sede</option>
+                {options?.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Profesional firmante</span>
+              <select value={form.dentist_profile_id ?? ""} onChange={(event) => setForm((current) => ({ ...current, dentist_profile_id: event.target.value || null }))} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm">
+                <option value="">Mi perfil profesional</option>
+                {options?.dentists.map((dentist) => <option key={dentist.id} value={dentist.id}>{dentist.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Destinatario</span>
+              <input value={form.recipient_name ?? ""} onChange={(event) => setForm((current) => ({ ...current, recipient_name: event.target.value }))} className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" placeholder="Especialista o persona destinataria" />
+            </label>
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Especialidad</span>
+              <input value={form.recipient_specialty ?? ""} onChange={(event) => setForm((current) => ({ ...current, recipient_specialty: event.target.value }))} className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" placeholder="Endodoncia, rehabilitación…" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Entidad / clínica</span>
+            <input value={form.recipient_entity ?? ""} onChange={(event) => setForm((current) => ({ ...current, recipient_entity: event.target.value }))} className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Asunto</span>
+            <input value={form.subject ?? ""} onChange={(event) => setForm((current) => ({ ...current, subject: event.target.value }))} className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" placeholder="Remisión para valoración por endodoncia" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Contenido del documento *</span>
+            <textarea value={form.body} onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))} rows={9} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="Escriba el contenido del informe, remisión, certificado o carta." required />
+          </label>
+          <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <summary className="cursor-pointer text-sm font-black text-slate-700">Referencias clínicas opcionales</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="mb-1 block text-xs font-bold text-slate-500">Tratamiento relacionado</span>
+                <select value={form.related_treatment_id ?? ""} onChange={(event) => setForm((current) => ({ ...current, related_treatment_id: event.target.value || null }))} className="min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm">
+                  <option value="">Sin referencia</option>
+                  {treatments.map((treatment) => <option key={treatment.id} value={treatment.id}>{treatment.name}</option>)}
+                </select>
+              </label>
+            </div>
+          </details>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" onClick={() => setFormOpen(false)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancelar</button>
+            <button className="min-h-11 rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white">Guardar borrador</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={Boolean(voiding)} title="Anular documento" onClose={() => setVoiding(null)}>
+        <form onSubmit={confirmVoidDocument} className="space-y-4">
+          <p className="text-sm text-slate-600">El PDF histórico se conservará. El documento quedará marcado como anulado.</p>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Motivo de anulación</span>
+            <textarea value={voidReason} onChange={(event) => setVoidReason(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" required />
+          </label>
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setVoiding(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancelar</button>
+            <button className="min-h-11 rounded-xl bg-red-600 px-4 text-sm font-bold text-white">Anular</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={prescriptionFormOpen}
+        title={editingPrescription ? "Editar receta" : "Nueva receta"}
+        onClose={() => setPrescriptionFormOpen(false)}
+      >
+        <form onSubmit={savePrescription} className="space-y-4">
+          <Alert tone="info">
+            Revise alergias, medicamentos actuales y antecedentes del paciente antes de finalizar. Dentia no calcula dosis ni valida interacciones automáticamente.
+          </Alert>
+          <ClinicalAlertsSummary prescription={editingPrescription} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Fecha</span>
+              <input type="date" value={prescriptionForm.clinical_date} onChange={(event) => setPrescriptionForm((current) => ({ ...current, clinical_date: event.target.value }))} className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm" required />
+            </label>
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Sede</span>
+              <select value={prescriptionForm.site_id} onChange={(event) => setPrescriptionForm((current) => ({ ...current, site_id: event.target.value }))} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm" required>
+                <option value="">Seleccionar sede</option>
+                {options?.sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Profesional firmante</span>
+              <select value={prescriptionForm.dentist_profile_id ?? ""} onChange={(event) => setPrescriptionForm((current) => ({ ...current, dentist_profile_id: event.target.value || null }))} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm">
+                <option value="">Mi perfil profesional</option>
+                {options?.dentists.map((dentist) => <option key={dentist.id} value={dentist.id}>{dentist.name}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Tratamiento relacionado</span>
+              <select value={prescriptionForm.related_treatment_id ?? ""} onChange={(event) => setPrescriptionForm((current) => ({ ...current, related_treatment_id: event.target.value || null }))} className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm">
+                <option value="">Sin referencia</option>
+                {treatments.map((treatment) => <option key={treatment.id} value={treatment.id}>{treatment.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-black uppercase tracking-wide text-slate-500">Medicamentos</h4>
+              <button type="button" onClick={addPrescriptionItem} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-green-700">
+                Agregar medicamento
+              </button>
+            </div>
+            {prescriptionForm.items.map((item, index) => (
+              <details key={index} open className="rounded-2xl border border-slate-200 bg-white p-4">
+                <summary className="cursor-pointer text-sm font-black text-slate-900">
+                  Medicamento {index + 1}: {item.generic_name || "Sin nombre"}
+                </summary>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <InputField label="Nombre genérico / principio activo" value={item.generic_name} onChange={(value) => updatePrescriptionItem(index, { generic_name: value })} required />
+                  <InputField label="Marca opcional" value={item.brand_name ?? ""} onChange={(value) => updatePrescriptionItem(index, { brand_name: value })} />
+                  <InputField label="Forma" value={item.pharmaceutical_form} onChange={(value) => updatePrescriptionItem(index, { pharmaceutical_form: value })} required />
+                  <InputField label="Concentración" value={item.concentration} onChange={(value) => updatePrescriptionItem(index, { concentration: value })} required />
+                  <InputField label="Dosis" value={item.dose} onChange={(value) => updatePrescriptionItem(index, { dose: value })} required />
+                  <InputField label="Vía" value={item.route} onChange={(value) => updatePrescriptionItem(index, { route: value })} required />
+                  <InputField label="Frecuencia" value={item.frequency} onChange={(value) => updatePrescriptionItem(index, { frequency: value })} required />
+                  <InputField label="Duración" value={item.duration} onChange={(value) => updatePrescriptionItem(index, { duration: value })} required />
+                  <InputField label="Cantidad total" value={item.total_quantity} onChange={(value) => updatePrescriptionItem(index, { total_quantity: value })} required />
+                  <InputField label="Unidad" value={item.quantity_unit ?? ""} onChange={(value) => updatePrescriptionItem(index, { quantity_unit: value })} />
+                </div>
+                <label className="mt-3 block">
+                  <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Indicaciones</span>
+                  <textarea value={item.instructions ?? ""} onChange={(event) => updatePrescriptionItem(index, { instructions: event.target.value })} rows={2} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+                </label>
+                {prescriptionForm.items.length > 1 && (
+                  <button type="button" onClick={() => removePrescriptionItem(index)} className="mt-3 text-sm font-bold text-red-700 hover:underline">
+                    Retirar medicamento
+                  </button>
+                )}
+              </details>
+            ))}
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Indicaciones generales</span>
+            <textarea value={prescriptionForm.general_instructions ?? ""} onChange={(event) => setPrescriptionForm((current) => ({ ...current, general_instructions: event.target.value }))} rows={3} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+          </label>
+          <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <input type="checkbox" className="mt-1" checked={reviewedAlerts} onChange={(event) => setReviewedAlerts(event.target.checked)} />
+            <span>Confirmo que revisé alergias, medicamentos actuales y antecedentes relevantes antes de finalizar esta receta.</span>
+          </label>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" onClick={() => setPrescriptionFormOpen(false)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancelar</button>
+            <button className="min-h-11 rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white">Guardar borrador</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={Boolean(voidingPrescription)} title="Anular receta" onClose={() => setVoidingPrescription(null)}>
+        <form onSubmit={confirmVoidPrescription} className="space-y-4">
+          <p className="text-sm text-slate-600">El PDF histórico se conservará. La receta quedará marcada como anulada.</p>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Motivo de anulación</span>
+            <textarea value={prescriptionVoidReason} onChange={(event) => setPrescriptionVoidReason(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" required />
+          </label>
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setVoidingPrescription(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancelar</button>
+            <button className="min-h-11 rounded-xl bg-red-600 px-4 text-sm font-bold text-white">Anular</button>
+          </div>
+        </form>
+      </Modal>
     </WorkspacePanel>
   );
+}
+
+function defaultClinicalDocumentForm(options: AgendaOptions | null): ClinicalDocumentInput {
+  return {
+    site_id: options?.sites[0]?.id ?? "",
+    dentist_profile_id: options?.dentists[0]?.id ?? null,
+    document_type: "REFERRAL",
+    title: null,
+    recipient_name: "",
+    recipient_entity: "",
+    recipient_specialty: "",
+    subject: "",
+    body: "",
+    clinical_date: new Date().toISOString().slice(0, 10),
+    related_treatment_id: null,
+    related_evolution_id: null,
+    related_appointment_id: null,
+  };
+}
+
+function emptyPrescriptionItem(): PrescriptionItemInput {
+  return {
+    generic_name: "",
+    brand_name: "",
+    pharmaceutical_form: "",
+    concentration: "",
+    dose: "",
+    route: "Oral",
+    frequency: "",
+    duration: "",
+    total_quantity: "",
+    quantity_unit: "",
+    instructions: "",
+  };
+}
+
+function defaultPrescriptionForm(options: AgendaOptions | null): PrescriptionInput {
+  return {
+    site_id: options?.sites[0]?.id ?? "",
+    dentist_profile_id: options?.dentists[0]?.id ?? null,
+    clinical_date: new Date().toISOString().slice(0, 10),
+    related_treatment_id: null,
+    related_evolution_id: null,
+    related_appointment_id: null,
+    general_instructions: "",
+    notes: "",
+    items: [emptyPrescriptionItem()],
+  };
+}
+
+function prescriptionStatusLabel(status: Prescription["status"]) {
+  return {
+    DRAFT: "Borrador",
+    FINALIZED: "Finalizada",
+    VOIDED: "Anulada",
+  }[status];
+}
+
+function prescriptionMedicationSummary(prescription: Prescription) {
+  if (!prescription.items.length) return "Sin medicamentos";
+  return prescription.items
+    .slice(0, 2)
+    .map((item) => item.generic_name)
+    .join(" + ") + (prescription.items.length > 2 ? ` + ${prescription.items.length - 2} más` : "");
+}
+
+function prescriptionFinalizeMessage(prescription: Prescription) {
+  const allergies = prescription.clinical_alerts?.allergies ?? [];
+  const medications = prescription.clinical_alerts?.active_medications ?? [];
+  const allergyText = allergies.length
+    ? allergies.map((item) => `- ${item.substance}${item.reaction ? ` (${item.reaction})` : ""}`).join("\n")
+    : "- Sin alergias registradas";
+  const medicationText = medications.length
+    ? medications.map((item) => `- ${item.name}${item.dose ? ` ${item.dose}` : ""}${item.frequency ? ` · ${item.frequency}` : ""}`).join("\n")
+    : "- Sin medicamentos activos registrados";
+  return `Va a finalizar esta receta.\n\nMedicamentos:\n${prescription.items.map((item, index) => `${index + 1}. ${item.generic_name} ${item.concentration}`).join("\n") || "- Sin medicamentos"}\n\nAlergias:\n${allergyText}\n\nMedicamentos actuales:\n${medicationText}\n\nConfirma que revisó esta información clínica del paciente.`;
+}
+
+function InputField({
+  label,
+  value,
+  onChange,
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+}) {
+  return (
+    <label>
+      <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
+        {label}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-sm"
+        required={required}
+      />
+    </label>
+  );
+}
+
+function ClinicalAlertsSummary({ prescription }: { prescription: Prescription | null }) {
+  const allergies = prescription?.clinical_alerts?.allergies ?? [];
+  const medications = prescription?.clinical_alerts?.active_medications ?? [];
+  if (!prescription) return null;
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+      <p className="font-black">Revisión clínica</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide">Alergias registradas</p>
+          {allergies.length ? (
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {allergies.map((item, index) => (
+                <li key={`${item.substance}-${index}`}>
+                  {item.substance}
+                  {item.reaction ? ` · ${item.reaction}` : ""}
+                  {item.critical_alert ? " · crítica" : ""}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1">Sin alergias registradas.</p>
+          )}
+        </div>
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide">Medicamentos actuales</p>
+          {medications.length ? (
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {medications.map((item, index) => (
+                <li key={`${item.name}-${index}`}>
+                  {item.name}
+                  {item.dose ? ` · ${item.dose}` : ""}
+                  {item.frequency ? ` · ${item.frequency}` : ""}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1">Sin medicamentos activos registrados.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function clinicalDocumentTypeLabel(type: ClinicalDocumentType) {
+  return {
+    REFERRAL: "Remisión",
+    CLINICAL_REPORT: "Informe clínico",
+    CERTIFICATE: "Certificado / constancia",
+    GENERAL_LETTER: "Carta general",
+  }[type];
+}
+
+function clinicalDocumentStatusLabel(status: ClinicalDocument["status"]) {
+  return {
+    DRAFT: "Borrador",
+    FINALIZED: "Finalizado",
+    VOIDED: "Anulado",
+  }[status];
 }
 
 function PatientFilesPlaceholder() {

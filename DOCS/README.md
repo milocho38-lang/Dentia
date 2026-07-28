@@ -16,6 +16,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [Roadmap](roadmap/)
 - [Integraciones](integration/)
 - [Clínica](clinical/)
+- [Preparación para piloto](readiness/)
 
 ## Design System
 
@@ -49,6 +50,16 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 
 - [C017F.1 — Evolución clínica simplificada](clinical/C017F1-Simplified-Clinical-Evolution.md)
 - [C017F.2 — Tratamiento como punto de entrada al odontograma](clinical/C017F2-Treatment-First-Odontogram.md)
+- [C017G.1 — Informes clínicos, remisiones y cartas](clinical/C017G1-Clinical-Reports-Referrals-Letters.md)
+- [C017G.2 — Recetario odontológico](clinical/C017G2-Odontological-Prescriptions.md)
+- [C017G.1 — Informes clínicos, remisiones y cartas](clinical/C017G1-Clinical-Reports-Referrals-Letters.md)
+
+## Preparación para piloto
+
+- [C018R.1 — Auditoría de preparación para piloto real](readiness/C018R1-Pilot-Readiness-Audit.md)
+- [C018R.1 — Checklist operativo del piloto](readiness/C018R1-Pilot-Checklist.md)
+- [C018R.1 — Bloqueantes y riesgos](readiness/C018R1-Blocking-Issues.md)
+- [C018R.1 — Plan de despliegue y preparación](readiness/C018R1-Deployment-Plan.md)
 
 ## Convención documental
 
