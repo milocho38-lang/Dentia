@@ -874,6 +874,8 @@ Documentos oficiales:
 - `DOCS/readiness/C018R1-Deployment-Plan.md`
 - `DOCS/readiness/C018R3-Complete-Backup-and-Restore.md`
 - `DOCS/operations/Dentia-Backup-Restore-Runbook.md`
+- `DOCS/operations/Dentia-Persistent-Storage-Runbook.md`
+- `DOCS/security/Dentia-Production-Secrets-Runbook.md`
 
 Regla:
 
@@ -884,7 +886,10 @@ Condiciones mínimas:
 - Git limpio y funcionalidades del piloto en GitHub.
 - Producción ejecutando el commit validado.
 - Alembic en head.
-- Backup completo de PostgreSQL y storage.
+- Storage persistente host ↔ contenedor validado.
+- Backup completo de PostgreSQL y storage con inventario documental semántico.
+- Restore temporal con validación DB → archivo → SHA-256.
+- Secretos productivos fuera del repo y rotados antes del piloto.
 - Prueba multiempresa A/B.
 - Configuración completa de la clínica piloto.
 - Flujo clínico-comercial básico validado con usuario real.

@@ -5,6 +5,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=../lib/dentia_common.sh
 source "$SCRIPT_DIR/../lib/dentia_common.sh"
 
+usage() {
+  cat <<'EOF'
+Usage: restore_dentia_backup.sh --backup /path/to/backup [--temporary|--production] [--database-name name] [--storage-dir dir] [--yes-i-understand]
+
+Default mode is --temporary. It restores the dump into a temporary database,
+extracts storage into a temporary directory and validates DB document rows
+against restored files and SHA-256 hashes.
+EOF
+}
+
 BACKUP_PATH=""
 MODE="temporary"
 DATABASE_NAME=""
@@ -13,6 +23,10 @@ YES=false
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
     --backup)
       BACKUP_PATH="${2:-}"
       shift 2
@@ -101,23 +115,60 @@ cleanup_extract() {
   rm -rf "$EXTRACT_DIR"
 }
 trap cleanup_extract EXIT
-if [ "$MODE" = "production" ]; then
-  find "$STORAGE_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} \;
-fi
-tar -xzf "$BACKUP_PATH/storage.tar.gz" -C "$EXTRACT_DIR"
+python3 - "$BACKUP_PATH/storage.tar.gz" "$EXTRACT_DIR" <<'PY'
+import sys
+from pathlib import Path, PurePosixPath
+import tarfile
+
+archive = Path(sys.argv[1])
+destination = Path(sys.argv[2]).resolve()
+with tarfile.open(archive, "r:gz") as tar:
+    members = tar.getmembers()
+    names = set()
+    for member in members:
+        name = member.name
+        if name in names:
+            raise SystemExit(f"duplicate path in storage archive: {name}")
+        names.add(name)
+        path = PurePosixPath(name)
+        if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+            raise SystemExit(f"unsafe path in storage archive: {name}")
+        target = (destination / Path(*path.parts)).resolve()
+        try:
+            target.relative_to(destination)
+        except ValueError:
+            raise SystemExit(f"archive member escapes destination: {name}")
+        if member.issym() or member.islnk():
+            raise SystemExit(f"links are not allowed in storage archive: {name}")
+    tar.extractall(destination, members=members)
+PY
 
 if [ -d "$EXTRACT_DIR/backend/storage" ]; then
-  cp -R "$EXTRACT_DIR/backend/storage/." "$STORAGE_DIR/"
+  if [ "$MODE" = "production" ] && [ -n "$(find "$STORAGE_DIR" -mindepth 1 -type f -print -quit 2>/dev/null)" ]; then
+    dentia_warn "Production storage is not empty; files will be merged without overwrites."
+  fi
+  cp -Rn "$EXTRACT_DIR/backend/storage/." "$STORAGE_DIR/"
 fi
 if [ -d "$EXTRACT_DIR/storage" ]; then
   mkdir -p "$STORAGE_DIR/legacy-storage"
-  cp -R "$EXTRACT_DIR/storage/." "$STORAGE_DIR/legacy-storage/"
+  cp -Rn "$EXTRACT_DIR/storage/." "$STORAGE_DIR/legacy-storage/"
 fi
 
 RESTORED_FILE_COUNT="$(find "$STORAGE_DIR" -type f 2>/dev/null | wc -l | awk '{print $1}')"
 
 dentia_info "Validating restored database has Alembic version table..."
 docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d "$DATABASE_NAME" -tAc "SELECT version_num FROM alembic_version LIMIT 1;" >/dev/null
+
+dentia_info "Validating restored semantic DB -> file -> SHA-256 integrity..."
+RESTORE_INVENTORY="$EXTRACT_DIR/restored_document_inventory.tsv"
+RESTORE_METRICS="$EXTRACT_DIR/restored_document_inventory_metrics.json"
+"$SCRIPT_DIR/dentia_document_inventory.py" collect \
+  --db-container "$DENTIA_DB_CONTAINER" \
+  --db-user "$DENTIA_DB_USER" \
+  --db-name "$DATABASE_NAME" \
+  --storage-root "$STORAGE_DIR" \
+  --output "$RESTORE_INVENTORY" \
+  --metrics-output "$RESTORE_METRICS" >/dev/null
 
 dentia_info "Restore completed."
 printf 'RESTORE_VALID\n'

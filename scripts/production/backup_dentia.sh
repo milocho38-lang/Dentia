@@ -5,10 +5,40 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=../lib/dentia_common.sh
 source "$SCRIPT_DIR/../lib/dentia_common.sh"
 
+usage() {
+  cat <<'EOF'
+Usage: backup_dentia.sh [--no-prune] [--help]
+
+Creates a complete Dentia backup package with:
+  database.dump
+  storage.tar.gz
+  document_inventory.tsv
+  document_inventory_metrics.json
+  manifest.json
+  checksums.sha256
+  metadata.txt
+  verification.txt
+
+The last stdout line is always the final backup directory path on success.
+EOF
+}
+
 NO_PRUNE=false
-if [[ "${1:-}" == "--no-prune" ]]; then
-  NO_PRUNE=true
-fi
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --no-prune)
+      NO_PRUNE=true
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      dentia_fail "Unknown argument: $1"
+      ;;
+  esac
+done
 
 ROOT="${DENTIA_PRODUCTION_DIR:-/opt/apps/dentia}"
 BACKUP_DIR="${DENTIA_BACKUP_DIR:-/opt/backups/dentia}"
@@ -24,6 +54,8 @@ MANIFEST="$TMP_PATH/manifest.json"
 METADATA="$TMP_PATH/metadata.txt"
 CHECKSUMS="$TMP_PATH/checksums.sha256"
 VERIFICATION="$TMP_PATH/verification.txt"
+DOCUMENT_INVENTORY="$TMP_PATH/document_inventory.tsv"
+DOCUMENT_INVENTORY_METRICS="$TMP_PATH/document_inventory_metrics.json"
 
 cleanup() {
   if [ -d "$TMP_PATH" ]; then
@@ -47,6 +79,11 @@ dentia_require_cmd python3
 
 docker inspect "$DENTIA_DB_CONTAINER" >/dev/null 2>&1 || dentia_fail "Database container not found: $DENTIA_DB_CONTAINER"
 docker inspect "$DENTIA_BACKEND_CONTAINER" >/dev/null 2>&1 || dentia_fail "Backend container not found: $DENTIA_BACKEND_CONTAINER"
+
+HOST_STORAGE_ROOT="$(dentia_storage_host_root "$ROOT")"
+dentia_assert_storage_path_safe "$HOST_STORAGE_ROOT"
+[ -d "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory not found: $HOST_STORAGE_ROOT"
+[ -w "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is not writable: $HOST_STORAGE_ROOT"
 
 dentia_info "Preparing complete backup package: $FINAL_PATH"
 mkdir -p "$TMP_PATH"
@@ -83,6 +120,15 @@ docker exec "$DENTIA_DB_CONTAINER" pg_dump -Fc --no-owner --no-privileges -U "$D
 dentia_info "Validating PostgreSQL dump catalogue..."
 docker exec -i "$DENTIA_DB_CONTAINER" pg_restore -l <"$DATABASE_DUMP" >/dev/null
 
+dentia_info "Building semantic document inventory..."
+"$SCRIPT_DIR/dentia_document_inventory.py" collect \
+  --db-container "$DENTIA_DB_CONTAINER" \
+  --db-user "$DENTIA_DB_USER" \
+  --db-name "$DENTIA_DB_NAME" \
+  --storage-root "$HOST_STORAGE_ROOT" \
+  --output "$DOCUMENT_INVENTORY" \
+  --metrics-output "$DOCUMENT_INVENTORY_METRICS" >/dev/null
+
 STORAGE_PATHS=()
 for relative in $DENTIA_STORAGE_PATHS; do
   if [ -d "$ROOT/$relative" ]; then
@@ -112,10 +158,19 @@ fi
 dentia_info "Validating storage archive..."
 tar -tzf "$STORAGE_ARCHIVE" >/dev/null
 
+dentia_info "Validating semantic inventory against storage archive..."
+"$SCRIPT_DIR/dentia_document_inventory.py" verify-archive \
+  --inventory "$DOCUMENT_INVENTORY" \
+  --archive "$STORAGE_ARCHIVE" \
+  --metrics-output "$DOCUMENT_INVENTORY_METRICS.archive" >/dev/null
+
 DATABASE_SIZE="$(dentia_file_size "$DATABASE_DUMP")"
 STORAGE_ARCHIVE_SIZE="$(dentia_file_size "$STORAGE_ARCHIVE")"
 DATABASE_SHA="$(dentia_sha256 "$DATABASE_DUMP" | awk '{print $1}')"
 STORAGE_SHA="$(dentia_sha256 "$STORAGE_ARCHIVE" | awk '{print $1}')"
+DOCUMENT_INVENTORY_SIZE="$(dentia_file_size "$DOCUMENT_INVENTORY")"
+DOCUMENT_INVENTORY_SHA="$(dentia_sha256 "$DOCUMENT_INVENTORY" | awk '{print $1}')"
+DOCUMENT_INVENTORY_METRICS_JSON="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])), sort_keys=True))' "$DOCUMENT_INVENTORY_METRICS")"
 
 cat >"$METADATA" <<EOF
 Dentia complete backup
@@ -133,6 +188,9 @@ storage_file_count=$STORAGE_FILE_COUNT
 storage_size_bytes=$STORAGE_SIZE_BYTES
 database_size_bytes=$DATABASE_SIZE
 storage_archive_size_bytes=$STORAGE_ARCHIVE_SIZE
+document_inventory=document_inventory.tsv
+document_inventory_size_bytes=$DOCUMENT_INVENTORY_SIZE
+document_inventory_sha256=$DOCUMENT_INVENTORY_SHA
 EOF
 
 python3 - "$MANIFEST" <<PY
@@ -167,9 +225,17 @@ data = {
         "archive_size_bytes": int("$STORAGE_ARCHIVE_SIZE"),
         "sha256": "$STORAGE_SHA",
     },
+    "document_inventory": {
+        "file": "document_inventory.tsv",
+        "metrics_file": "document_inventory_metrics.json",
+        "size_bytes": int("$DOCUMENT_INVENTORY_SIZE"),
+        "sha256": "$DOCUMENT_INVENTORY_SHA",
+        "metrics": $DOCUMENT_INVENTORY_METRICS_JSON,
+    },
     "verification": {
         "dump_catalogue_read": True,
         "storage_archive_read": True,
+        "semantic_inventory_valid": True,
         "result": "BACKUP_VALID",
     },
 }
@@ -181,7 +247,8 @@ PY
 
 (
   cd "$TMP_PATH"
-  dentia_sha256 database.dump storage.tar.gz manifest.json metadata.txt >checksums.sha256
+  cp document_inventory_metrics.json.archive document_inventory_archive_metrics.json
+  dentia_sha256 database.dump storage.tar.gz document_inventory.tsv document_inventory_metrics.json document_inventory_archive_metrics.json manifest.json metadata.txt >checksums.sha256
 )
 
 (
@@ -193,7 +260,17 @@ PY
   fi
 )
 
-printf 'BACKUP_VALID\nverified_at_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$VERIFICATION"
+{
+  printf 'BACKUP_VALID\n'
+  printf 'verified_at_utc=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  printf 'semantic_inventory=document_inventory.tsv\n'
+  python3 - "$DOCUMENT_INVENTORY_METRICS" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+for key in sorted(data):
+    print(f"semantic_{key}={data[key]}")
+PY
+} >"$VERIFICATION"
 
 dentia_info "Publishing backup atomically..."
 if [ -e "$FINAL_PATH" ]; then

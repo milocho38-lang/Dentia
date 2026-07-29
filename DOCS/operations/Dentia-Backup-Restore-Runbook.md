@@ -15,6 +15,8 @@ La última línea imprime únicamente la ruta del paquete:
 /opt/backups/dentia/dentia_YYYYMMDD_HHMMSS
 ```
 
+El paquete incluye `document_inventory.tsv`. El backup falla si PostgreSQL referencia un PDF finalizado/anulado que no existe físicamente o cuyo SHA-256 no coincide.
+
 ## Verificar backup
 
 ```bash
@@ -26,6 +28,14 @@ Resultado esperado:
 ```text
 BACKUP_VALID
 ```
+
+`BACKUP_VALID` significa:
+
+- checksums del paquete correctos;
+- `database.dump` legible por `pg_restore -l`;
+- `storage.tar.gz` legible y sin rutas inseguras;
+- inventario documental completo;
+- cada registro documental inventariado tiene archivo físico y hash coincidente.
 
 ## Restauración temporal
 
@@ -44,6 +54,14 @@ RESTORE_VALID
 database=dentia_restore_...
 storage_dir=/tmp/dentia_restore_.../storage
 ```
+
+La restauración temporal consulta la base restaurada y valida nuevamente:
+
+```text
+PostgreSQL restaurado → archivo en storage restaurado → SHA-256
+```
+
+Si falta un archivo o el hash no coincide, no se emite `RESTORE_VALID`.
 
 ## Restauración productiva
 
@@ -70,6 +88,7 @@ Si falla:
 
 - PostgreSQL;
 - storage;
+- inventario documental DB → archivo → SHA-256;
 - manifest;
 - checksums;
 - espacio en disco;
@@ -108,6 +127,14 @@ Este flujo exige confirmación adicional.
 - No continuar deploy.
 - Revisar permisos sobre `backend/storage`.
 - Revisar symlinks/rutas extrañas.
+- Si el backend no tenía mount y existieron archivos dentro del contenedor, ejecutar primero `prepare_dentia_persistent_storage.sh`.
+
+### Falla inventario documental
+
+- No usar el backup.
+- Revisar si hay PDFs rescatados pendientes de copiar a `backend/storage`.
+- Comparar `document_inventory.tsv` y métricas del paquete.
+- No recrear el backend hasta que el storage host contenga los documentos referenciados.
 
 ### Falla checksum
 

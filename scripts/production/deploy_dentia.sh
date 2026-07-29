@@ -5,6 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=../lib/dentia_common.sh
 source "$SCRIPT_DIR/../lib/dentia_common.sh"
 
+usage() {
+  cat <<'EOF'
+Usage: deploy_dentia.sh [--help]
+
+Runs the production deploy workflow. It creates and semantically verifies a
+mandatory backup before git pull/build/recreate. It does not repair storage
+during deploy; run prepare_dentia_persistent_storage.sh first if needed.
+EOF
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  usage
+  exit 0
+fi
+[ "$#" -eq 0 ] || dentia_fail "Unknown argument: $1"
+
 STARTED_AT="$(date +%s)"
 ROOT="${DENTIA_PRODUCTION_DIR:-/opt/apps/dentia}"
 STATE_DIR="$ROOT/.run"
@@ -19,6 +35,27 @@ CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 OLD_COMMIT="$(git rev-parse --short HEAD)"
 dentia_info "Branch: $CURRENT_BRANCH"
 dentia_info "Current commit: $OLD_COMMIT"
+
+HOST_STORAGE_ROOT="$(dentia_storage_host_root "$ROOT")"
+dentia_assert_storage_path_safe "$HOST_STORAGE_ROOT"
+[ -d "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is missing: $HOST_STORAGE_ROOT. Run prepare_dentia_persistent_storage.sh before deploy."
+[ -w "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is not writable: $HOST_STORAGE_ROOT"
+
+if docker inspect "$DENTIA_BACKEND_CONTAINER" >/dev/null 2>&1; then
+  MOUNTS_JSON="$(docker inspect "$DENTIA_BACKEND_CONTAINER" --format '{{json .Mounts}}')"
+  MOUNTED="$(
+    python3 - "$DENTIA_BACKEND_STORAGE_CONTAINER_PATH" "$MOUNTS_JSON" <<'PY'
+import json, sys
+target = sys.argv[1]
+mounts = json.loads(sys.argv[2])
+print("yes" if any(m.get("Destination") == target for m in mounts) else "no")
+PY
+  )"
+  if [ "$MOUNTED" != "yes" ]; then
+    dentia_warn "Backend storage is not mounted yet. Deploy will require compose mount to protect /app/storage."
+    dentia_warn "If files still live only inside the container, run prepare_dentia_persistent_storage.sh --apply before deploy."
+  fi
+fi
 
 if [ -n "$(git status --porcelain)" ]; then
   git status --short

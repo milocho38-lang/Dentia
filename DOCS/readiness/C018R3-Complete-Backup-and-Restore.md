@@ -10,6 +10,9 @@ Se actualizó la infraestructura de scripts para generar un paquete autocontenid
 dentia_YYYYMMDD_HHMMSS/
 ├── database.dump
 ├── storage.tar.gz
+├── document_inventory.tsv
+├── document_inventory_metrics.json
+├── document_inventory_archive_metrics.json
 ├── manifest.json
 ├── checksums.sha256
 ├── metadata.txt
@@ -38,6 +41,8 @@ Evidencia de código:
 - `scripts/production/backup_dentia.sh`
 - `scripts/production/verify_dentia_backup.sh`
 - `scripts/production/restore_dentia_backup.sh`
+- `scripts/production/prepare_dentia_persistent_storage.sh`
+- `scripts/production/dentia_document_inventory.py`
 - `scripts/production/deploy_dentia.sh`
 - `scripts/production/rollback_dentia.sh`
 - `scripts/production/status_dentia_production.sh`
@@ -62,11 +67,63 @@ pg_restore -l database.dump
 
 El backup crea `storage.tar.gz` con rutas relativas desde la raíz del repo productivo. No sigue symlinks fuera de storage porque no usa `tar -h`.
 
-Si storage está vacío, el backup sigue siendo válido y el manifest registra:
+Desde C018R.3-FIX1, storage vacío solo es válido si PostgreSQL no referencia documentos finalizados/anulados con PDF histórico. Si existen recetas o documentos clínicos con `pdf_storage_path` y `pdf_sha256`, el backup falla cuando el archivo físico no existe o el SHA-256 no coincide.
+
+Si storage está vacío y no hay documentos históricos que requieran PDF, el manifest registra:
 
 ```text
 storage.file_count = 0
 ```
+
+## Persistencia host ↔ contenedor
+
+El Compose oficial monta:
+
+```text
+./backend/storage:/app/storage
+```
+
+La aplicación conserva sus rutas lógicas internas:
+
+- branding: `/app/storage/branding`;
+- documentos clínicos: `/app/storage/clinical_documents`;
+- recetas: `/app/storage/prescriptions`.
+
+Antes del primer recreate en un VPS donde existieron archivos dentro del contenedor sin mount, ejecutar primero:
+
+```bash
+./scripts/production/prepare_dentia_persistent_storage.sh --dry-run
+./scripts/production/prepare_dentia_persistent_storage.sh --apply
+```
+
+El script copia únicamente faltantes desde `/app/storage` hacia `backend/storage`, aborta ante hashes distintos y no borra archivos.
+
+## Inventario documental
+
+`document_inventory.tsv` se construye desde PostgreSQL y contiene únicamente metadatos operativos:
+
+- tipo de entidad (`prescription`, `clinical_document`);
+- id del registro;
+- empresa;
+- estado;
+- ruta lógica almacenada;
+- ruta esperada dentro de `storage.tar.gz`;
+- SHA-256 esperado;
+- tamaño físico cuando existe;
+- fecha de finalización;
+- resultado de validación.
+
+No incluye contenido clínico narrativo.
+
+El backup aborta ante:
+
+- `pdf_storage_path` vacío en registros finalizados/anulados que requieren PDF;
+- rutas absolutas;
+- `..` o escape de directorio;
+- symlinks;
+- archivo faltante;
+- hash físico diferente;
+- rutas duplicadas ambiguas.
 
 ## Manifest
 
@@ -84,6 +141,7 @@ storage.file_count = 0
 - cantidad de archivos;
 - tamaños;
 - hashes SHA-256;
+- inventario documental y métricas semánticas;
 - resultado de verificación.
 
 No guarda secretos ni `.env`.
@@ -94,6 +152,9 @@ No guarda secretos ni `.env`.
 
 - `database.dump`;
 - `storage.tar.gz`;
+- `document_inventory.tsv`;
+- `document_inventory_metrics.json`;
+- `document_inventory_archive_metrics.json`;
 - `manifest.json`;
 - `metadata.txt`.
 
@@ -141,7 +202,21 @@ Nunca borra:
 - Archivos de backup: `chmod 600`.
 - No se imprimen contenidos clínicos.
 - No se guardan secretos.
+- Compose usa variables obligatorias y `.env.production.example` contiene solo marcadores.
+- Los archivos reales `.env`, `.env.production` y variantes están ignorados por Git.
 - Cifrado externo queda como hardening posterior con gestión real de claves.
+
+## Incidente C018R.3-FIX1
+
+Se confirmó en producción que el backend guardaba PDFs en `/app/storage` dentro del contenedor sin mount persistente. Un documento histórico podía existir físicamente dentro del contenedor y no en el host, por lo que un backup que solo archivara `backend/storage` podía declararse válido aunque faltara un PDF referenciado por PostgreSQL.
+
+Corrección aplicada:
+
+1. Mount persistente `./backend/storage:/app/storage`.
+2. Script de preparación para rescatar/validar archivos previos al primer recreate.
+3. Inventario documental consultando PostgreSQL.
+4. Validación semántica en backup, verificación y restore temporal.
+5. Runbook de secretos y rotación antes del piloto.
 
 ## Riesgo residual
 

@@ -18,6 +18,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [Clínica](clinical/)
 - [Preparación para piloto](readiness/)
 - [Operaciones](operations/)
+- [Seguridad](security/)
 
 ## Design System
 
@@ -66,6 +67,11 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 ## Operaciones
 
 - [Runbook — Backup y restauración Dentia](operations/Dentia-Backup-Restore-Runbook.md)
+- [Runbook — Storage persistente Dentia](operations/Dentia-Persistent-Storage-Runbook.md)
+
+## Seguridad
+
+- [Runbook — Secretos de producción Dentia](security/Dentia-Production-Secrets-Runbook.md)
 
 ## Convención documental
 

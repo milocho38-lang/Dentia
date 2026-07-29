@@ -1,0 +1,72 @@
+name: dentia
+
+services:
+  dentia-db:
+    image: postgres:17
+    container_name: ${DENTIA_DB_CONTAINER:-dentia-db}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - dentia_db_data:/var/lib/postgresql/data
+    networks:
+      - dentia-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dentia-backend:
+    build:
+      context: ./backend
+    container_name: ${DENTIA_BACKEND_CONTAINER:-dentia-backend}
+    restart: unless-stopped
+    depends_on:
+      dentia-db:
+        condition: service_healthy
+    env_file:
+      - ${DENTIA_BACKEND_ENV_FILE:?DENTIA_BACKEND_ENV_FILE is required}
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      BRANDING_STORAGE_DIR: ${BRANDING_STORAGE_DIR:-/app/storage/branding}
+    volumes:
+      - ./backend/storage:/app/storage
+    ports:
+      - "${DENTIA_BACKEND_BIND:-8001}:8000"
+    networks:
+      - dentia-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+
+  dentia-frontend:
+    build:
+      context: ./frontend
+      args:
+        API_PROXY_TARGET: ${API_PROXY_TARGET:-http://dentia-backend:8000}
+    container_name: ${DENTIA_FRONTEND_CONTAINER:-dentia-frontend}
+    restart: unless-stopped
+    depends_on:
+      dentia-backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://dentia-backend:8000}
+    ports:
+      - "${DENTIA_FRONTEND_BIND:-3001}:3000"
+    networks:
+      - dentia-network
+
+volumes:
+  dentia_db_data:
+
+networks:
+  dentia-network:

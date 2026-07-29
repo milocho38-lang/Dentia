@@ -33,10 +33,13 @@ Este plan no ejecuta despliegue. Define el camino seguro para pasar del estado l
 
 Antes de desplegar:
 
-1. Crear backup completo con `scripts/production/backup_dentia.sh`.
-2. Verificarlo con `scripts/production/verify_dentia_backup.sh`.
-3. Ejecutar restauración temporal con `scripts/production/restore_dentia_backup.sh --temporary`.
-4. Confirmar que DB y storage restaurados son coherentes.
+1. Crear y validar `/opt/apps/dentia/.env.production` con permisos `600`.
+2. Ejecutar `scripts/production/prepare_dentia_persistent_storage.sh --dry-run`.
+3. Ejecutar `scripts/production/prepare_dentia_persistent_storage.sh --apply` solo si hay faltantes y no hay conflictos.
+4. Crear backup completo con `scripts/production/backup_dentia.sh`.
+5. Verificarlo con `scripts/production/verify_dentia_backup.sh`.
+6. Ejecutar restauración temporal con `scripts/production/restore_dentia_backup.sh --temporary`.
+7. Confirmar que DB, storage restaurado e inventario documental son coherentes.
 
 ## Fase 3 — Despliegue recomendado
 
@@ -44,8 +47,9 @@ Flujo actual de `scripts/production/deploy_dentia.sh`:
 
 ```text
 repo limpio
-backup completo
-verify backup
+storage persistente validado
+backup completo semántico
+verify backup semántico
 git fetch/pull
 docker compose build
 docker compose up -d

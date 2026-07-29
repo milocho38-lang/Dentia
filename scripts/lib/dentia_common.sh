@@ -16,9 +16,11 @@ DENTIA_COMMON_DIR="$(dentia_script_dir)"
 DENTIA_SCRIPTS_DIR="$(cd "$DENTIA_COMMON_DIR/.." >/dev/null 2>&1 && pwd)"
 DENTIA_REPO_ROOT="$(cd "$DENTIA_SCRIPTS_DIR/.." >/dev/null 2>&1 && pwd)"
 
-if [ -f "$DENTIA_SCRIPTS_DIR/dentia.env" ]; then
+DENTIA_ENV_FILE="${DENTIA_ENV_FILE:-$DENTIA_SCRIPTS_DIR/dentia.env}"
+
+if [ -f "$DENTIA_ENV_FILE" ]; then
   # shellcheck source=/dev/null
-  source "$DENTIA_SCRIPTS_DIR/dentia.env"
+  source "$DENTIA_ENV_FILE"
 fi
 
 DENTIA_PROJECT_DIR="${DENTIA_PROJECT_DIR:-$DENTIA_REPO_ROOT}"
@@ -38,6 +40,8 @@ DENTIA_DB_CONTAINER="${DENTIA_DB_CONTAINER:-dentia-db}"
 DENTIA_DB_NAME="${DENTIA_DB_NAME:-dentia}"
 DENTIA_DB_USER="${DENTIA_DB_USER:-dentia}"
 DENTIA_STORAGE_PATHS="${DENTIA_STORAGE_PATHS:-backend/storage storage}"
+DENTIA_BACKEND_STORAGE_HOST_PATH="${DENTIA_BACKEND_STORAGE_HOST_PATH:-backend/storage}"
+DENTIA_BACKEND_STORAGE_CONTAINER_PATH="${DENTIA_BACKEND_STORAGE_CONTAINER_PATH:-/app/storage}"
 
 dentia_info() {
   printf '[dentia] %s\n' "$*"
@@ -58,9 +62,17 @@ dentia_require_cmd() {
 
 dentia_compose() {
   if docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
+    if [ -f "$DENTIA_ENV_FILE" ]; then
+      docker compose --env-file "$DENTIA_ENV_FILE" "$@"
+    else
+      docker compose "$@"
+    fi
   elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "$@"
+    if [ -f "$DENTIA_ENV_FILE" ]; then
+      docker-compose --env-file "$DENTIA_ENV_FILE" "$@"
+    else
+      docker-compose "$@"
+    fi
   else
     dentia_fail "docker compose is not available."
   fi
@@ -150,4 +162,28 @@ dentia_assert_safe_restore_path() {
       dentia_fail "Refusing dangerous restore path: $resolved"
       ;;
   esac
+}
+
+dentia_require_env_file_permissions() {
+  local env_file="${1:-$DENTIA_ENV_FILE}"
+  [ -f "$env_file" ] || dentia_fail "Environment file not found: $env_file"
+  local mode
+  if stat -c '%a' "$env_file" >/dev/null 2>&1; then
+    mode="$(stat -c '%a' "$env_file")"
+  else
+    mode="$(stat -f '%Lp' "$env_file")"
+  fi
+  [ "$mode" = "600" ] || dentia_fail "Unsafe environment file permissions for $env_file. Expected 600, found $mode."
+}
+
+dentia_storage_host_root() {
+  local root="${1:-$DENTIA_PRODUCTION_DIR}"
+  printf '%s/%s\n' "$root" "$DENTIA_BACKEND_STORAGE_HOST_PATH"
+}
+
+dentia_assert_storage_path_safe() {
+  local path="$1"
+  [ -n "$path" ] || dentia_fail "Storage path is empty."
+  [ -e "$path" ] || return 0
+  [ ! -L "$path" ] || dentia_fail "Storage path must not be a symlink: $path"
 }

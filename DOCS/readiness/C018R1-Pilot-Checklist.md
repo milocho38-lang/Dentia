@@ -70,7 +70,15 @@ Este checklist debe completarse antes de iniciar varias semanas de uso real sin 
 ### Seguridad operacional
 
 - [ ] Backup PostgreSQL + storage configurado.
-- [ ] Prueba de restauración documentada.
+- [ ] Storage persistente `./backend/storage:/app/storage` configurado.
+- [ ] `prepare_dentia_persistent_storage.sh --dry-run` ejecutado sin conflictos.
+- [ ] `prepare_dentia_persistent_storage.sh --apply` ejecutado si había faltantes.
+- [ ] Backup semántico con `document_inventory.tsv` generado.
+- [ ] `verify_dentia_backup.sh` devuelve `BACKUP_VALID`.
+- [ ] Prueba de restauración temporal documentada con `RESTORE_VALID`.
+- [ ] Secretos reales fuera del repo.
+- [ ] `.env.production` con permisos `600`.
+- [ ] Rotación de secretos productivos completada antes del piloto.
 - [ ] Git limpio antes de desplegar.
 - [ ] Producción en commit esperado.
 - [ ] Alembic en head.
