@@ -872,6 +872,8 @@ Documentos oficiales:
 - `DOCS/readiness/C018R1-Pilot-Checklist.md`
 - `DOCS/readiness/C018R1-Blocking-Issues.md`
 - `DOCS/readiness/C018R1-Deployment-Plan.md`
+- `DOCS/readiness/C018R3-Complete-Backup-and-Restore.md`
+- `DOCS/operations/Dentia-Backup-Restore-Runbook.md`
 
 Regla:
 

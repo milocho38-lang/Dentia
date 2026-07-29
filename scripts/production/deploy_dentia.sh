@@ -27,7 +27,10 @@ fi
 
 dentia_info "Creating mandatory backup..."
 BACKUP_PATH="$("$SCRIPT_DIR/backup_dentia.sh" | tail -n 1)"
-[ -s "$BACKUP_PATH" ] || dentia_fail "Backup failed or empty: $BACKUP_PATH"
+[ -d "$BACKUP_PATH" ] || dentia_fail "Backup failed or missing package directory: $BACKUP_PATH"
+
+dentia_info "Verifying mandatory backup..."
+"$SCRIPT_DIR/verify_dentia_backup.sh" "$BACKUP_PATH" >/dev/null || dentia_fail "Backup verification failed. Deploy aborted before git pull."
 
 dentia_info "Fetching and fast-forwarding master..."
 git fetch origin

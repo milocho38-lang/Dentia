@@ -101,7 +101,8 @@ postgres-data/
 # -----------------------------------------------------------------------------
 storage/*
 !storage/.gitkeep
-backend/storage/clinical_documents/
-backend/storage/prescriptions/
-backend/storage/clinical_documents/
-backend/storage/prescriptions/
+backend/storage/**
+!backend/storage/.gitkeep
+backups/
+*.dump
+*.tar.gz

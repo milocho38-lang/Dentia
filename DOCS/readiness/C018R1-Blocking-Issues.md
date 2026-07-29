@@ -7,7 +7,8 @@
 Problema: `scripts/production/backup_dentia.sh` respalda solo PostgreSQL mediante `pg_dump`.  
 Evidencia: el script genera `dentia_*.sql.gz` y no copia `storage/`.  
 Impacto: documentos clínicos, recetas, comprobantes y presupuestos PDF pueden quedar irrecuperables aunque la DB restaure.  
-Cierre: backup debe incluir PostgreSQL + storage + manifest/hashes + prueba de restauración.
+Estado C018R.3: mitigado en scripts locales mediante paquete completo PostgreSQL + storage + manifest + checksums + verificador + restore temporal.
+Cierre definitivo: ejecutar backup y restauración temporal en el VPS real antes del piloto.
 
 ### P0-2 — Funcionalidad clínica/documental sin commit
 
@@ -46,7 +47,7 @@ Cierre: hardening de scripts para detectar y resolver procesos huérfanos de Den
 
 Evidencia: `.gitignore` ignora `storage/*`, pero existen `backend/storage/clinical_documents/` y `backend/storage/prescriptions/` no rastreados.  
 Riesgo: PDFs locales podrían aparecer accidentalmente en Git.  
-Cierre: ignorar explícitamente `backend/storage/**` conservando `.gitkeep` si aplica.
+Estado C018R.3: mitigado agregando `backend/storage/**`, `backups/`, `*.dump` y `*.tar.gz` a `.gitignore`.
 
 ### P1-4 — Fecha de duplicación de documentos/recetas usa `date.today()`
 

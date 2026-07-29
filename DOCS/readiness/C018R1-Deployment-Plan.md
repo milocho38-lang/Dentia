@@ -33,19 +33,10 @@ Este plan no ejecuta despliegue. Define el camino seguro para pasar del estado l
 
 Antes de desplegar:
 
-1. Crear backup PostgreSQL.
-2. Crear backup de storage:
-   - PDFs de presupuestos.
-   - Comprobantes.
-   - Documentos clínicos.
-   - Recetas.
-   - Logos/firma si aplican.
-3. Guardar manifest con:
-   - timestamp.
-   - commit.
-   - hash de backup DB.
-   - hash/listado de storage.
-4. Probar restauración en entorno controlado.
+1. Crear backup completo con `scripts/production/backup_dentia.sh`.
+2. Verificarlo con `scripts/production/verify_dentia_backup.sh`.
+3. Ejecutar restauración temporal con `scripts/production/restore_dentia_backup.sh --temporary`.
+4. Confirmar que DB y storage restaurados son coherentes.
 
 ## Fase 3 — Despliegue recomendado
 
@@ -53,7 +44,8 @@ Flujo actual de `scripts/production/deploy_dentia.sh`:
 
 ```text
 repo limpio
-backup
+backup completo
+verify backup
 git fetch/pull
 docker compose build
 docker compose up -d

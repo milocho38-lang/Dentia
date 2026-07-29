@@ -17,6 +17,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [Integraciones](integration/)
 - [Clínica](clinical/)
 - [Preparación para piloto](readiness/)
+- [Operaciones](operations/)
 
 ## Design System
 
@@ -60,6 +61,11 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C018R.1 — Checklist operativo del piloto](readiness/C018R1-Pilot-Checklist.md)
 - [C018R.1 — Bloqueantes y riesgos](readiness/C018R1-Blocking-Issues.md)
 - [C018R.1 — Plan de despliegue y preparación](readiness/C018R1-Deployment-Plan.md)
+- [C018R.3 — Backup completo PostgreSQL + storage clínico](readiness/C018R3-Complete-Backup-and-Restore.md)
+
+## Operaciones
+
+- [Runbook — Backup y restauración Dentia](operations/Dentia-Backup-Restore-Runbook.md)
 
 ## Convención documental
 

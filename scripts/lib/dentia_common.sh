@@ -37,6 +37,7 @@ DENTIA_BACKEND_CONTAINER="${DENTIA_BACKEND_CONTAINER:-dentia-backend}"
 DENTIA_DB_CONTAINER="${DENTIA_DB_CONTAINER:-dentia-db}"
 DENTIA_DB_NAME="${DENTIA_DB_NAME:-dentia}"
 DENTIA_DB_USER="${DENTIA_DB_USER:-dentia}"
+DENTIA_STORAGE_PATHS="${DENTIA_STORAGE_PATHS:-backend/storage storage}"
 
 dentia_info() {
   printf '[dentia] %s\n' "$*"
@@ -96,4 +97,57 @@ dentia_wait_http() {
 dentia_git_summary() {
   git rev-parse --abbrev-ref HEAD 2>/dev/null || true
   git rev-parse --short HEAD 2>/dev/null || true
+}
+
+dentia_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$@"
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$@"
+  else
+    dentia_fail "Neither sha256sum nor shasum is available."
+  fi
+}
+
+dentia_file_size() {
+  local path="$1"
+  if stat -c '%s' "$path" >/dev/null 2>&1; then
+    stat -c '%s' "$path"
+  else
+    stat -f '%z' "$path"
+  fi
+}
+
+dentia_dir_size_bytes() {
+  local path="$1"
+  if [ ! -e "$path" ]; then
+    printf '0\n'
+    return 0
+  fi
+  if du -sb "$path" >/dev/null 2>&1; then
+    du -sb "$path" | awk '{print $1}'
+  else
+    du -sk "$path" | awk '{print $1 * 1024}'
+  fi
+}
+
+dentia_available_bytes() {
+  local path="$1"
+  if df -Pk "$path" >/dev/null 2>&1; then
+    df -Pk "$path" | awk 'NR==2 {print $4 * 1024}'
+  else
+    printf '0\n'
+  fi
+}
+
+dentia_assert_safe_restore_path() {
+  local path="$1"
+  local resolved
+  [ -n "$path" ] || dentia_fail "Restore path is empty."
+  resolved="$(cd "$(dirname "$path")" >/dev/null 2>&1 && pwd -P)/$(basename "$path")"
+  case "$resolved" in
+    /|/opt|/opt/apps|/opt/apps/dentia|"$HOME"|"$HOME"/..)
+      dentia_fail "Refusing dangerous restore path: $resolved"
+      ;;
+  esac
 }
