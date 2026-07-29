@@ -873,9 +873,12 @@ Documentos oficiales:
 - `DOCS/readiness/C018R1-Blocking-Issues.md`
 - `DOCS/readiness/C018R1-Deployment-Plan.md`
 - `DOCS/readiness/C018R3-Complete-Backup-and-Restore.md`
+- `DOCS/readiness/C018R4-Multitenancy-and-Permissions.md`
 - `DOCS/operations/Dentia-Backup-Restore-Runbook.md`
 - `DOCS/operations/Dentia-Persistent-Storage-Runbook.md`
 - `DOCS/security/Dentia-Production-Secrets-Runbook.md`
+- `DOCS/security/Dentia-Multitenancy-Security-Matrix.md`
+- `DOCS/testing/Dentia-Security-Test-Runbook.md`
 
 Regla:
 
@@ -890,7 +893,7 @@ Condiciones mínimas:
 - Backup completo de PostgreSQL y storage con inventario documental semántico.
 - Restore temporal con validación DB → archivo → SHA-256.
 - Secretos productivos fuera del repo y rotados antes del piloto.
-- Prueba multiempresa A/B.
+- Prueba multiempresa A/B. Estado actual: C018R.4-FIX2 cerrado localmente para piloto controlado con registro de 187 rutas, 0 críticas pendientes, 5/5 descargas DB-backed y 50/50 mutaciones críticas DB-backed.
 - Configuración completa de la clínica piloto.
 - Flujo clínico-comercial básico validado con usuario real.
 

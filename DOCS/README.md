@@ -19,6 +19,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [Preparación para piloto](readiness/)
 - [Operaciones](operations/)
 - [Seguridad](security/)
+- [Pruebas](testing/)
 
 ## Design System
 
@@ -63,6 +64,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C018R.1 — Bloqueantes y riesgos](readiness/C018R1-Blocking-Issues.md)
 - [C018R.1 — Plan de despliegue y preparación](readiness/C018R1-Deployment-Plan.md)
 - [C018R.3 — Backup completo PostgreSQL + storage clínico](readiness/C018R3-Complete-Backup-and-Restore.md)
+- [C018R.4 — Pruebas automáticas de aislamiento multiempresa, roles y permisos](readiness/C018R4-Multitenancy-and-Permissions.md)
 
 ## Operaciones
 
@@ -72,6 +74,11 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 ## Seguridad
 
 - [Runbook — Secretos de producción Dentia](security/Dentia-Production-Secrets-Runbook.md)
+- [Matriz — Seguridad multiempresa, roles y permisos](security/Dentia-Multitenancy-Security-Matrix.md)
+
+## Pruebas
+
+- [Runbook — Pruebas de seguridad C018R.4](testing/Dentia-Security-Test-Runbook.md)
 
 ## Convención documental
 

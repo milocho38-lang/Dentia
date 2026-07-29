@@ -10,6 +10,8 @@ Este plan no ejecuta despliegue. Define el camino seguro para pasar del estado l
 - Cambios C017G.1/C017G.2: locales sin commit.
 - Alembic local: `20260724_0022 (head)`.
 - Producción: no verificada en vivo durante esta auditoría.
+- C018R.3: cerrado posteriormente con backup `dentia_20260729_040400`, `BACKUP_VALID`, `RESTORE_VALID`, mount `/opt/apps/dentia/backend/storage:/app/storage` y Alembic `20260724_0022 (head)`.
+- C018R.4-FIX2: compuerta multiempresa cerrada localmente para piloto controlado. Suite automática de caracterización, registro maestro de 187 rutas y suite DB-backed A/B incorporadas. Valida IDOR, roles, sedes, plataforma, presupuestos, pagos, comprobantes, reportes, branding y descargas críticas.
 
 ## Fase 1 — Limpieza y revisión local
 
@@ -24,12 +26,16 @@ Este plan no ejecuta despliegue. Define el camino seguro para pasar del estado l
    - `python3 -m compileall backend/app`
    - `npm --prefix frontend run lint`
    - `npm --prefix frontend run build`
-   - scripts de caracterización.
+   - `./scripts/local/test_dentia_security.sh`
+   - `./scripts/local/test_dentia_security.sh --full`
+   - `./scripts/local/test_dentia_security.sh --coverage` cuando se requiera reporte de cobertura.
 6. Revisar diff completo.
 7. Commit funcional.
 8. Push a GitHub.
 
 ## Fase 2 — Backup completo
+
+Estado C018R.3: cerrado. Este flujo pasa a ser control obligatorio recurrente antes de despliegues.
 
 Antes de desplegar:
 
@@ -123,4 +129,6 @@ El piloto puede iniciar solo si:
 - [ ] Restore fue probado o ensayado localmente.
 - [ ] K Astudillo está configurada.
 - [ ] Kimberly puede completar flujo clínico-comercial básico.
+- [x] C018R.4 multiempresa A/B ejecutado con fixtures ficticios y ataques IDOR reales.
+- [x] C018R.4-FIX2 financiero/administrativo ejecutado con 0 rutas críticas pendientes.
 - [ ] No hay P0 abiertos.

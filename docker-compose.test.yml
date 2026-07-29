@@ -1,0 +1,27 @@
+name: dentia-test
+
+services:
+  dentia-test-db:
+    image: postgres:17
+    container_name: dentia-test-db
+    environment:
+      POSTGRES_DB: dentia_test
+      POSTGRES_USER: dentia_test
+      POSTGRES_PASSWORD: dentia_test_password
+    ports:
+      - "${DENTIA_TEST_DB_BIND:-127.0.0.1:55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dentia_test -d dentia_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - dentia_test_db_data:/var/lib/postgresql/data
+    networks:
+      - dentia-test-network
+
+volumes:
+  dentia_test_db_data:
+
+networks:
+  dentia-test-network:

@@ -69,13 +69,17 @@ Este checklist debe completarse antes de iniciar varias semanas de uso real sin 
 
 ### Seguridad operacional
 
-- [ ] Backup PostgreSQL + storage configurado.
-- [ ] Storage persistente `./backend/storage:/app/storage` configurado.
-- [ ] `prepare_dentia_persistent_storage.sh --dry-run` ejecutado sin conflictos.
-- [ ] `prepare_dentia_persistent_storage.sh --apply` ejecutado si había faltantes.
-- [ ] Backup semántico con `document_inventory.tsv` generado.
-- [ ] `verify_dentia_backup.sh` devuelve `BACKUP_VALID`.
-- [ ] Prueba de restauración temporal documentada con `RESTORE_VALID`.
+- [x] Backup PostgreSQL + storage configurado.
+- [x] Storage persistente `./backend/storage:/app/storage` configurado.
+- [x] `prepare_dentia_persistent_storage.sh --dry-run` ejecutado sin conflictos.
+- [x] `prepare_dentia_persistent_storage.sh --apply` ejecutado si había faltantes.
+- [x] Backup semántico con `document_inventory.tsv` generado.
+- [x] `verify_dentia_backup.sh` devuelve `BACKUP_VALID`.
+- [x] Prueba de restauración temporal documentada con `RESTORE_VALID`.
+- [x] Suite automática C018R.4 de caracterización de rutas, permisos, storage y Compose ejecutada localmente.
+- [x] Suite multiempresa A/B con fixtures ficticios y ataques IDOR reales ejecutada y documentada.
+- [x] Ampliación C018R.4-FIX2 de cobertura DB-backed financiera/administrativa crítica.
+- [x] Registro maestro de 187 rutas con 0 pendientes críticos.
 - [ ] Secretos reales fuera del repo.
 - [ ] `.env.production` con permisos `600`.
 - [ ] Rotación de secretos productivos completada antes del piloto.

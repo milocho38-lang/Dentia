@@ -1,6 +1,27 @@
-# C018R.3 — Backup completo PostgreSQL + storage clínico
+# C018R.3 — CERRADO — Backup completo PostgreSQL + storage clínico
 
 Objetivo: resolver el P0 detectado en C018R.1: un backup de base de datos sin los PDFs/documentos persistentes no permite restaurar Dentia de forma completa.
+
+## Estado final
+
+**C018R.3 — CERRADO.**
+
+Evidencia productiva registrada el 29 de julio de 2026, sin secretos ni datos clínicos sensibles:
+
+- PostgreSQL restaurado correctamente.
+- Storage persistente host validado: `/opt/apps/dentia/backend/storage`.
+- Storage contenedor validado: `/app/storage`.
+- Bind mount activado y validado: `/opt/apps/dentia/backend/storage:/app/storage`.
+- Volumen PostgreSQL conservado: `dentia_dentia_db_data`.
+- Backup final validado: `dentia_20260729_040400`.
+- `verify_dentia_backup.sh`: `BACKUP_VALID`.
+- `restore_dentia_backup.sh --temporary`: `RESTORE_VALID`.
+- Receta finalizada validada mediante cadena DB → archivo → SHA-256.
+- Documento clínico creado después del mount y validado.
+- PDF de receta y PDF de documento clínico restaurados correctamente.
+- No quedaron bases ni directorios temporales después de la limpieza controlada.
+- Backend, frontend, base de datos y dominio quedaron saludables.
+- Alembic: `20260724_0022 (head)`.
 
 ## Resultado
 
@@ -221,6 +242,16 @@ Corrección aplicada:
 ## Riesgo residual
 
 La consistencia DB/storage no es snapshot transaccional único. Para piloto, la ventana se minimiza generando dump y storage en la misma ejecución, pero si se finaliza un PDF exactamente durante el backup podría haber desalineación. Para operación crítica, documentar una breve pausa de generación documental o implementar snapshot de filesystem.
+
+## Mejoras no bloqueantes posteriores
+
+Estas mejoras no bloquean el cierre de C018R.3:
+
+- Reemplazar usos de `cp -n` por una alternativa portable y explícita.
+- Migrar posteriormente el backend de ejecución root a usuario no privilegiado con permisos de bind mount ya diseñados.
+- Rotar secretos de producción en una ventana separada.
+- Realizar limpieza controlada del caché Docker.
+- Programar una ventana futura de actualización y reinicio del VPS.
 
 ## Validación esperada
 
