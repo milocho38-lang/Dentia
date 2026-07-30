@@ -12,6 +12,10 @@ Usage: deploy_dentia.sh [--help]
 Runs the production deploy workflow. It creates and semantically verifies a
 mandatory backup before git pull/build/recreate. It does not repair storage
 during deploy; run prepare_dentia_persistent_storage.sh first if needed.
+
+Safe order:
+  preflight -> backup + verify -> git pull -> build -> one-off Alembic
+  -> recreate backend/frontend -> healthchecks.
 EOF
 }
 
@@ -30,6 +34,9 @@ mkdir -p "$STATE_DIR"
 cd "$ROOT"
 dentia_require_cmd git
 dentia_require_cmd docker
+
+dentia_info "Validating production configuration..."
+"$SCRIPT_DIR/validate_dentia_production_config.sh"
 
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 OLD_COMMIT="$(git rev-parse --short HEAD)"
@@ -80,20 +87,23 @@ printf '%s\n' "$BACKUP_PATH" >"$STATE_DIR/last_deploy_backup"
 dentia_info "Building images without stopping current containers..."
 dentia_compose build
 
-dentia_info "Starting updated containers..."
-dentia_compose up -d
+dentia_info "Applying migrations with the newly built backend image before recreating application containers..."
+dentia_compose run --rm --no-deps "$DENTIA_BACKEND_SERVICE" alembic -c alembic.ini upgrade head
 
-dentia_info "Applying migrations inside backend container..."
-docker exec "$DENTIA_BACKEND_CONTAINER" alembic -c alembic.ini upgrade head
+dentia_info "Verifying Alembic head with the newly built backend image..."
+dentia_compose run --rm --no-deps "$DENTIA_BACKEND_SERVICE" alembic -c alembic.ini current
+
+dentia_info "Recreating backend and frontend only..."
+dentia_compose up -d --no-deps "$DENTIA_BACKEND_SERVICE"
+if ! dentia_wait_http "$DENTIA_PRODUCTION_BACKEND_HEALTH_URL" 30 2; then
+  dentia_warn "Backend healthcheck failed after backend recreate. Recent backend logs:"
+  docker logs --tail 120 "$DENTIA_BACKEND_CONTAINER" || true
+  dentia_fail "Deploy failed after backend recreate."
+fi
+dentia_compose up -d --no-deps "$DENTIA_FRONTEND_SERVICE"
 
 dentia_info "Validating containers..."
 dentia_compose ps
-
-if ! dentia_wait_http "$DENTIA_PRODUCTION_BACKEND_HEALTH_URL" 30 2; then
-  dentia_warn "Backend healthcheck failed. Recent backend logs:"
-  docker logs --tail 120 "$DENTIA_BACKEND_CONTAINER" || true
-  dentia_fail "Deploy failed after containers started."
-fi
 
 if ! dentia_wait_http "$DENTIA_PRODUCTION_FRONTEND_URL" 30 2; then
   dentia_warn "Frontend check failed. Recent frontend logs:"

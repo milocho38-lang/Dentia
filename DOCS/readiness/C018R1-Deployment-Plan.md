@@ -12,6 +12,7 @@ Este plan no ejecuta despliegue. Define el camino seguro para pasar del estado l
 - Producción: no verificada en vivo durante esta auditoría.
 - C018R.3: cerrado posteriormente con backup `dentia_20260729_040400`, `BACKUP_VALID`, `RESTORE_VALID`, mount `/opt/apps/dentia/backend/storage:/app/storage` y Alembic `20260724_0022 (head)`.
 - C018R.4-FIX2: compuerta multiempresa cerrada localmente para piloto controlado. Suite automática de caracterización, registro maestro de 187 rutas y suite DB-backed A/B incorporadas. Valida IDOR, roles, sedes, plataforma, presupuestos, pagos, comprobantes, reportes, branding y descargas críticas.
+- C018R.2: hardening local implementado. El deploy valida configuración, crea/verifica backup, construye imágenes, ejecuta Alembic en contenedor one-off de la nueva imagen y solo después recrea backend/frontend.
 
 ## Fase 1 — Limpieza y revisión local
 
@@ -49,32 +50,19 @@ Antes de desplegar:
 
 ## Fase 3 — Despliegue recomendado
 
-Flujo actual de `scripts/production/deploy_dentia.sh`:
+Flujo actual de `scripts/production/deploy_dentia.sh` después de C018R.2:
 
 ```text
-repo limpio
-storage persistente validado
+validar configuración productiva
+repo limpio y storage persistente validado
 backup completo semántico
-verify backup semántico
+verificar backup semántico
 git fetch/pull
 docker compose build
-docker compose up -d
-alembic upgrade head dentro del backend
-health checks
-```
-
-Riesgo: migración después de levantar contenedores.
-
-Flujo recomendado para ticket posterior:
-
-```text
-repo limpio
-backup DB + storage
-git fetch/pull
-docker compose build
-ejecutar migraciones con imagen nueva en comando one-off o ventana controlada
-docker compose up -d
-health checks
+alembic upgrade head en contenedor one-off de nueva imagen backend
+verificar alembic current
+recrear backend/frontend sin recrear DB
+health checks backend/frontend
 verificar dominio
 registrar commit/backup
 ```

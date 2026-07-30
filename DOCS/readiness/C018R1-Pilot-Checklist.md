@@ -82,7 +82,11 @@ Este checklist debe completarse antes de iniciar varias semanas de uso real sin 
 - [x] Registro maestro de 187 rutas con 0 pendientes críticos.
 - [ ] Secretos reales fuera del repo.
 - [ ] `.env.production` con permisos `600`.
+- [ ] `validate_dentia_production_config.sh` ejecutado correctamente contra el env real.
 - [ ] Rotación de secretos productivos completada antes del piloto.
+- [ ] Deploy configurado con migración Alembic antes de recrear backend/frontend.
+- [ ] Duplicación de recetas/documentos validada en zona horaria de sede/empresa.
+- [ ] Anulación visible de recetas/documentos validada con PDF histórico conservado.
 - [ ] Git limpio antes de desplegar.
 - [ ] Producción en commit esperado.
 - [ ] Alembic en head.

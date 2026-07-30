@@ -1159,6 +1159,7 @@ function PatientDocumentsWorkspace({
   const [formOpen, setFormOpen] = useState(false);
   const [voiding, setVoiding] = useState<ClinicalDocument | null>(null);
   const [voidReason, setVoidReason] = useState("");
+  const [voidingBusy, setVoidingBusy] = useState(false);
   const [form, setForm] = useState<ClinicalDocumentInput>(() => defaultClinicalDocumentForm(options));
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [prescriptionLoading, setPrescriptionLoading] = useState(false);
@@ -1167,6 +1168,7 @@ function PatientDocumentsWorkspace({
   const [prescriptionFormOpen, setPrescriptionFormOpen] = useState(false);
   const [voidingPrescription, setVoidingPrescription] = useState<Prescription | null>(null);
   const [prescriptionVoidReason, setPrescriptionVoidReason] = useState("");
+  const [prescriptionVoidingBusy, setPrescriptionVoidingBusy] = useState(false);
   const [prescriptionForm, setPrescriptionForm] = useState<PrescriptionInput>(() => defaultPrescriptionForm(options));
   const [reviewedAlerts, setReviewedAlerts] = useState(false);
 
@@ -1282,13 +1284,18 @@ function PatientDocumentsWorkspace({
   async function confirmVoidDocument(event: FormEvent) {
     event.preventDefault();
     if (!voiding) return;
+    const reason = voidReason.trim();
+    if (!reason || voidingBusy) return;
+    setVoidingBusy(true);
     try {
-      await voidClinicalDocument(voiding.id, voidReason);
+      await voidClinicalDocument(voiding.id, reason);
       setVoiding(null);
       setVoidReason("");
       await loadClinicalDocuments();
     } catch (caught) {
       setClinicalError(caught instanceof Error ? caught.message : "No fue posible anular el documento.");
+    } finally {
+      setVoidingBusy(false);
     }
   }
 
@@ -1401,13 +1408,18 @@ function PatientDocumentsWorkspace({
   async function confirmVoidPrescription(event: FormEvent) {
     event.preventDefault();
     if (!voidingPrescription) return;
+    const reason = prescriptionVoidReason.trim();
+    if (!reason || prescriptionVoidingBusy) return;
+    setPrescriptionVoidingBusy(true);
     try {
-      await voidPrescription(voidingPrescription.id, prescriptionVoidReason);
+      await voidPrescription(voidingPrescription.id, reason);
       setVoidingPrescription(null);
       setPrescriptionVoidReason("");
       await loadPrescriptions();
     } catch (caught) {
       setPrescriptionError(caught instanceof Error ? caught.message : "No fue posible anular la receta.");
+    } finally {
+      setPrescriptionVoidingBusy(false);
     }
   }
 
@@ -1488,7 +1500,7 @@ function PatientDocumentsWorkspace({
                   <button type="button" onClick={() => duplicateDocument(document)} className="font-bold text-sky-700 hover:underline">Duplicar</button>
                 )}
                 {document.status === "FINALIZED" && canVoidClinicalDocuments && (
-                  <button type="button" onClick={() => setVoiding(document)} className="font-bold text-red-700 hover:underline">Anular</button>
+                  <button type="button" onClick={() => { setVoidReason(""); setVoiding(document); }} className="font-bold text-red-700 hover:underline">Anular documento</button>
                 )}
               </div>,
             ])}
@@ -1549,7 +1561,7 @@ function PatientDocumentsWorkspace({
                   <button type="button" onClick={() => duplicateRx(prescription)} className="font-bold text-sky-700 hover:underline">Duplicar</button>
                 )}
                 {prescription.status === "FINALIZED" && canVoidPrescriptions && (
-                  <button type="button" onClick={() => setVoidingPrescription(prescription)} className="font-bold text-red-700 hover:underline">Anular</button>
+                  <button type="button" onClick={() => { setPrescriptionVoidReason(""); setVoidingPrescription(prescription); }} className="font-bold text-red-700 hover:underline">Anular receta</button>
                 )}
               </div>,
             ])}
@@ -1665,16 +1677,16 @@ function PatientDocumentsWorkspace({
         </form>
       </Modal>
 
-      <Modal open={Boolean(voiding)} title="Anular documento" onClose={() => setVoiding(null)}>
+      <Modal open={Boolean(voiding)} title="Anular documento" onClose={() => { if (!voidingBusy) setVoiding(null); }}>
         <form onSubmit={confirmVoidDocument} className="space-y-4">
-          <p className="text-sm text-slate-600">El PDF histórico se conservará. El documento quedará marcado como anulado.</p>
+          <p className="text-sm text-slate-600">Esta acción no elimina el PDF histórico ni consume un nuevo consecutivo. El documento quedará marcado como anulado.</p>
           <label className="block">
             <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Motivo de anulación</span>
-            <textarea value={voidReason} onChange={(event) => setVoidReason(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" required />
+            <textarea value={voidReason} onChange={(event) => setVoidReason(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" required minLength={5} />
           </label>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setVoiding(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancelar</button>
-            <button className="min-h-11 rounded-xl bg-red-600 px-4 text-sm font-bold text-white">Anular</button>
+            <button type="button" disabled={voidingBusy} onClick={() => setVoiding(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600 disabled:opacity-50">Cancelar</button>
+            <button disabled={voidingBusy || voidReason.trim().length < 5} className="min-h-11 rounded-xl bg-red-600 px-4 text-sm font-bold text-white disabled:opacity-50">{voidingBusy ? "Anulando…" : "Confirmar anulación"}</button>
           </div>
         </form>
       </Modal>
@@ -1769,16 +1781,16 @@ function PatientDocumentsWorkspace({
         </form>
       </Modal>
 
-      <Modal open={Boolean(voidingPrescription)} title="Anular receta" onClose={() => setVoidingPrescription(null)}>
+      <Modal open={Boolean(voidingPrescription)} title="Anular receta" onClose={() => { if (!prescriptionVoidingBusy) setVoidingPrescription(null); }}>
         <form onSubmit={confirmVoidPrescription} className="space-y-4">
-          <p className="text-sm text-slate-600">El PDF histórico se conservará. La receta quedará marcada como anulada.</p>
+          <p className="text-sm text-slate-600">Esta acción no elimina el PDF histórico ni consume un nuevo consecutivo. La receta quedará marcada como anulada.</p>
           <label className="block">
             <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Motivo de anulación</span>
-            <textarea value={prescriptionVoidReason} onChange={(event) => setPrescriptionVoidReason(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" required />
+            <textarea value={prescriptionVoidReason} onChange={(event) => setPrescriptionVoidReason(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" required minLength={5} />
           </label>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setVoidingPrescription(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600">Cancelar</button>
-            <button className="min-h-11 rounded-xl bg-red-600 px-4 text-sm font-bold text-white">Anular</button>
+            <button type="button" disabled={prescriptionVoidingBusy} onClick={() => setVoidingPrescription(null)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600 disabled:opacity-50">Cancelar</button>
+            <button disabled={prescriptionVoidingBusy || prescriptionVoidReason.trim().length < 5} className="min-h-11 rounded-xl bg-red-600 px-4 text-sm font-bold text-white disabled:opacity-50">{prescriptionVoidingBusy ? "Anulando…" : "Confirmar anulación"}</button>
           </div>
         </form>
       </Modal>
@@ -1797,7 +1809,7 @@ function defaultClinicalDocumentForm(options: AgendaOptions | null): ClinicalDoc
     recipient_specialty: "",
     subject: "",
     body: "",
-    clinical_date: new Date().toISOString().slice(0, 10),
+    clinical_date: localCalendarDate(),
     related_treatment_id: null,
     related_evolution_id: null,
     related_appointment_id: null,
@@ -1824,7 +1836,7 @@ function defaultPrescriptionForm(options: AgendaOptions | null): PrescriptionInp
   return {
     site_id: options?.sites[0]?.id ?? "",
     dentist_profile_id: options?.dentists[0]?.id ?? null,
-    clinical_date: new Date().toISOString().slice(0, 10),
+    clinical_date: localCalendarDate(),
     related_treatment_id: null,
     related_evolution_id: null,
     related_appointment_id: null,
@@ -1832,6 +1844,13 @@ function defaultPrescriptionForm(options: AgendaOptions | null): PrescriptionInp
     notes: "",
     items: [emptyPrescriptionItem()],
   };
+}
+
+function localCalendarDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function prescriptionStatusLabel(status: Prescription["status"]) {

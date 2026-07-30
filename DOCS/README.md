@@ -63,6 +63,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C018R.1 — Checklist operativo del piloto](readiness/C018R1-Pilot-Checklist.md)
 - [C018R.1 — Bloqueantes y riesgos](readiness/C018R1-Blocking-Issues.md)
 - [C018R.1 — Plan de despliegue y preparación](readiness/C018R1-Deployment-Plan.md)
+- [C018R.2 — Hardening integral previo al piloto controlado](readiness/C018R2-Pilot-Hardening.md)
 - [C018R.3 — Backup completo PostgreSQL + storage clínico](readiness/C018R3-Complete-Backup-and-Restore.md)
 - [C018R.4 — Pruebas automáticas de aislamiento multiempresa, roles y permisos](readiness/C018R4-Multitenancy-and-Permissions.md)
 
@@ -70,6 +71,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 
 - [Runbook — Backup y restauración Dentia](operations/Dentia-Backup-Restore-Runbook.md)
 - [Runbook — Storage persistente Dentia](operations/Dentia-Persistent-Storage-Runbook.md)
+- [Runbook — Despliegue seguro Dentia](operations/Dentia-Safe-Deployment-Runbook.md)
 
 ## Seguridad
 
@@ -79,6 +81,12 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 ## Pruebas
 
 - [Runbook — Pruebas de seguridad C018R.4](testing/Dentia-Security-Test-Runbook.md)
+
+Comando operativo complementario de hardening previo al piloto:
+
+```bash
+./scripts/local/test_dentia_security.sh --hardening
+```
 
 ## Convención documental
 

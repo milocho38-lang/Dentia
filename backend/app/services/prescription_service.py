@@ -49,6 +49,7 @@ from app.services.clinical_document_service import (
 from app.services.patient_service import calculate_age
 from app.services.site_access_service import authorized_site_ids
 from app.services.treatment_service import BudgetPdfResult
+from app.utils.clinical_dates import local_clinical_date
 
 
 class PrescriptionError(RuntimeError):
@@ -722,6 +723,7 @@ def duplicate_prescription(session: Session, context: AuthContext, prescription_
         raise PrescriptionError("Receta no encontrada.", 404)
     patient = _require_patient(session, context, original.patient_id)
     site = _require_site(session, context, original.site_id)
+    company = session.get(Company, context.user.company_id)
     dentist = _require_dentist(session, context, original.dentist_profile_id, site.id)
     copy = Prescription(
         company_id=context.user.company_id,
@@ -734,7 +736,7 @@ def duplicate_prescription(session: Session, context: AuthContext, prescription_
         related_appointment_id=original.related_appointment_id,
         previous_prescription_id=original.id,
         status="DRAFT",
-        clinical_date=date.today(),
+        clinical_date=local_clinical_date(company, site),
         general_instructions=original.general_instructions,
         notes=original.notes,
         created_by=context.user.id,

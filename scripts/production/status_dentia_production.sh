@@ -5,8 +5,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=../lib/dentia_common.sh
 source "$SCRIPT_DIR/../lib/dentia_common.sh"
 
+usage() {
+  cat <<'EOF'
+Usage: status_dentia_production.sh [--help]
+
+Shows production status without starting or recreating services.
+EOF
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  usage
+  exit 0
+fi
+[ "$#" -eq 0 ] || dentia_fail "Unknown argument: $1"
+
 ROOT="${DENTIA_PRODUCTION_DIR:-/opt/apps/dentia}"
 cd "$ROOT"
+
+dentia_info "Production config"
+if "$SCRIPT_DIR/validate_dentia_production_config.sh" >/dev/null; then
+  echo "config_validation=OK"
+else
+  echo "config_validation=FAIL"
+fi
+printf 'env_file=%s\n' "$DENTIA_ENV_FILE"
 
 dentia_info "Docker Compose services"
 dentia_compose ps
@@ -27,8 +49,13 @@ printf '\nPostgreSQL size:\n'
 docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d "$DENTIA_DB_NAME" -tAc "SELECT pg_size_pretty(pg_database_size(current_database()));" 2>/dev/null || true
 
 printf '\nStorage:\n'
-du -sh "$ROOT/backend/storage" 2>/dev/null || echo "backend/storage not found"
-find "$ROOT/backend/storage" -type f 2>/dev/null | wc -l | awk '{print "storage_file_count=" $1}'
+HOST_STORAGE_ROOT="$(dentia_storage_host_root "$ROOT")"
+printf 'storage_host_root=%s\n' "$HOST_STORAGE_ROOT"
+if docker inspect "$DENTIA_BACKEND_CONTAINER" >/dev/null 2>&1; then
+  docker inspect "$DENTIA_BACKEND_CONTAINER" --format 'backend_mounts={{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' 2>/dev/null || true
+fi
+du -sh "$HOST_STORAGE_ROOT" 2>/dev/null || echo "backend/storage not found"
+find "$HOST_STORAGE_ROOT" -type f 2>/dev/null | wc -l | awk '{print "storage_file_count=" $1}'
 
 printf '\nDisk:\n'
 df -h "$ROOT" "$DENTIA_BACKUP_DIR" 2>/dev/null || df -h "$ROOT"

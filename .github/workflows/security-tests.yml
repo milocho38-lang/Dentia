@@ -51,23 +51,5 @@ jobs:
           backend/.venv/bin/pip install --upgrade pip
           backend/.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-test.txt
 
-      - name: Run migrations on isolated test database
-        run: backend/.venv/bin/alembic -c backend/alembic.ini upgrade head
-
-      - name: Run static security characterization
-        run: backend/.venv/bin/python backend/scripts/security_characterization_tests.py
-
-      - name: Run route security metrics
-        run: backend/.venv/bin/python backend/scripts/route_security_metrics.py
-
-      - name: Run DB-backed security tests
-        run: >
-          backend/.venv/bin/pytest
-          backend/tests/security
-          backend/tests/multitenancy
-          backend/tests/permissions
-          backend/tests/storage
-          backend/tests/finance
-          backend/tests/administration
-          --cov=backend/app
-          --cov-report=term-missing:skip-covered
+      - name: Run official security and hardening suites
+        run: ./scripts/local/test_dentia_security.sh --full

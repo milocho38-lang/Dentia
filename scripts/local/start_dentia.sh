@@ -5,6 +5,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=../lib/dentia_common.sh
 source "$SCRIPT_DIR/../lib/dentia_common.sh"
 
+usage() {
+  cat <<'EOF'
+Usage: start_dentia.sh [--open] [--help]
+
+Starts the local Dentia backend and frontend using PID files under .run/.
+It refuses to kill or reuse unknown processes.
+EOF
+}
+
+OPEN=false
+case "${1:-}" in
+  --help|-h)
+    usage
+    exit 0
+    ;;
+  --open)
+    OPEN=true
+    ;;
+  "")
+    ;;
+  *)
+    dentia_fail "Unknown argument: $1"
+    ;;
+esac
+
 ROOT="$DENTIA_PROJECT_DIR"
 BACKEND_DIR="$ROOT/backend"
 FRONTEND_DIR="$ROOT/frontend"
@@ -36,11 +61,20 @@ for port in "$DENTIA_BACKEND_PORT" "$DENTIA_FRONTEND_PORT"; do
   fi
 done
 
+dentia_remove_stale_pid_file "$BACKEND_PID" || true
+dentia_remove_stale_pid_file "$FRONTEND_PID" || true
+
 if [ -f "$BACKEND_PID" ] && dentia_pid_alive "$(cat "$BACKEND_PID")"; then
-  dentia_fail "Backend appears already running with PID $(cat "$BACKEND_PID"). Run ./status.sh or ./stop.sh."
+  if dentia_pid_matches "$(cat "$BACKEND_PID")" "uvicorn app.main:app"; then
+    dentia_fail "Backend appears already running with PID $(cat "$BACKEND_PID"). Run scripts/local/status_dentia.sh or scripts/local/stop_dentia.sh."
+  fi
+  dentia_fail "Backend PID file points to a non-Dentia process. Remove stale file manually after inspection: $BACKEND_PID"
 fi
 if [ -f "$FRONTEND_PID" ] && dentia_pid_alive "$(cat "$FRONTEND_PID")"; then
-  dentia_fail "Frontend appears already running with PID $(cat "$FRONTEND_PID"). Run ./status.sh or ./stop.sh."
+  if dentia_pid_matches "$(cat "$FRONTEND_PID")" "npm run dev"; then
+    dentia_fail "Frontend appears already running with PID $(cat "$FRONTEND_PID"). Run scripts/local/status_dentia.sh or scripts/local/stop_dentia.sh."
+  fi
+  dentia_fail "Frontend PID file points to a non-Dentia process. Remove stale file manually after inspection: $FRONTEND_PID"
 fi
 
 dentia_info "Applying backend migrations..."
@@ -67,6 +101,6 @@ dentia_info "Backend docs: http://127.0.0.1:${DENTIA_BACKEND_PORT}/docs"
 dentia_info "Frontend: $DENTIA_FRONTEND_URL"
 dentia_info "Logs: $LOG_DIR"
 
-if [[ "${1:-}" == "--open" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
+if $OPEN && [[ "$(uname -s)" == "Darwin" ]]; then
   open "$DENTIA_FRONTEND_URL" >/dev/null 2>&1 || true
 fi

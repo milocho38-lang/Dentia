@@ -38,8 +38,28 @@ export DENTIA_ENV_FILE=/ruta/segura/.env.production
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `DENTIA_BACKEND_ENV_FILE`
+- `BRANDING_STORAGE_DIR`
+- `API_PROXY_TARGET`
 
 `DATABASE_URL` debe usar credenciales URL-encoded cuando la contraseña contenga caracteres especiales.
+
+## Validación obligatoria
+
+Antes de desplegar:
+
+```bash
+export DENTIA_ENV_FILE=/opt/apps/dentia/.env.production
+scripts/production/validate_dentia_production_config.sh
+```
+
+El validador:
+
+- no imprime valores secretos;
+- rechaza `.env.production.example`;
+- exige permisos máximos `600`;
+- detecta placeholders y secretos triviales;
+- verifica coherencia de `DATABASE_URL`;
+- comprueba que Compose resuelva sin iniciar servicios.
 
 ## No compartir `docker compose config`
 
@@ -48,7 +68,7 @@ export DENTIA_ENV_FILE=/ruta/segura/.env.production
 ## Rotación segura antes del piloto
 
 1. Crear archivo de entorno root-only con permisos `600`.
-2. Validar que Compose y scripts usan `DENTIA_ENV_FILE`.
+2. Ejecutar `validate_dentia_production_config.sh`.
 3. Cambiar credencial de PostgreSQL de forma coordinada.
 4. Actualizar `DATABASE_URL` con contraseña URL-encoded.
 5. Rotar `JWT_SECRET`.

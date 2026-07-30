@@ -5,9 +5,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=../lib/dentia_common.sh
 source "$SCRIPT_DIR/../lib/dentia_common.sh"
 
+usage() {
+  cat <<'EOF'
+Usage: update_dentia_local.sh [--restart] [--help]
+
+Fast-forwards the local repository, updates dependencies, runs migrations and
+optionally restarts local Dentia. It aborts on a dirty working tree.
+EOF
+}
+
 ROOT="$DENTIA_PROJECT_DIR"
 RESTART=false
-[[ "${1:-}" == "--restart" ]] && RESTART=true
+case "${1:-}" in
+  --help|-h)
+    usage
+    exit 0
+    ;;
+  --restart)
+    RESTART=true
+    ;;
+  "")
+    ;;
+  *)
+    dentia_fail "Unknown argument: $1"
+    ;;
+esac
 
 cd "$ROOT"
 if [ -n "$(git status --porcelain)" ]; then

@@ -47,6 +47,7 @@ from app.services.treatment_service import (
     _text_on_background,
     _visible_accent,
 )
+from app.utils.clinical_dates import local_clinical_date
 
 
 DOCUMENT_TYPE_LABELS = {
@@ -744,6 +745,7 @@ def duplicate_document(
         raise ClinicalDocumentError("Documento clínico no encontrado.", 404)
     patient = _require_patient(session, context, original.patient_id)
     site = _require_site(session, context, original.site_id)
+    company = session.get(Company, context.user.company_id)
     dentist = _require_dentist(session, context, original.dentist_profile_id, site.id)
     copy = ClinicalDocument(
         company_id=context.user.company_id,
@@ -763,7 +765,7 @@ def duplicate_document(
         recipient_specialty=original.recipient_specialty,
         subject=original.subject,
         body=original.body,
-        clinical_date=date.today(),
+        clinical_date=local_clinical_date(company, site),
         created_by=context.user.id,
     )
     session.add(copy)

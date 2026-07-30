@@ -37,6 +37,9 @@ DENTIA_PRODUCTION_BACKEND_HEALTH_URL="${DENTIA_PRODUCTION_BACKEND_HEALTH_URL:-ht
 DENTIA_FRONTEND_CONTAINER="${DENTIA_FRONTEND_CONTAINER:-dentia-frontend}"
 DENTIA_BACKEND_CONTAINER="${DENTIA_BACKEND_CONTAINER:-dentia-backend}"
 DENTIA_DB_CONTAINER="${DENTIA_DB_CONTAINER:-dentia-db}"
+DENTIA_FRONTEND_SERVICE="${DENTIA_FRONTEND_SERVICE:-dentia-frontend}"
+DENTIA_BACKEND_SERVICE="${DENTIA_BACKEND_SERVICE:-dentia-backend}"
+DENTIA_DB_SERVICE="${DENTIA_DB_SERVICE:-dentia-db}"
 DENTIA_DB_NAME="${DENTIA_DB_NAME:-dentia}"
 DENTIA_DB_USER="${DENTIA_DB_USER:-dentia}"
 DENTIA_STORAGE_PATHS="${DENTIA_STORAGE_PATHS:-backend/storage storage}"
@@ -90,6 +93,42 @@ dentia_port_owner() {
 dentia_pid_alive() {
   local pid="$1"
   [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1
+}
+
+dentia_pid_command() {
+  local pid="$1"
+  ps -p "$pid" -o command= 2>/dev/null || true
+}
+
+dentia_pid_matches() {
+  local pid="$1"
+  local expected="$2"
+  local command_line
+  command_line="$(dentia_pid_command "$pid")"
+  [ -n "$command_line" ] && [[ "$command_line" == *"$expected"* ]]
+}
+
+dentia_remove_stale_pid_file() {
+  local pid_file="$1"
+  if [ ! -f "$pid_file" ]; then
+    return 0
+  fi
+  local pid
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  if ! dentia_pid_alive "$pid"; then
+    rm -f "$pid_file"
+    return 0
+  fi
+  return 1
+}
+
+dentia_copy_no_clobber() {
+  local source="$1"
+  local target="$2"
+  if [ -e "$target" ]; then
+    dentia_fail "Refusing to overwrite existing file: $target"
+  fi
+  cp "$source" "$target"
 }
 
 dentia_wait_http() {

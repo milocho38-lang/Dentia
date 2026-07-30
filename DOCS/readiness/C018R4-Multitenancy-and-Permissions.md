@@ -178,6 +178,24 @@ La suite rechaza:
 
 No quedan P0/P1 abiertos para la compuerta C018R.4.
 
+## Relación con C018R.2
+
+C018R.2 no reduce la cobertura C018R.4. Agrega hardening operativo alrededor de:
+
+- validación de secretos productivos sin imprimir valores;
+- orden seguro de migración en deploy;
+- scripts locales con PID validado;
+- fechas clínicas por zona horaria;
+- anulación visible de recetas/documentos.
+
+La suite C018R.4 debe seguir ejecutándose antes de autorizar piloto o despliegue.
+
+Comando complementario agregado en C018R.2:
+
+```bash
+./scripts/local/test_dentia_security.sh --hardening
+```
+
 Riesgos P2/P3:
 
 - warnings de deprecación FastAPI/Starlette bajo Python 3.14;

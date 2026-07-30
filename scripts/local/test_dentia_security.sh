@@ -8,20 +8,22 @@ source "$SCRIPT_DIR/../lib/dentia_common.sh"
 RUN_CHARACTERIZATION=false
 RUN_DB=false
 RUN_COVERAGE=false
+RUN_HARDENING=false
 KEEP_DB=false
 VERBOSE=false
 
 usage() {
   cat <<'EOF'
-Usage: test_dentia_security.sh [--help] [--characterization] [--db] [--quick] [--full] [--coverage] [--keep-db] [--verbose]
+Usage: test_dentia_security.sh [--help] [--characterization] [--db] [--hardening] [--quick] [--full] [--coverage] [--keep-db] [--verbose]
 
 Runs C018R.4 security tests.
 
 Modes:
   --characterization  Run dependency-light structural characterization tests.
   --db                Run DB-backed PostgreSQL isolation/IDOR tests.
+  --hardening         Run C018R.2 pilot hardening tests without production data.
   --quick             Run characterization only.
-  --full              Run characterization + DB-backed suite.
+  --full              Run characterization + DB-backed + pilot hardening suites.
   --coverage          Run DB-backed suite with coverage.
   --keep-db           Keep isolated test PostgreSQL resources for debugging.
   --verbose           Increase pytest verbosity.
@@ -47,6 +49,9 @@ while [ "$#" -gt 0 ]; do
     --db)
       RUN_DB=true
       ;;
+    --hardening)
+      RUN_HARDENING=true
+      ;;
     --quick)
       RUN_CHARACTERIZATION=true
       RUN_DB=false
@@ -54,6 +59,7 @@ while [ "$#" -gt 0 ]; do
     --full)
       RUN_CHARACTERIZATION=true
       RUN_DB=true
+      RUN_HARDENING=true
       ;;
     --coverage)
       RUN_DB=true
@@ -86,8 +92,11 @@ fi
 DENTIA_PYTHON="${DENTIA_PYTHON:-python3}"
 
 if [ "$RUN_CHARACTERIZATION" = false ] && [ "$RUN_DB" = false ]; then
-  RUN_CHARACTERIZATION=true
-  RUN_DB=true
+  if [ "$RUN_HARDENING" = false ]; then
+    RUN_CHARACTERIZATION=true
+    RUN_DB=true
+    RUN_HARDENING=true
+  fi
 fi
 
 if [ "$RUN_CHARACTERIZATION" = true ]; then
@@ -175,4 +184,13 @@ run_db_suite() {
 
 if [ "$RUN_DB" = true ]; then
   run_db_suite
+fi
+
+if [ "$RUN_HARDENING" = true ]; then
+  dentia_info "Running C018R.2 pilot hardening tests..."
+  node frontend/scripts/pilot-hardening-tests.mjs
+  PYTHONPATH="$DENTIA_REPO_ROOT/backend" \
+    backend/.venv/bin/pytest \
+      --confcutdir=backend/tests/operations \
+      backend/tests/operations/test_clinical_dates.py
 fi
