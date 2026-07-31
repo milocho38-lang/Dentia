@@ -16,6 +16,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [Roadmap](roadmap/)
 - [Integraciones](integration/)
 - [Clínica](clinical/)
+- [Cumplimiento](compliance/)
 - [Preparación para piloto](readiness/)
 - [Operaciones](operations/)
 - [Seguridad](security/)
@@ -38,6 +39,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [ADR-001 — Decisión de representación clínica del odontograma](architecture/ADR-001-Classic-Odontogram-Decision.md)
 - [ADR-002 — Representación dual y sincronizada del diente](architecture/ADR-002-Dual-Synchronized-Tooth-Representation.md)
 - [ADR-003 — Trazabilidad clínica-comercial odontograma → tratamiento → presupuesto → evolución](architecture/ADR-003-Clinical-Commercial-Traceability.md)
+- [C019A.0 — Arquitectura de consentimientos](architecture/C019A0-Consent-Architecture.md)
 
 ## Integraciones
 
@@ -55,7 +57,15 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C017F.2 — Tratamiento como punto de entrada al odontograma](clinical/C017F2-Treatment-First-Odontogram.md)
 - [C017G.1 — Informes clínicos, remisiones y cartas](clinical/C017G1-Clinical-Reports-Referrals-Letters.md)
 - [C017G.2 — Recetario odontológico](clinical/C017G2-Odontological-Prescriptions.md)
-- [C017G.1 — Informes clínicos, remisiones y cartas](clinical/C017G1-Clinical-Reports-Referrals-Letters.md)
+- [C019A.0 — Contrato de consentimientos informados y aceptación electrónica](clinical/C019A0-Informed-Consents-Electronic-Acceptance-Contract.md)
+
+## Cumplimiento
+
+- [C019A.0 — Matriz normativa de consentimientos Colombia/Chile](compliance/C019A0-Consent-Colombia-Chile.md)
+
+## UX
+
+- [C019A.0 — Flujos de revisión, decisión y firma](ux/C019A0-Consent-Signing-Flows.md)
 
 ## Preparación para piloto
 
@@ -66,6 +76,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C018R.2 — Hardening integral previo al piloto controlado](readiness/C018R2-Pilot-Hardening.md)
 - [C018R.3 — Backup completo PostgreSQL + storage clínico](readiness/C018R3-Complete-Backup-and-Restore.md)
 - [C018R.4 — Pruebas automáticas de aislamiento multiempresa, roles y permisos](readiness/C018R4-Multitenancy-and-Permissions.md)
+- [C019A.0 — Registro de decisiones y preparación para C019A.1](readiness/C019A0-Consent-Decision-Log.md)
 
 ## Operaciones
 
@@ -81,6 +92,11 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 ## Pruebas
 
 - [Runbook — Pruebas de seguridad C018R.4](testing/Dentia-Security-Test-Runbook.md)
+- [C019A.0 — Estrategia de pruebas de consentimientos](testing/C019A0-Consent-Test-Strategy.md)
+
+## Roadmap
+
+- [Roadmap oficial de desarrollo](D005%20-%20ROADMAP%20DESARROLLO.md)
 
 Comando operativo complementario de hardening previo al piloto:
 

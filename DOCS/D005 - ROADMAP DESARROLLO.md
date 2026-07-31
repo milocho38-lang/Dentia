@@ -417,6 +417,114 @@ Incluye:
 
 ---
 
+## C019A — Consentimientos informados y aceptación electrónica
+
+Regla de fase:
+
+No implementar firma, OTP o portal público antes de cerrar documentalmente la fase anterior y cumplir sus gates de seguridad, clínica y cumplimiento.
+
+### C019A.0 — Contrato y decisiones
+
+Incluye:
+
+- contrato clínico-funcional maestro;
+- arquitectura y threat model;
+- matriz normativa Colombia/Chile;
+- flujos de firma;
+- estrategia de pruebas;
+- registro de decisiones;
+- criterios para autorizar C019A.1.
+
+Estado:
+
+`LISTO PARA REVISIÓN HUMANA`, condicionado a revisión jurídica y clínica en Colombia y Chile.
+
+### C019A.1 — Plantillas y versiones
+
+Incluye:
+
+- plantillas editables;
+- versiones publicadas inmutables;
+- políticas por país;
+- variables permitidas;
+- permisos y auditoría;
+- vista previa marcada como borrador.
+
+No incluye:
+
+- instancias firmables;
+- enlace;
+- QR;
+- OTP;
+- firma.
+
+### C019A.2 — Instancias y flujo clínico
+
+Incluye:
+
+- instancia por paciente;
+- relaciones con sede, cita, tratamiento y procedimiento;
+- participantes;
+- revisión profesional;
+- máquina de estados interna.
+
+### C019A.3 — Enlace, QR, portal y OTP
+
+Incluye:
+
+- token público opaco;
+- portal mínimo;
+- QR sin datos clínicos;
+- OTP por canal aprobado;
+- expiración;
+- rate limiting y protección frente a replay.
+
+### C019A.4 — Firma, evidencia, PDF y copia
+
+Incluye:
+
+- captura no reutilizable;
+- paquete de evidencia;
+- sellado atómico;
+- PDF final inmutable;
+- SHA-256;
+- storage y entrega de copia.
+
+### C019A.5 — Menores, representantes, rechazo, revocación y contingencia
+
+Incluye:
+
+- consentimiento y asentimiento;
+- representante, testigo e intérprete;
+- rechazo;
+- revocación;
+- anulación administrativa;
+- soporte físico escaneado.
+
+### C019A.6 — Hardening, backup, pruebas y piloto
+
+Incluye:
+
+- IDOR y multiempresa A/B;
+- concurrencia y atomicidad;
+- seguridad del portal;
+- backup/restore DB + storage;
+- integridad y archivos faltantes;
+- zona horaria/DST;
+- validación jurídica y clínica por país;
+- compuerta de piloto.
+
+Documentos:
+
+- `DOCS/clinical/C019A0-Informed-Consents-Electronic-Acceptance-Contract.md`
+- `DOCS/architecture/C019A0-Consent-Architecture.md`
+- `DOCS/compliance/C019A0-Consent-Colombia-Chile.md`
+- `DOCS/ux/C019A0-Consent-Signing-Flows.md`
+- `DOCS/testing/C019A0-Consent-Test-Strategy.md`
+- `DOCS/readiness/C019A0-Consent-Decision-Log.md`
+
+---
+
 # FASE 5
 # Odontograma
 
@@ -546,13 +654,9 @@ Incluye:
 
 ## C033A - Consentimiento Informado MVP
 
-Incluye:
+Referencia histórica sustituida por el roadmap controlado `C019A.0`–`C019A.6`.
 
-- Generación básica.
-- Registro de aceptación.
-- Evidencia adjunta o firma simple.
-
-No incluye firma electrónica certificada.
+No implementar este bloque de manera independiente.
 
 ---
 
@@ -564,7 +668,7 @@ Incluye:
 - Registro de aceptación.
 - Evidencia adjunta o firma simple.
 
-No incluye firma electrónica certificada.
+No incluye integración con proveedor de firma avanzada.
 
 ---
 
@@ -673,13 +777,9 @@ Al finalizar C038 la aplicación ya podrá operar un consultorio real.
 
 ## C047A - Consentimientos Avanzados
 
-Incluye:
+Referencia histórica absorbida por `C019A.0`–`C019A.6`.
 
-- Versionamiento documental.
-- Flujos avanzados de firma.
-- Gestión avanzada de plantillas.
-
-No reemplaza el consentimiento informado básico incluido en el MVP.
+Cualquier proveedor de firma avanzada será una decisión posterior condicionada por revisión jurídica; no se presume necesario ni suficiente.
 
 ---
 
