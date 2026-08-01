@@ -21,6 +21,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [Operaciones](operations/)
 - [Seguridad](security/)
 - [Pruebas](testing/)
+- [Producto](product/)
 
 ## Design System
 
@@ -40,6 +41,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [ADR-002 — Representación dual y sincronizada del diente](architecture/ADR-002-Dual-Synchronized-Tooth-Representation.md)
 - [ADR-003 — Trazabilidad clínica-comercial odontograma → tratamiento → presupuesto → evolución](architecture/ADR-003-Clinical-Commercial-Traceability.md)
 - [C019A.0 — Arquitectura de consentimientos](architecture/C019A0-Consent-Architecture.md)
+- [C019A.1 — Implementación del motor de plantillas](architecture/C019A1-Consent-Template-Implementation.md)
 
 ## Integraciones
 
@@ -77,6 +79,11 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C018R.3 — Backup completo PostgreSQL + storage clínico](readiness/C018R3-Complete-Backup-and-Restore.md)
 - [C018R.4 — Pruebas automáticas de aislamiento multiempresa, roles y permisos](readiness/C018R4-Multitenancy-and-Permissions.md)
 - [C019A.0 — Registro de decisiones y preparación para C019A.1](readiness/C019A0-Consent-Decision-Log.md)
+- [C019A.1 — Decisiones y compuerta para C019A.2](readiness/C019A1-Consent-Template-Decision-Update.md)
+
+## Producto
+
+- [C019A.1 — Plantillas y versiones de consentimientos](product/C019A1-Consent-Templates-and-Versioning.md)
 
 ## Operaciones
 
@@ -93,6 +100,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 
 - [Runbook — Pruebas de seguridad C018R.4](testing/Dentia-Security-Test-Runbook.md)
 - [C019A.0 — Estrategia de pruebas de consentimientos](testing/C019A0-Consent-Test-Strategy.md)
+- [C019A.1 — Reporte de pruebas del motor de plantillas](testing/C019A1-Consent-Template-Test-Report.md)
 
 ## Roadmap
 

@@ -21,6 +21,9 @@ fi
 
 ROOT="$DENTIA_PROJECT_DIR"
 RUN_DIR="$ROOT/.run"
+LOCAL_API_PROXY_TARGET="http://127.0.0.1:${DENTIA_BACKEND_PORT}"
+DENTIA_FRONTEND_URL="http://localhost:${DENTIA_FRONTEND_PORT}"
+DENTIA_BACKEND_HEALTH_URL="http://127.0.0.1:${DENTIA_BACKEND_PORT}/health"
 
 show_process() {
   local name="$1"
@@ -46,6 +49,7 @@ show_process() {
 
 show_process "backend" "$RUN_DIR/backend.pid" "$DENTIA_BACKEND_PORT" "http://127.0.0.1:${DENTIA_BACKEND_PORT}/docs" "uvicorn app.main:app"
 show_process "frontend" "$RUN_DIR/frontend.pid" "$DENTIA_FRONTEND_PORT" "$DENTIA_FRONTEND_URL" "npm run dev"
+printf '%-10s %s\n' "api-proxy" "$LOCAL_API_PROXY_TARGET"
 
 printf '\nPorts:\n'
 dentia_port_owner "$DENTIA_BACKEND_PORT" || true

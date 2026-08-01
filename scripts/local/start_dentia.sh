@@ -37,12 +37,22 @@ RUN_DIR="$ROOT/.run"
 LOG_DIR="$RUN_DIR/logs"
 BACKEND_PID="$RUN_DIR/backend.pid"
 FRONTEND_PID="$RUN_DIR/frontend.pid"
+LOCAL_API_PROXY_TARGET="http://127.0.0.1:${DENTIA_BACKEND_PORT}"
+DENTIA_FRONTEND_URL="http://localhost:${DENTIA_FRONTEND_PORT}"
+DENTIA_BACKEND_HEALTH_URL="http://127.0.0.1:${DENTIA_BACKEND_PORT}/health"
 
 mkdir -p "$LOG_DIR"
 
 dentia_info "Project: $ROOT"
 [ -d "$BACKEND_DIR" ] || dentia_fail "Backend directory not found: $BACKEND_DIR"
 [ -d "$FRONTEND_DIR" ] || dentia_fail "Frontend directory not found: $FRONTEND_DIR"
+
+if [ -f "$FRONTEND_DIR/.env.local" ]; then
+  configured_proxy="$(sed -n 's/^API_PROXY_TARGET=//p' "$FRONTEND_DIR/.env.local" | tail -n 1)"
+  if [ -n "$configured_proxy" ] && [ "$configured_proxy" != "$LOCAL_API_PROXY_TARGET" ]; then
+    dentia_warn "frontend/.env.local has a different API_PROXY_TARGET; the explicit local process value $LOCAL_API_PROXY_TARGET will take precedence."
+  fi
+fi
 
 dentia_require_cmd python3
 dentia_require_cmd npm
@@ -90,7 +100,7 @@ echo "$!" >"$BACKEND_PID"
 dentia_info "Starting frontend on port $DENTIA_FRONTEND_PORT..."
 (
   cd "$FRONTEND_DIR"
-  exec npm run dev -- --hostname 127.0.0.1 --port "$DENTIA_FRONTEND_PORT"
+  DENTIA_BACKEND_PORT="$DENTIA_BACKEND_PORT" DENTIA_FRONTEND_PORT="$DENTIA_FRONTEND_PORT" API_PROXY_TARGET="$LOCAL_API_PROXY_TARGET" exec npm run dev -- --hostname 127.0.0.1 --port "$DENTIA_FRONTEND_PORT"
 ) >"$LOG_DIR/frontend.log" 2>&1 &
 echo "$!" >"$FRONTEND_PID"
 
@@ -99,6 +109,7 @@ dentia_info "Backend PID: $(cat "$BACKEND_PID")"
 dentia_info "Frontend PID: $(cat "$FRONTEND_PID")"
 dentia_info "Backend docs: http://127.0.0.1:${DENTIA_BACKEND_PORT}/docs"
 dentia_info "Frontend: $DENTIA_FRONTEND_URL"
+dentia_info "Frontend API proxy: $LOCAL_API_PROXY_TARGET"
 dentia_info "Logs: $LOG_DIR"
 
 if $OPEN && [[ "$(uname -s)" == "Darwin" ]]; then

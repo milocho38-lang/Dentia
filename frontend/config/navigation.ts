@@ -73,6 +73,12 @@ export const navigationItems: NavigationItem[] = [
     section: "Configuración",
   },
   {
+    label: "Consentimientos",
+    href: "/configuracion/consentimientos",
+    permission: "consent.template.read",
+    section: "Configuración",
+  },
+  {
     label: "Sedes",
     href: "/configuracion/sedes",
     permission: "sites.view",

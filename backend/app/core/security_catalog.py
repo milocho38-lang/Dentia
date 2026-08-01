@@ -104,6 +104,13 @@ PERMISSIONS = (
     PermissionDefinition("prescriptions.finalize", "Finalizar recetas", "prescriptions", "Finalizar recetas y generar PDF institucional."),
     PermissionDefinition("prescriptions.download", "Descargar recetas", "prescriptions", "Descargar PDFs históricos de recetas."),
     PermissionDefinition("prescriptions.void", "Anular recetas", "prescriptions", "Anular recetas finalizadas conservando histórico."),
+    PermissionDefinition("consent.template.read", "Ver plantillas de consentimiento", "consent_templates", "Consultar plantillas y versiones de consentimiento de la empresa."),
+    PermissionDefinition("consent.template.create", "Crear plantillas de consentimiento", "consent_templates", "Crear plantillas y nuevas versiones en borrador."),
+    PermissionDefinition("consent.template.edit_draft", "Editar borradores de consentimiento", "consent_templates", "Editar contenido y aplicabilidad de versiones en borrador."),
+    PermissionDefinition("consent.template.publish", "Publicar plantillas de consentimiento", "consent_templates", "Publicar versiones inmutables y reemplazar prospectivamente la vigente."),
+    PermissionDefinition("consent.template.retire", "Retirar plantillas de consentimiento", "consent_templates", "Retirar una versión publicada sin eliminar historial."),
+    PermissionDefinition("consent.template.void_draft", "Anular borradores de consentimiento", "consent_templates", "Anular borradores con motivo y trazabilidad."),
+    PermissionDefinition("consent.template.view_audit", "Auditar plantillas de consentimiento", "consent_templates", "Consultar trazabilidad administrativa autorizada de plantillas."),
     PermissionDefinition("reports.view", "Ver reportes", "reports", "Consultar reportes autorizados."),
     PermissionDefinition("reports.operational", "Ver reportes operativos", "reports", "Consultar métricas operativas de agenda, pacientes y seguimientos."),
     PermissionDefinition("reports.financial", "Ver reportes financieros", "reports", "Consultar ingresos, producción clínica, ventas aprobadas y cartera."),
@@ -186,6 +193,7 @@ SECRETARY_PERMISSIONS = frozenset(
         "reports.operational",
         "sessions.view_own",
         "sessions.revoke_own",
+        "consent.template.read",
     }
 )
 
@@ -245,6 +253,9 @@ DENTIST_PERMISSIONS = frozenset(
         "reports.own_scope",
         "sessions.view_own",
         "sessions.revoke_own",
+        "consent.template.read",
+        "consent.template.create",
+        "consent.template.edit_draft",
     }
 )
 
@@ -289,6 +300,13 @@ DENTIST_ADMIN_PERMISSIONS = SECRETARY_PERMISSIONS | DENTIST_PERMISSIONS | frozen
         "reports.cross_site",
         "clinical_documents.void",
         "prescriptions.void",
+        "consent.template.read",
+        "consent.template.create",
+        "consent.template.edit_draft",
+        "consent.template.publish",
+        "consent.template.retire",
+        "consent.template.void_draft",
+        "consent.template.view_audit",
     }
 )
 

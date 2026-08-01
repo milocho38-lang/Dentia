@@ -24,6 +24,13 @@ from app.models.clinical_record import (
 )
 from app.models.clinical_document import ClinicalDocument
 from app.models.company import Company
+from app.models.consent_template import (
+    ConsentTemplate,
+    ConsentTemplateVersion,
+    ConsentTemplateVersionProcedure,
+    ConsentTemplateVersionSite,
+    ConsentTemplateVersionSpecialty,
+)
 from app.models.prescription import Prescription, PrescriptionItem
 from app.models.odontogram import (
     Odontogram,
@@ -65,6 +72,11 @@ __all__ = [
     "ClinicalTimelineEvent",
     "ClinicalDocument",
     "Company",
+    "ConsentTemplate",
+    "ConsentTemplateVersion",
+    "ConsentTemplateVersionProcedure",
+    "ConsentTemplateVersionSite",
+    "ConsentTemplateVersionSpecialty",
     "Dentist",
     "DentistSite",
     "Odontogram",

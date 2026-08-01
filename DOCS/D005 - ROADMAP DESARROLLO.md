@@ -441,6 +441,10 @@ Estado:
 
 ### C019A.1 — Plantillas y versiones
 
+Estado:
+
+`IMPLEMENTADO LOCALMENTE — PENDIENTE DE REVISIÓN FUNCIONAL, CLÍNICA Y JURÍDICA`
+
 Incluye:
 
 - plantillas editables;
@@ -457,6 +461,15 @@ No incluye:
 - QR;
 - OTP;
 - firma.
+
+Implementación local:
+
+- motor tenant de identidad y versiones;
+- Markdown restringido y variables allowlist;
+- publicación inmutable con hash y reemplazo atómico;
+- aplicabilidad versionada por sede, procedimiento y especialidad;
+- permisos, auditoría, UI administrativa y pruebas PostgreSQL;
+- sin contenido legal sembrado y sin instancias de paciente.
 
 ### C019A.2 — Instancias y flujo clínico
 
