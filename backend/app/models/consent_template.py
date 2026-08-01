@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text, true
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text, true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -93,3 +93,81 @@ class ConsentTemplateVersionSpecialty(UUIDPrimaryKeyMixin, TimestampMixin, Base)
     version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("consentimiento_plantilla_versiones.id", ondelete="RESTRICT"), nullable=False)
     specialty_code: Mapped[str] = mapped_column(String(80), nullable=False)
     specialty_name: Mapped[str] = mapped_column(String(160), nullable=False)
+
+
+class ConsentInstanceSequence(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_instancia_consecutivos"
+    __table_args__ = (UniqueConstraint("empresa_id", name="uq_consent_instance_sequence_company"),)
+
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    next_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+
+class ConsentInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_instancias"
+    __table_args__ = (
+        UniqueConstraint("empresa_id", "sequence_number", name="uq_consent_instance_company_sequence"),
+        UniqueConstraint("empresa_id", "visible_number", name="uq_consent_instance_company_visible"),
+        CheckConstraint("sequence_number >= 1", name="ck_consent_instance_sequence_positive"),
+        CheckConstraint("row_version >= 1", name="ck_consent_instance_row_version_positive"),
+        CheckConstraint("status IN ('DRAFT','READY_FOR_REVIEW','VOIDED')", name="ck_consent_instance_status"),
+        Index("ix_consent_instance_company_patient_date", "empresa_id", "paciente_id", "clinical_date"),
+        Index("ix_consent_instance_company_status", "empresa_id", "status"),
+        Index("ix_consent_instance_company_site", "empresa_id", "sede_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    site_id: Mapped[UUID] = mapped_column("sede_id", PGUUID(as_uuid=True), ForeignKey("sedes.id", ondelete="RESTRICT"), nullable=False)
+    patient_id: Mapped[UUID] = mapped_column("paciente_id", PGUUID(as_uuid=True), ForeignKey("pacientes.id", ondelete="RESTRICT"), nullable=False)
+    template_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("consentimiento_plantillas.id", ondelete="RESTRICT"), nullable=False)
+    template_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("consentimiento_plantilla_versiones.id", ondelete="RESTRICT"), nullable=False)
+    appointment_id: Mapped[UUID | None] = mapped_column("cita_id", PGUUID(as_uuid=True), ForeignKey("citas.id", ondelete="SET NULL"), nullable=True)
+    treatment_id: Mapped[UUID | None] = mapped_column("tratamiento_id", PGUUID(as_uuid=True), ForeignKey("tratamientos.id", ondelete="SET NULL"), nullable=True)
+    professional_user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
+    dentist_profile_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("odontologos.id", ondelete="SET NULL"), nullable=True)
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    visible_number: Mapped[str] = mapped_column(String(30), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", server_default="DRAFT")
+    document_kind: Mapped[str] = mapped_column(String(60), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    language_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    clinical_date: Mapped[date] = mapped_column(Date, nullable=False)
+    timezone_name: Mapped[str] = mapped_column("zona_horaria", String(100), nullable=False)
+    display_title: Mapped[str] = mapped_column(String(250), nullable=False)
+    rendered_content_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_content_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    variable_values_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    missing_variables: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    context_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    template_version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    template_content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    instance_content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    context_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    integrity_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    professional_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    professional_confirmed_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ready_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    voided_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
+    updated_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+
+class ConsentInstanceProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_instancia_procedimientos"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "order_number", name="uq_consent_instance_procedure_order"),
+        Index("ix_consent_instance_procedure_company", "empresa_id", "instance_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    instance_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("consentimiento_instancias.id", ondelete="RESTRICT"), nullable=False)
+    procedure_catalog_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("catalogo_procedimientos.id", ondelete="SET NULL"), nullable=True)
+    treatment_procedure_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("tratamiento_procedimientos.id", ondelete="SET NULL"), nullable=True)
+    code_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    name_snapshot: Mapped[str] = mapped_column(String(200), nullable=False)
+    description_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
+    order_number: Mapped[int] = mapped_column(Integer, nullable=False)

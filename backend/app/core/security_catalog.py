@@ -111,6 +111,13 @@ PERMISSIONS = (
     PermissionDefinition("consent.template.retire", "Retirar plantillas de consentimiento", "consent_templates", "Retirar una versión publicada sin eliminar historial."),
     PermissionDefinition("consent.template.void_draft", "Anular borradores de consentimiento", "consent_templates", "Anular borradores con motivo y trazabilidad."),
     PermissionDefinition("consent.template.view_audit", "Auditar plantillas de consentimiento", "consent_templates", "Consultar trazabilidad administrativa autorizada de plantillas."),
+    PermissionDefinition("consent.instance.read", "Ver consentimientos del paciente", "consent_instances", "Consultar instancias de consentimiento autorizadas."),
+    PermissionDefinition("consent.instance.create", "Preparar consentimientos", "consent_instances", "Crear instancias en borrador con contexto clínico."),
+    PermissionDefinition("consent.instance.edit_draft", "Editar borradores de consentimiento", "consent_instances", "Modificar el contexto de instancias en borrador."),
+    PermissionDefinition("consent.instance.review", "Revisar consentimientos clínicamente", "consent_instances", "Confirmar profesionalmente el contenido antes de firma."),
+    PermissionDefinition("consent.instance.mark_pending_signature", "Habilitar firma futura de consentimientos", "consent_instances", "Permiso reservado para la emisión de sesión en C019A.3."),
+    PermissionDefinition("consent.instance.void", "Anular instancias de consentimiento", "consent_instances", "Anular administrativamente instancias conservando historial."),
+    PermissionDefinition("consent.instance.view_audit", "Auditar instancias de consentimiento", "consent_instances", "Consultar trazabilidad autorizada de instancias."),
     PermissionDefinition("reports.view", "Ver reportes", "reports", "Consultar reportes autorizados."),
     PermissionDefinition("reports.operational", "Ver reportes operativos", "reports", "Consultar métricas operativas de agenda, pacientes y seguimientos."),
     PermissionDefinition("reports.financial", "Ver reportes financieros", "reports", "Consultar ingresos, producción clínica, ventas aprobadas y cartera."),
@@ -158,6 +165,8 @@ CLINICAL_SENSITIVE_PERMISSION_CODES = frozenset(
         "prescriptions.finalize",
         "prescriptions.download",
         "prescriptions.void",
+        "consent.instance.review",
+        "consent.instance.mark_pending_signature",
     }
 )
 CLINIC_ADMIN_PERMISSION_CODES = (
@@ -194,6 +203,9 @@ SECRETARY_PERMISSIONS = frozenset(
         "sessions.view_own",
         "sessions.revoke_own",
         "consent.template.read",
+        "consent.instance.read",
+        "consent.instance.create",
+        "consent.instance.edit_draft",
     }
 )
 
@@ -256,6 +268,11 @@ DENTIST_PERMISSIONS = frozenset(
         "consent.template.read",
         "consent.template.create",
         "consent.template.edit_draft",
+        "consent.instance.read",
+        "consent.instance.create",
+        "consent.instance.edit_draft",
+        "consent.instance.review",
+        "consent.instance.mark_pending_signature",
     }
 )
 
@@ -307,6 +324,13 @@ DENTIST_ADMIN_PERMISSIONS = SECRETARY_PERMISSIONS | DENTIST_PERMISSIONS | frozen
         "consent.template.retire",
         "consent.template.void_draft",
         "consent.template.view_audit",
+        "consent.instance.read",
+        "consent.instance.create",
+        "consent.instance.edit_draft",
+        "consent.instance.review",
+        "consent.instance.mark_pending_signature",
+        "consent.instance.void",
+        "consent.instance.view_audit",
     }
 )
 

@@ -81,8 +81,8 @@ class ConsentVersionDraftInput(BaseModel):
 
     @model_validator(mode="after")
     def specific_has_criteria(self):
-        if self.scope_type == "GENERAL" and (self.site_ids or self.procedure_ids or self.specialties):
-            raise ValueError("Una versión general no puede declarar criterios específicos.")
+        if self.scope_type == "GENERAL" and (self.procedure_ids or self.specialties):
+            raise ValueError("Una versión general no puede depender de procedimientos ni especialidades.")
         if self.scope_type == "SPECIFIC" and not (self.site_ids or self.procedure_ids or self.specialties):
             raise ValueError("Una versión específica requiere al menos una sede, procedimiento o especialidad.")
         if len(set(self.site_ids)) != len(self.site_ids) or len(set(self.procedure_ids)) != len(self.procedure_ids):

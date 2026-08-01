@@ -86,6 +86,7 @@ VARIABLE_CATALOG: dict[str, tuple[str, str, str, str]] = {
     "procedure.name": ("Nombre del procedimiento", "Procedimiento", "Nombre del procedimiento asociado.", "Procedimiento de demostración"),
     "procedure.code": ("Código del procedimiento", "Procedimiento", "Código interno del procedimiento asociado.", "PROC-DEMO"),
     "procedure.description": ("Descripción del procedimiento", "Procedimiento", "Descripción del procedimiento asociado.", "Descripción ficticia"),
+    "procedures.list": ("Lista de procedimientos", "Procedimiento", "Listado de todos los procedimientos cubiertos por el consentimiento.", "Procedimiento de demostración 1; Procedimiento de demostración 2"),
     "document.clinical_date": ("Fecha clínica", "Documento", "Fecha clínica en la zona horaria correspondiente.", "01/08/2026"),
     "document.generated_date": ("Fecha de generación", "Documento", "Fecha local en que se genera el documento.", "01/08/2026"),
     "document.local_time": ("Hora local", "Documento", "Hora local en que se genera el documento.", "10:30 a. m."),
@@ -528,10 +529,11 @@ def find_applicable_published_templates(session: Session, *, company_id: UUID, c
         specialty_scope = {item.code for item in maps[2][version.id]}
         if site_scope and (site_id is None or site_id not in site_scope):
             continue
-        if procedure_scope and not procedure_scope.intersection(procedures):
-            continue
-        if specialty_scope and not specialty_scope.intersection(specialties):
-            continue
+        if version.scope_type == "SPECIFIC":
+            if procedure_scope and not procedure_scope.intersection(procedures):
+                continue
+            if specialty_scope and not specialty_scope.intersection(specialties):
+                continue
         template = template_map[version.template_id]
         candidates.append(ApplicableTemplateCandidate(template_id=template.id, version_id=version.id, template_code=template.code, template_name=template.name, version_number=version.version_number, country_code=template.country_code, language_code=template.language_code, scope_type=version.scope_type, priority=version.priority, content=version.content, content_sha256=version.content_sha256 or "", variable_schema_snapshot=version.variable_schema_snapshot or {}, site_ids=maps[0][version.id], procedure_ids=maps[1][version.id], specialties=maps[2][version.id]))
     return sorted(candidates, key=lambda item: (item.scope_type == "SPECIFIC", bool(item.procedure_ids), bool(item.specialties), bool(item.site_ids), item.priority, item.version_number), reverse=True)

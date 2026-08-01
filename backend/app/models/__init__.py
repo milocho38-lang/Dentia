@@ -25,6 +25,9 @@ from app.models.clinical_record import (
 from app.models.clinical_document import ClinicalDocument
 from app.models.company import Company
 from app.models.consent_template import (
+    ConsentInstance,
+    ConsentInstanceProcedure,
+    ConsentInstanceSequence,
     ConsentTemplate,
     ConsentTemplateVersion,
     ConsentTemplateVersionProcedure,
@@ -72,6 +75,9 @@ __all__ = [
     "ClinicalTimelineEvent",
     "ClinicalDocument",
     "Company",
+    "ConsentInstance",
+    "ConsentInstanceProcedure",
+    "ConsentInstanceSequence",
     "ConsentTemplate",
     "ConsentTemplateVersion",
     "ConsentTemplateVersionProcedure",

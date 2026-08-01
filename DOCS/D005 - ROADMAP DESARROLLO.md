@@ -473,6 +473,10 @@ Implementación local:
 
 ### C019A.2 — Instancias y flujo clínico
 
+Estado:
+
+`IMPLEMENTADO LOCALMENTE — PENDIENTE DE REVISIÓN FUNCIONAL, CLÍNICA Y JURÍDICA`
+
 Incluye:
 
 - instancia por paciente;
@@ -480,6 +484,17 @@ Incluye:
 - participantes;
 - revisión profesional;
 - máquina de estados interna.
+
+Implementación local:
+
+- asistente tenant-scoped desde el expediente del paciente;
+- selección múltiple de plantillas publicadas aplicables;
+- resolución allowlist con datos reales y faltantes explícitos;
+- snapshots, consecutivo por empresa, hashes y verificación de integridad;
+- confirmación exclusiva del profesional seleccionado;
+- cierre contractual en `READY_FOR_REVIEW`;
+- `PENDING_SIGNATURE` reservado para la sesión de C019A.3;
+- permisos, auditoría, aislamiento por empresa/sede y pruebas PostgreSQL.
 
 ### C019A.3 — Enlace, QR, portal y OTP
 

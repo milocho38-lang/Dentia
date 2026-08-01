@@ -97,6 +97,8 @@ def _module_for(path: str) -> str:
         return "platform"
     if path.startswith(("/api/consent-templates", "/api/consent-template-catalog")):
         return "consent_templates"
+    if path.startswith("/api/consent-instances"):
+        return "consent_instances"
     if path.startswith("/api/reports"):
         return "reports"
     if path.startswith("/api/finance"):
@@ -190,7 +192,7 @@ def _controls_for(path: str, category: RouteCategory) -> tuple[ControlType, ...]
 def _is_critical(path: str, method: str, category: RouteCategory) -> bool:
     if category in {RouteCategory.FILE_DOWNLOAD, RouteCategory.FINANCIAL, RouteCategory.PLATFORM}:
         return True
-    if path.startswith(("/api/users", "/api/company", "/api/sites", "/api/dentists", "/api/reports", "/api/consent-templates")):
+    if path.startswith(("/api/users", "/api/company", "/api/sites", "/api/dentists", "/api/reports", "/api/consent-templates", "/api/consent-instances")):
         return True
     if path.startswith("/api/treatments") and (
         "budget" in path or "payments" in path or method in {"POST", "PATCH", "DELETE"}
@@ -227,6 +229,8 @@ def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: 
         return TestStatus.DB_BACKED, "backend/tests/administration/test_admin_finance_reports.py", ""
     if path.startswith(("/api/consent-templates", "/api/consent-template-catalog")):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_templates.py", ""
+    if path.startswith("/api/consent-instances"):
+        return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_instances.py", ""
     if path.startswith("/api/platform"):
         return TestStatus.DB_BACKED, "backend/tests/security/test_platform_admin.py backend/tests/administration/test_admin_finance_reports.py", ""
     if path.startswith(("/api/patients", "/api/agenda", "/api/appointments", "/api/treatments", "/api/clinical-records", "/api/clinical-evolutions", "/api/odontogram", "/api/prescriptions", "/api/clinical-documents")):

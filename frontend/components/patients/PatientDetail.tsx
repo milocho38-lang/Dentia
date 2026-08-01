@@ -9,6 +9,7 @@ import { Spinner } from "@/components/shared/Spinner";
 import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { ClinicalRecordPage } from "@/components/patients/ClinicalRecordPage";
 import { OdontogramPage } from "@/components/patients/OdontogramPage";
+import { PatientConsentsWorkspace } from "@/components/consents/PatientConsentsWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
@@ -90,6 +91,7 @@ type PatientWorkspaceTab =
   | "finance"
   | "agenda"
   | "documents"
+  | "consents"
   | "files";
 
 export function PatientDetail({ patientId }: { patientId: string }) {
@@ -155,7 +157,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
     const tab = searchParams.get("tab");
     if (
       tab &&
-      ["summary", "clinical", "odontogram", "treatments", "finance", "agenda", "documents", "files"].includes(tab)
+      ["summary", "clinical", "odontogram", "treatments", "finance", "agenda", "documents", "consents", "files"].includes(tab)
     ) {
       setActiveTab(tab as PatientWorkspaceTab);
     }
@@ -190,7 +192,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
   useEffect(() => {
     if (
       !workspaceLoaded &&
-      ["summary", "treatments", "finance", "documents"].includes(activeTab)
+      ["summary", "treatments", "finance", "documents", "consents"].includes(activeTab)
     ) {
       loadWorkspaceData();
     }
@@ -256,6 +258,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
     { id: "finance", label: "Finanzas", permission: "payments.view" },
     { id: "agenda", label: "Agenda", permission: "appointments.view" },
     { id: "documents", label: "Documentos" },
+    { id: "consents", label: "Consentimientos", permission: "consent.instance.read" },
     { id: "files", label: "Archivos" },
   ];
 
@@ -516,6 +519,21 @@ export function PatientDetail({ patientId }: { patientId: string }) {
             canFinalizePrescriptions={hasPermission("prescriptions.finalize")}
             canDownloadPrescriptions={hasPermission("prescriptions.download")}
             canVoidPrescriptions={hasPermission("prescriptions.void")}
+          />
+        )}
+
+        {activeTab === "consents" && (
+          <PatientConsentsWorkspace
+            patientId={patient.id}
+            appointments={appointments}
+            treatments={patientTreatments}
+            options={agendaOptions}
+            canRead={hasPermission("consent.instance.read")}
+            canCreate={hasPermission("consent.instance.create")}
+            canEdit={hasPermission("consent.instance.edit_draft")}
+            canReview={hasPermission("consent.instance.review")}
+            canVoid={hasPermission("consent.instance.void")}
+            canAudit={hasPermission("consent.instance.view_audit")}
           />
         )}
 
