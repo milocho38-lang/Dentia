@@ -25,9 +25,13 @@ from app.models.clinical_record import (
 from app.models.clinical_document import ClinicalDocument
 from app.models.company import Company
 from app.models.consent_template import (
+    ConsentAccessSession,
+    ConsentClarificationRequest,
     ConsentInstance,
     ConsentInstanceProcedure,
     ConsentInstanceSequence,
+    ConsentOtpChallenge,
+    ConsentPublicSession,
     ConsentTemplate,
     ConsentTemplateVersion,
     ConsentTemplateVersionProcedure,
@@ -76,8 +80,12 @@ __all__ = [
     "ClinicalDocument",
     "Company",
     "ConsentInstance",
+    "ConsentAccessSession",
+    "ConsentClarificationRequest",
     "ConsentInstanceProcedure",
     "ConsentInstanceSequence",
+    "ConsentOtpChallenge",
+    "ConsentPublicSession",
     "ConsentTemplate",
     "ConsentTemplateVersion",
     "ConsentTemplateVersionProcedure",

@@ -14,6 +14,9 @@ from app.models.agenda import Appointment, Dentist, DentistSite, Patient
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
 from app.models.consent_template import (
+    ConsentAccessSession,
+    ConsentOtpChallenge,
+    ConsentPublicSession,
     ConsentInstance,
     ConsentInstanceProcedure,
     ConsentInstanceSequence,
@@ -345,6 +348,10 @@ def void_instance(session: Session, context: AuthContext, instance_id: UUID, pay
     instance = _require_instance(session, context, instance_id, lock=True)
     if instance.status == "VOIDED": raise ConsentInstanceError("La instancia ya está anulada.", 409)
     before=instance.status; instance.status="VOIDED"; instance.voided_at=_now(); instance.voided_by=context.user.id; instance.void_reason=payload.reason; instance.updated_by=context.user.id; instance.row_version += 1
+    for access in session.scalars(select(ConsentAccessSession).where(ConsentAccessSession.consent_instance_id == instance.id, ConsentAccessSession.status.notin_(["REVOKED", "EXPIRED"])).with_for_update()):
+        access.status = "REVOKED"; access.revoked_at = _now(); access.revoked_by = context.user.id; access.revoke_reason = "INSTANCE_VOIDED"; access.row_version += 1
+        for challenge in session.scalars(select(ConsentOtpChallenge).where(ConsentOtpChallenge.access_session_id == access.id, ConsentOtpChallenge.status == "PENDING")): challenge.status = "INVALIDATED"
+        for public_session in session.scalars(select(ConsentPublicSession).where(ConsentPublicSession.access_session_id == access.id, ConsentPublicSession.status == "ACTIVE")): public_session.status = "REVOKED"; public_session.revoked_at = _now()
     _audit(session, context, metadata, instance, "CONSENT_INSTANCE_VOIDED", before=before, detail={"reason": payload.reason})
     session.commit(); return _response(session, instance)
 

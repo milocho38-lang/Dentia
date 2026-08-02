@@ -1,11 +1,19 @@
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import select, update
 
 from app.models.audit_event import AuditEvent
-from app.models.consent_template import ConsentInstance
+from app.models.consent_template import ConsentAccessSession, ConsentInstance, ConsentOtpChallenge
 from app.models.treatment import ProcedureCatalogItem, TreatmentProcedure
 from app.services.consent_template_service import find_applicable_published_templates
+from app.services.email_service import get_test_email_outbox
+from app.services.email_service import EmailDeliveryError, get_email_provider as configured_email_provider
+import app.services.consent_access_service as consent_access_service
+from app.core.config import settings
+from app.core.logging import RedactConsentTokenFilter
+import logging
+import re
 
 
 def _template(api_client, actor, code="INSTANCE-DEMO", content="# Consentimiento\n\nPaciente: {{ patient.full_name }}\n\nEdad clínica: {{ patient.age }}\n\nProfesional: {{ professional.full_name }}\n\nProcedimientos: {{ procedures.list }}\n\nFecha: {{ document.clinical_date }}", *, scope="GENERAL", site_ids=None, procedure_ids=None, country="CO", publish=True):
@@ -187,3 +195,77 @@ def test_general_and_specific_templates_are_combined_without_duplicates(api_clie
     assert created.status_code == 201, created.text
     assert len(created.json()) == 2
     assert {item["template_version_id"] for item in created.json()} == set(selected)
+
+
+def test_secure_access_otp_document_clarification_reissue_and_tenant_boundaries(api_client, db_session, security_world, monkeypatch):
+    tenant = security_world.tenant_a
+    get_test_email_outbox().clear()
+    _, procedure = _procedure(db_session, tenant)
+    version = _template(api_client, tenant.dentist_admin, "ACCESS-PORTAL")
+    context = _context(tenant, procedure)
+    created = api_client.post("/api/consent-instances/batch", token=tenant.dentist_admin.token, json={"context": context, "template_version_ids": [version["id"]]}).json()[0]
+    confirmed = api_client.post(f"/api/consent-instances/{created['id']}/professional-confirm", token=tenant.dentist_admin.token, json={"confirmed": True, "row_version": created["row_version"]})
+    assert confirmed.status_code == 200
+    issued = api_client.post(f"/api/consent-instances/{created['id']}/access-sessions", token=tenant.dentist_admin.token, json={})
+    assert issued.status_code == 201, issued.text
+    public_url = issued.json()["public_url"]
+    token = public_url.rsplit("/", 1)[-1]
+    assert len(token) >= 32
+    stored = db_session.scalar(select(ConsentAccessSession).where(ConsentAccessSession.consent_instance_id == created["id"]))
+    assert stored and token not in stored.public_token_hash and len(stored.public_token_hash) == 64
+    assert api_client.get(f"/api/consent-instances/{created['id']}/access-sessions", token=security_world.platform_admin.token).status_code == 403
+    assert api_client.get(f"/api/consent-instances/{created['id']}/access-sessions", token=security_world.tenant_b.dentist_admin.token).status_code == 404
+    access_audit = api_client.get(f"/api/consent-instances/{created['id']}/access-sessions/audit", token=tenant.dentist_admin.token)
+    assert access_audit.status_code == 200
+    assert "CONSENT_ACCESS_SESSION_ISSUED" in {event["action"] for event in access_audit.json()}
+    assert api_client.get(f"/api/consent-instances/{created['id']}/access-sessions/audit", token=security_world.platform_admin.token).status_code == 403
+    assert api_client.get(f"/api/consent-instances/{created['id']}/access-sessions/audit", token=security_world.tenant_b.dentist_admin.token).status_code == 404
+    pre = api_client.get(f"/api/public/consents/{token}")
+    assert pre.status_code == 200 and "patient_name" not in pre.json() and pre.headers["cache-control"].startswith("no-store")
+    stored.open_count = settings.consent_link_open_max_requests
+    db_session.commit()
+    assert api_client.get(f"/api/public/consents/{token}").status_code == 429
+    stored.open_window_started_at = datetime.now(timezone.utc) - timedelta(seconds=settings.consent_link_open_window_seconds + 1)
+    db_session.commit()
+    assert api_client.get(f"/api/public/consents/{token}").status_code == 200
+
+    class FailingProvider:
+        def send(self, _delivery):
+            raise EmailDeliveryError("simulated local SMTP failure")
+
+    monkeypatch.setattr(consent_access_service, "get_email_provider", lambda: FailingProvider())
+    failed_delivery = api_client.post(f"/api/public/consents/{token}/otp")
+    assert failed_delivery.status_code == 503
+    failed_challenge = db_session.scalar(select(ConsentOtpChallenge).where(ConsentOtpChallenge.access_session_id == stored.id, ConsentOtpChallenge.status == "DELIVERY_FAILED"))
+    assert failed_challenge is not None
+    monkeypatch.setattr(consent_access_service, "get_email_provider", configured_email_provider)
+    sent = api_client.post(f"/api/public/consents/{token}/otp")
+    assert sent.status_code == 200 and "***@" in sent.json()["recipient_masked"]
+    delivery = get_test_email_outbox()[-1]
+    otp = re.search(r"\b\d{6}\b", delivery.body).group(0)
+    challenge = db_session.scalar(select(ConsentOtpChallenge).where(ConsentOtpChallenge.access_session_id == stored.id, ConsentOtpChallenge.status == "PENDING"))
+    assert challenge and otp not in challenge.otp_hash and len(challenge.otp_hash) == 64
+    challenge.last_sent_at = datetime.now(timezone.utc) - timedelta(seconds=settings.consent_otp_resend_seconds + 1)
+    db_session.commit()
+    resent = api_client.post(f"/api/public/consents/{token}/otp")
+    assert resent.status_code == 200
+    db_session.expire_all()
+    pending = list(db_session.scalars(select(ConsentOtpChallenge).where(ConsentOtpChallenge.access_session_id == stored.id, ConsentOtpChallenge.status == "PENDING")))
+    assert len(pending) == 1 and challenge.status == "INVALIDATED"
+    assert len(get_test_email_outbox()) == 2
+    otp = re.search(r"\b\d{6}\b", get_test_email_outbox()[-1].body).group(0)
+    assert api_client.post(f"/api/public/consents/{token}/otp/verify", json={"code": "000000"}).status_code == 400
+    verified = api_client.post(f"/api/public/consents/{token}/otp/verify", json={"code": otp})
+    assert verified.status_code == 200, verified.text
+    cookie = verified.headers["set-cookie"].split(";", 1)[0]
+    document = api_client.get(f"/api/public/consents/{token}/document", headers={"Cookie": cookie})
+    assert document.status_code == 200 and document.json()["status_label"] == "Revisado, aún no firmado"
+    assert "signature" not in document.json() and "accepted" not in document.json()
+    clarification = api_client.post(f"/api/public/consents/{token}/clarification", headers={"Cookie": cookie}, json={"message": "Necesito una explicación breve."})
+    assert clarification.status_code == 201
+    reissued = api_client.post(f"/api/consent-instances/{created['id']}/access-sessions/reissue", token=tenant.dentist_admin.token, json={})
+    assert reissued.status_code == 201 and reissued.json()["public_url"] != public_url
+    assert api_client.get(f"/api/public/consents/{token}").status_code == 404
+    record = logging.LogRecord("uvicorn.access", logging.INFO, "", 0, f'GET /api/public/consents/{token}', (), None)
+    RedactConsentTokenFilter().filter(record)
+    assert token not in record.getMessage() and "[REDACTED]" in record.getMessage()

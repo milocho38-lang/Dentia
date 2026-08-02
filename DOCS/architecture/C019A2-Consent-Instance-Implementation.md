@@ -72,3 +72,7 @@ Se auditan creación, selección de plantilla, resolución, preview, actualizaci
 ## Contrato para C019A.3
 
 C019A.3 deberá crear la sesión de firma de forma atómica y solo entonces transicionar `READY_FOR_REVIEW → PENDING_SIGNATURE`. Deberá reutilizar los snapshots y hashes, sin re-renderizar la plantilla ni modificar esta instancia.
+
+## Integración implementada por C019A.3
+
+La emisión crea una sesión de acceso persistente y transiciona atómicamente a `PENDING_SIGNATURE`. El portal vuelve a verificar los cuatro hashes antes de mostrar el snapshot; no modifica contenido, variables ni contexto sellado. Revocación y reemisión operan sobre el canal técnico, no sobre la historia clínica de la instancia.

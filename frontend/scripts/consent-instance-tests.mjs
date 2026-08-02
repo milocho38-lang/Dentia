@@ -21,7 +21,7 @@ for (const expected of [
   "Anular administrativamente",
   "Editar contexto",
   "Guardar cambios",
-  "La emisión de la sesión para decisión del paciente se habilitará en C019A.3.",
+  "ConsentAccessPanel",
   "Profesional y sede",
   "disabled={busy || !reviewed || selected.missing_variables.length > 0}",
 ]) {
@@ -45,7 +45,7 @@ assert.ok(patientDetail.includes('{ id: "consents", label: "Consentimientos", pe
 for (const permission of ["consent.instance.read", "consent.instance.create", "consent.instance.edit_draft", "consent.instance.review", "consent.instance.void", "consent.instance.view_audit"]) {
   assert.ok(patientDetail.includes(permission), `missing permission-aware patient integration: ${permission}`);
 }
-for (const forbidden of ["Generar QR", "Enviar al paciente", "Firmar consentimiento", "Código OTP", "Portal público"]) {
+for (const forbidden of ["Firmar consentimiento", "Aceptar consentimiento", "Consentimiento firmado"]) {
   assert.equal(workspace.includes(forbidden), false, `out-of-scope signing UI found: ${forbidden}`);
 }
 

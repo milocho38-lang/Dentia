@@ -31,6 +31,25 @@ class Settings(BaseSettings):
     refresh_cookie_samesite: str = "lax"
     refresh_cookie_path: str = "/api/auth"
     branding_storage_dir: str = str(BACKEND_DIR / "storage" / "branding")
+    public_frontend_url: str = "http://127.0.0.1:3000"
+    consent_access_expire_hours: int = 72
+    consent_link_open_window_seconds: int = 60
+    consent_link_open_max_requests: int = 30
+    consent_otp_expire_minutes: int = 10
+    consent_otp_max_attempts: int = 5
+    consent_otp_resend_seconds: int = 60
+    consent_otp_max_sends: int = 3
+    consent_otp_max_daily_sends: int = 10
+    consent_public_session_minutes: int = 30
+    consent_public_cookie_name: str = "dentia_consent_public"
+    consent_public_cookie_secure: bool = False
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
+    smtp_timeout_seconds: int = 10
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",

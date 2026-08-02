@@ -43,6 +43,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C019A.0 — Arquitectura de consentimientos](architecture/C019A0-Consent-Architecture.md)
 - [C019A.1 — Implementación del motor de plantillas](architecture/C019A1-Consent-Template-Implementation.md)
 - [C019A.2 — Implementación de instancias](architecture/C019A2-Consent-Instance-Implementation.md)
+- [C019A.3 — Seguridad de acceso, portal y OTP](architecture/C019A3-Consent-Access-Security.md)
 
 ## Integraciones
 
@@ -82,22 +83,26 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C019A.0 — Registro de decisiones y preparación para C019A.1](readiness/C019A0-Consent-Decision-Log.md)
 - [C019A.1 — Decisiones y compuerta para C019A.2](readiness/C019A1-Consent-Template-Decision-Update.md)
 - [C019A.2 — Decisiones y compuerta para C019A.3](readiness/C019A2-Consent-Instance-Decision-Update.md)
+- [C019A.3 — Decisiones y compuerta para C019A.4](readiness/C019A3-Consent-Access-Decision-Update.md)
 
 ## Producto
 
 - [C019A.1 — Plantillas y versiones de consentimientos](product/C019A1-Consent-Templates-and-Versioning.md)
 - [C019A.2 — Instancias y flujo clínico previo a firma](product/C019A2-Consent-Instances-and-Clinical-Flow.md)
+- [C019A.3 — Acceso, portal y OTP](product/C019A3-Consent-Access-Portal-and-OTP.md)
 
 ## Operaciones
 
 - [Runbook — Backup y restauración Dentia](operations/Dentia-Backup-Restore-Runbook.md)
 - [Runbook — Storage persistente Dentia](operations/Dentia-Persistent-Storage-Runbook.md)
 - [Runbook — Despliegue seguro Dentia](operations/Dentia-Safe-Deployment-Runbook.md)
+- [Configuración — Correo de consentimientos](operations/Dentia-Consent-Email-Configuration.md)
 
 ## Seguridad
 
 - [Runbook — Secretos de producción Dentia](security/Dentia-Production-Secrets-Runbook.md)
 - [Matriz — Seguridad multiempresa, roles y permisos](security/Dentia-Multitenancy-Security-Matrix.md)
+- [C019A.3-FIX1 — Triage de dependencias frontend](security/C019A3-Npm-Audit-Triage.md)
 
 ## Pruebas
 
@@ -105,6 +110,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C019A.0 — Estrategia de pruebas de consentimientos](testing/C019A0-Consent-Test-Strategy.md)
 - [C019A.1 — Reporte de pruebas del motor de plantillas](testing/C019A1-Consent-Template-Test-Report.md)
 - [C019A.2 — Reporte de pruebas de instancias](testing/C019A2-Consent-Instance-Test-Report.md)
+- [C019A.3 — Reporte de acceso, portal y OTP](testing/C019A3-Consent-Access-Test-Report.md)
 
 ## Roadmap
 

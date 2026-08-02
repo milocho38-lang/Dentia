@@ -1,5 +1,5 @@
 import { apiRequest } from "@/services/apiClient";
-import type { ApplicableConsentTemplate, ConsentContextInput, ConsentInstance, ConsentInstanceAudit } from "@/types/consentInstance";
+import type { ApplicableConsentTemplate, ConsentAccessAudit, ConsentAccessSession, ConsentClarification, ConsentContextInput, ConsentInstance, ConsentInstanceAudit } from "@/types/consentInstance";
 
 export async function listConsentInstances(patientId: string): Promise<ConsentInstance[]> {
   return (await apiRequest<{ items: ConsentInstance[] }>(`/api/consent-instances?patient_id=${encodeURIComponent(patientId)}`)).items;
@@ -32,3 +32,11 @@ export async function voidConsentInstance(id: string, reason: string): Promise<C
 export async function listConsentInstanceAudit(id: string): Promise<ConsentInstanceAudit[]> {
   return apiRequest(`/api/consent-instances/${id}/audit`);
 }
+
+export const listConsentAccess = (id: string) => apiRequest<ConsentAccessSession[]>(`/api/consent-instances/${id}/access-sessions`);
+export const listConsentAccessAudit = (id: string) => apiRequest<ConsentAccessAudit[]>(`/api/consent-instances/${id}/access-sessions/audit`);
+export const issueConsentAccess = (id: string) => apiRequest<ConsentAccessSession>(`/api/consent-instances/${id}/access-sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+export const reissueConsentAccess = (id: string) => apiRequest<ConsentAccessSession>(`/api/consent-instances/${id}/access-sessions/reissue`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+export const revokeConsentAccess = (instanceId: string, accessId: string, reason: string) => apiRequest<ConsentAccessSession>(`/api/consent-instances/${instanceId}/access-sessions/${accessId}/revoke`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
+export const listConsentClarifications = (id: string) => apiRequest<ConsentClarification[]>(`/api/consent-instances/${id}/clarifications`);
+export const resolveConsentClarification = (instanceId: string, clarificationId: string) => apiRequest<ConsentClarification>(`/api/consent-instances/${instanceId}/clarifications/${clarificationId}/resolve`, { method: "POST" });

@@ -49,7 +49,7 @@ export interface ConsentInstance {
   treatment_id: string | null;
   professional_user_id: string;
   dentist_profile_id: string | null;
-  status: "DRAFT" | "READY_FOR_REVIEW" | "VOIDED";
+  status: "DRAFT" | "READY_FOR_REVIEW" | "PENDING_SIGNATURE" | "VOIDED";
   document_kind: string;
   country_code: string;
   language_code: string;
@@ -88,3 +88,11 @@ export interface ConsentInstanceAudit {
   occurred_at: string;
   detail: Record<string, unknown> | null;
 }
+
+export interface ConsentAccessSession {
+  id: string; status: string; recipient_masked: string; issued_at: string; expires_at: string;
+  verified_at: string | null; viewed_at: string | null; clarification_requested_at: string | null;
+  last_activity_at: string; row_version: number; public_url?: string;
+}
+export interface ConsentClarification { id: string; status: string; message: string | null; requested_at: string; resolved_at: string | null; }
+export interface ConsentAccessAudit { id:string; action:string; result:string; user_id:string|null; occurred_at:string; detail:Record<string,unknown>|null; }

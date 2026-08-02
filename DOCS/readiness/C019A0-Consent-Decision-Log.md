@@ -211,3 +211,7 @@ Condicionado a:
 - revisión clínica Chile.
 
 No está jurídicamente aprobado y no autoriza implementación más allá de C019A.1 cuando se cumpla la compuerta de la sección 4.
+
+## 11. Actualización técnica C019A.3
+
+Se implementó localmente el canal de revisión con correo OTP como decisión provisional y configurable. Esto no resuelve la suficiencia jurídica del mecanismo ni autoriza aceptación o firma. Los valores operativos y la compuerta para C019A.4 constan en `C019A3-Consent-Access-Decision-Update.md`.

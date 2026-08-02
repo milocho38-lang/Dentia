@@ -1,0 +1,33 @@
+name: dentia-local-mailbox
+
+services:
+  dentia-local-mailbox:
+    image: axllent/mailpit:v1.30.0
+    container_name: dentia-local-mailbox
+    restart: "no"
+    ports:
+      - "127.0.0.1:${DENTIA_MAILBOX_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${DENTIA_MAILBOX_UI_PORT:-8025}:8025"
+    environment:
+      MP_MAX_MESSAGES: "100"
+      MP_DATABASE: /tmp/mailpit.db
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+      MP_DISABLE_VERSION_CHECK: "true"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    networks:
+      - dentia-local-mailbox-network
+
+networks:
+  dentia-local-mailbox-network:
+    name: dentia-local-mailbox-network

@@ -534,6 +534,12 @@ export function PatientDetail({ patientId }: { patientId: string }) {
             canReview={hasPermission("consent.instance.review")}
             canVoid={hasPermission("consent.instance.void")}
             canAudit={hasPermission("consent.instance.view_audit")}
+            canIssueAccess={hasPermission("consent.access.issue")}
+            canReadAccess={hasPermission("consent.access.read")}
+            canRevokeAccess={hasPermission("consent.access.revoke")}
+            canReissueAccess={hasPermission("consent.access.reissue")}
+            canManageClarifications={hasPermission("consent.clarification.manage")}
+            canViewAccessAudit={hasPermission("consent.access.view_audit")}
           />
         )}
 

@@ -1,0 +1,24 @@
+declare module "@/lib/publicConsentClient.mjs" {
+  export const PUBLIC_CONSENT_TIMEOUT_MS: number;
+
+  export type PublicConsentLink = {
+    status: string;
+    recipient_masked: string;
+    expires_at: string;
+    message: string;
+  };
+
+  export type PublicConsentValidationResult =
+    | { kind: "ready"; data: PublicConsentLink }
+    | { kind: "unavailable" | "rate_limited" | "network" | "timeout" };
+
+  export function createTokenValidationGate(): {
+    shouldValidate(token: string, options?: { force?: boolean }): boolean;
+  };
+
+  export function validatePublicConsentLink(token: string): Promise<PublicConsentValidationResult>;
+}
+
+declare module "@/lib/secureClipboard.mjs" {
+  export function copyTextSecurely(value: string): Promise<boolean>;
+}

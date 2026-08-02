@@ -110,7 +110,7 @@ class ConsentInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint("empresa_id", "visible_number", name="uq_consent_instance_company_visible"),
         CheckConstraint("sequence_number >= 1", name="ck_consent_instance_sequence_positive"),
         CheckConstraint("row_version >= 1", name="ck_consent_instance_row_version_positive"),
-        CheckConstraint("status IN ('DRAFT','READY_FOR_REVIEW','VOIDED')", name="ck_consent_instance_status"),
+        CheckConstraint("status IN ('DRAFT','READY_FOR_REVIEW','PENDING_SIGNATURE','VOIDED')", name="ck_consent_instance_status"),
         Index("ix_consent_instance_company_patient_date", "empresa_id", "paciente_id", "clinical_date"),
         Index("ix_consent_instance_company_status", "empresa_id", "status"),
         Index("ix_consent_instance_company_site", "empresa_id", "sede_id"),
@@ -171,3 +171,89 @@ class ConsentInstanceProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name_snapshot: Mapped[str] = mapped_column(String(200), nullable=False)
     description_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     order_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ConsentAccessSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_sesiones_acceso"
+    __table_args__ = (
+        CheckConstraint("status IN ('ISSUED','OTP_PENDING','VERIFIED','VIEWED','CLARIFICATION_REQUESTED','REVOKED','EXPIRED')", name="ck_consent_access_status"),
+        CheckConstraint("row_version >= 1", name="ck_consent_access_row_version"),
+        CheckConstraint("open_count >= 0", name="ck_consent_access_open_count"),
+        Index("ix_consent_access_company_instance", "empresa_id", "consent_instance_id"),
+        Index("ix_consent_access_token_hash", "public_token_hash", unique=True),
+    )
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    site_id: Mapped[UUID] = mapped_column("sede_id", PGUUID(as_uuid=True), ForeignKey("sedes.id", ondelete="RESTRICT"), nullable=False)
+    consent_instance_id: Mapped[UUID] = mapped_column(ForeignKey("consentimiento_instancias.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ISSUED", server_default="ISSUED")
+    public_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    public_token_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    revoke_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    viewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    clarification_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    open_window_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    open_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    channel: Mapped[str] = mapped_column(String(20), nullable=False, default="EMAIL", server_default="EMAIL")
+    recipient_masked: Mapped[str] = mapped_column(String(220), nullable=False)
+    created_by: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+
+class ConsentOtpChallenge(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_otp_desafios"
+    __table_args__ = (
+        CheckConstraint("status IN ('PENDING','VERIFIED','INVALIDATED','BLOCKED','DELIVERY_FAILED','EXPIRED')", name="ck_consent_otp_status"),
+        CheckConstraint("failed_attempts >= 0 AND resend_count >= 0", name="ck_consent_otp_counts"),
+        Index("ix_consent_otp_access_status", "access_session_id", "status"),
+        Index("ix_consent_otp_rate_ip", "request_ip_hash", "issued_at"),
+        Index("ix_consent_otp_rate_recipient", "recipient_hash", "issued_at"),
+    )
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    access_session_id: Mapped[UUID] = mapped_column(ForeignKey("consentimiento_sesiones_acceso.id", ondelete="RESTRICT"), nullable=False)
+    otp_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING", server_default="PENDING")
+    channel: Mapped[str] = mapped_column(String(20), nullable=False, default="EMAIL", server_default="EMAIL")
+    recipient_masked: Mapped[str] = mapped_column(String(220), nullable=False)
+    recipient_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=5, server_default="5")
+    resend_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    blocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ConsentPublicSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_sesiones_publicas"
+    __table_args__ = (CheckConstraint("status IN ('ACTIVE','REVOKED','EXPIRED')", name="ck_consent_public_session_status"), Index("ix_consent_public_session_hash", "session_token_hash", unique=True))
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    access_session_id: Mapped[UUID] = mapped_column(ForeignKey("consentimiento_sesiones_acceso.id", ondelete="RESTRICT"), nullable=False)
+    session_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", server_default="ACTIVE")
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ConsentClarificationRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_solicitudes_aclaracion"
+    __table_args__ = (CheckConstraint("status IN ('OPEN','RESOLVED')", name="ck_consent_clarification_status"), Index("ix_consent_clarification_company_instance", "empresa_id", "consent_instance_id"))
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    consent_instance_id: Mapped[UUID] = mapped_column(ForeignKey("consentimiento_instancias.id", ondelete="RESTRICT"), nullable=False)
+    access_session_id: Mapped[UUID] = mapped_column(ForeignKey("consentimiento_sesiones_acceso.id", ondelete="RESTRICT"), nullable=False)
+    professional_user_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="OPEN", server_default="OPEN")
+    message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)

@@ -498,6 +498,8 @@ Implementación local:
 
 ### C019A.3 — Enlace, QR, portal y OTP
 
+Estado: implementado localmente, pendiente de validación funcional, clínica y jurídica; no desplegado.
+
 Incluye:
 
 - token público opaco;
