@@ -1042,6 +1042,10 @@ Codex deberá:
    - Pruebas realizadas.
    - Pasos de validación.
 
+## C019A.4 — Estado
+
+**TECHNICALLY IMPLEMENTED — PRODUCTION BLOCKED**. Requiere revisión clínica, jurídica Colombia/Chile, políticas de firma/representación/retención, validación móvil, SMTP y backup/restore antes de cualquier habilitación productiva.
+
 ---
 
 # Resultado Esperado
@@ -1055,3 +1059,7 @@ Al finalizar el roadmap completo se obtendrá una plataforma:
 - Preparada para IA.
 - Orientada a odontólogos y secretarias.
 - Comercializable como producto de software.
+
+## C019A4-LIB1 — Biblioteca oficial Dentia
+
+Se incorpora la biblioteca oficial de documentos odontológicos con variantes CO/CL, importador idempotente, procedencia y separación entre contenido oficial y copias editables por clínica.

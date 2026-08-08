@@ -152,6 +152,8 @@ Este flujo exige confirmación adicional.
 
 Los backups contienen datos clínicos.
 
+Los artefactos C019A.4 bajo `storage/consents/{empresa_id}/{instance_id}/final/` (PDF, firma y manifiesto) deben incluirse en el inventario DB → archivo → SHA-256. Consulte `Dentia-Consent-Final-Document-Recovery.md`; nunca regenere un faltante desde datos actuales.
+
 No:
 
 - subir a Git;
@@ -166,3 +168,7 @@ Sí:
 - rotar según política;
 - mover a almacenamiento seguro;
 - cifrar externamente cuando exista gestión de claves.
+
+## Biblioteca oficial de documentos
+
+Los registros de biblioteca viven en base de datos y el paquete canónico en `backend/app/library_data/consents/v1`. El PDF fuente local no forma parte de backups de código ni debe subirse a producción.

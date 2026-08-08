@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     consent_public_session_minutes: int = 30
     consent_public_cookie_name: str = "dentia_consent_public"
     consent_public_cookie_secure: bool = False
+    consent_acceptance_enabled: bool = False
+    consent_signature_required: bool = True
+    consent_final_storage_dir: str = str(BACKEND_DIR / "storage" / "consents")
+    consent_final_download_minutes: int = 30
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

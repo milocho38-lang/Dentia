@@ -1,15 +1,17 @@
 from typing import Annotated
 from uuid import UUID
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth_dependencies import get_current_auth_context, get_request_metadata
 from app.core.config import settings
 from app.database.session import get_db
-from app.schemas.consent_access_schema import AccessAuditResponse, AccessIssueRequest, AccessIssuedResponse, AccessRevokeRequest, AccessSessionResponse, ClarificationCreateRequest, ClarificationResponse, OtpRequestResponse, OtpVerifyRequest, OtpVerifyResponse, PublicConsentDocumentResponse, PublicLinkResponse
+from app.schemas.consent_access_schema import AccessAuditResponse, AccessIssueRequest, AccessIssuedResponse, AccessRevokeRequest, AccessSessionResponse, AcceptanceEvidenceResponse, AcceptanceRequirementsResponse, AcceptanceSubmitRequest, AcceptanceSubmitResponse, AcceptanceSummaryResponse, ClarificationCreateRequest, ClarificationResponse, OtpRequestResponse, OtpVerifyRequest, OtpVerifyResponse, PublicConsentDocumentResponse, PublicLinkResponse
 from app.services.auth_service import AuthContext
 from app.services.consent_access_service import ConsentAccessError, create_clarification, issue_access, list_access, list_access_audit, list_clarifications, public_document, public_link, request_otp, resolve_clarification, revoke_access, verify_otp
 from app.services.consent_instance_service import ConsentInstanceError
+from app.services.consent_acceptance_service import ConsentAcceptanceError, acceptance_evidence, acceptance_requirements, acceptance_summary, audit_acceptance_rejection, private_final_document, public_final_document, resend_copy, submit_acceptance
 
 private = APIRouter(prefix="/api/consent-instances", tags=["Acceso a consentimientos"])
 public = APIRouter(prefix="/api/public/consents", tags=["Portal público de consentimientos"])
@@ -86,3 +88,49 @@ def clarification(token:str,payload:ClarificationCreateRequest,response:Response
     _no_store(response)
     try:return create_clarification(session,token,public_cookie,payload.message,get_request_metadata(request))
     except ConsentAccessError as exc:raise _error(exc)
+
+@public.get("/{token}/acceptance-requirements",response_model=AcceptanceRequirementsResponse)
+def requirements(token:str,response:Response,request:Request,session:Annotated[Session,Depends(get_db)],public_cookie:Annotated[str|None,Cookie(alias=settings.consent_public_cookie_name)]=None):
+    _no_store(response)
+    try:return acceptance_requirements(session,token,public_cookie,get_request_metadata(request))
+    except (ConsentAccessError,ConsentAcceptanceError) as exc:raise _error(exc)
+
+@public.post("/{token}/acceptance",response_model=AcceptanceSubmitResponse)
+def accept(token:str,payload:AcceptanceSubmitRequest,response:Response,request:Request,session:Annotated[Session,Depends(get_db)],public_cookie:Annotated[str|None,Cookie(alias=settings.consent_public_cookie_name)]=None):
+    _no_store(response); metadata=get_request_metadata(request)
+    try:return submit_acceptance(session,token,public_cookie,payload,metadata)
+    except ConsentAcceptanceError as exc:
+        audit_acceptance_rejection(session,token,payload,metadata,exc)
+        raise HTTPException(status_code=exc.status_code,detail={"code":exc.code,"message":str(exc)})
+    except ConsentAccessError as exc:
+        raise HTTPException(status_code=exc.status_code,detail={"code":"SESSION_INVALID","message":"La sesión no está disponible."})
+
+@public.get("/final-documents/{download_token}")
+def public_download(download_token:str,response:Response,request:Request,session:Annotated[Session,Depends(get_db)]):
+    _no_store(response)
+    try:
+        final,path=public_final_document(session,download_token,get_request_metadata(request))
+        return FileResponse(path,media_type="application/pdf",filename=final.filename,headers={"Cache-Control":"no-store, max-age=0"})
+    except ConsentAcceptanceError as exc:raise _error(exc)
+
+@private.get("/{instance_id}/acceptance",response_model=AcceptanceSummaryResponse)
+def acceptance(instance_id:UUID,session:Annotated[Session,Depends(get_db)],context:Annotated[AuthContext,Depends(_permission("consent.acceptance.read"))]):
+    try:return acceptance_summary(session,context,instance_id)
+    except (ConsentAcceptanceError,ConsentInstanceError) as exc:raise _error(exc)
+
+@private.get("/{instance_id}/acceptance/evidence",response_model=AcceptanceEvidenceResponse)
+def evidence(instance_id:UUID,session:Annotated[Session,Depends(get_db)],context:Annotated[AuthContext,Depends(_permission("consent.acceptance.view_evidence"))]):
+    try:return acceptance_evidence(session,context,instance_id)
+    except (ConsentAcceptanceError,ConsentInstanceError) as exc:raise _error(exc)
+
+@private.get("/{instance_id}/final-document")
+def final_document(instance_id:UUID,request:Request,session:Annotated[Session,Depends(get_db)],context:Annotated[AuthContext,Depends(_permission("consent.final_document.download"))]):
+    try:
+        final,path=private_final_document(session,context,instance_id,get_request_metadata(request))
+        return FileResponse(path,media_type="application/pdf",filename=final.filename,headers={"Cache-Control":"private, no-store"})
+    except (ConsentAcceptanceError,ConsentInstanceError) as exc:raise _error(exc)
+
+@private.post("/{instance_id}/copy-deliveries/resend")
+def resend(instance_id:UUID,request:Request,session:Annotated[Session,Depends(get_db)],context:Annotated[AuthContext,Depends(_permission("consent.copy.resend"))]):
+    try:return resend_copy(session,context,instance_id,get_request_metadata(request))
+    except (ConsentAcceptanceError,ConsentInstanceError) as exc:raise _error(exc)

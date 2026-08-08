@@ -24,6 +24,11 @@ export interface ConsentVersion {
   used_variables: string[];
   variable_schema_snapshot: Record<string, unknown> | null;
   content_sha256: string | null;
+  source_library_version_id: string | null;
+  source_document_hash: string | null;
+  legacy_quarantined: boolean;
+  legacy_quarantine_reasons: string[];
+  legacy_quarantine_message: string | null;
   based_on_version_id: string | null;
   change_summary: string | null;
   scope_type: "GENERAL" | "SPECIFIC";
@@ -54,6 +59,9 @@ export interface ConsentTemplate {
   country_code: "CL" | "CO";
   language_code: "es-CL" | "es-CO";
   is_active: boolean;
+  template_origin: string;
+  content_responsibility: string;
+  source_library_document_id: string | null;
   published_version: ConsentVersion | null;
   draft_versions: ConsentVersion[];
   versions_count: number;

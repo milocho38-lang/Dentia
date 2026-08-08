@@ -215,3 +215,11 @@ No está jurídicamente aprobado y no autoriza implementación más allá de C01
 ## 11. Actualización técnica C019A.3
 
 Se implementó localmente el canal de revisión con correo OTP como decisión provisional y configurable. Esto no resuelve la suficiencia jurídica del mecanismo ni autoriza aceptación o firma. Los valores operativos y la compuerta para C019A.4 constan en `C019A3-Consent-Access-Decision-Update.md`.
+
+## 12. Actualización técnica C019A.4
+
+Se implementó el mecanismo técnico provisional para adulto actuando en nombre propio, evidencia, PDF y copia. Permanece bloqueado en producción y no resuelve las preguntas jurídicas D01/D05/D08/D12/D17. La compuerta está en `C019A4-Consent-Acceptance-Decision-Update.md`.
+
+## C019A4-LIB1
+
+Decisión: la biblioteca oficial se implementa como catálogo global desacoplado. La instalación exacta conserva contenido Dentia; las copias editables pasan a responsabilidad de la clínica. Documentos especiales no se ofrecen como consentimientos comunes.

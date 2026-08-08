@@ -8,6 +8,7 @@ import { Alert } from "@/components/shared/Alert";
 import { Modal } from "@/components/shared/Modal";
 import { Spinner } from "@/components/shared/Spinner";
 import { useAuth } from "@/hooks/useAuth";
+import { secureRandomUuid } from "@/lib/secureRandomUuid.mjs";
 import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
 import { listClinicalEvolutions } from "@/services/clinicalRecordService";
@@ -101,8 +102,7 @@ function odontogramEventScopeLabel(event: OdontogramEvent | null) {
 }
 
 function idempotencyKey(prefix: string) {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}-${secureRandomUuid()}`;
 }
 
 function errorMessage(error: unknown, fallback = "No fue posible completar la solicitud.") {
@@ -1670,7 +1670,7 @@ function ProcedureForm({
       surfaces: scopeType === "TOOTH_SURFACE" ? surfaces : null,
       idempotency_key:
         diagnosisMode !== "NONE"
-          ? `treatment-procedure-diagnosis-${crypto.randomUUID()}`
+          ? idempotencyKey("treatment-procedure-diagnosis")
           : undefined,
       diagnosis_mode: diagnosisMode,
       diagnosis_catalog_item_id: diagnosisMode !== "NONE" ? diagnosisCatalogItemId : null,

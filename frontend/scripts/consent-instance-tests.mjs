@@ -22,14 +22,26 @@ for (const expected of [
   "Editar contexto",
   "Guardar cambios",
   "ConsentAccessPanel",
+  "Crear nueva instancia de consentimiento",
+  "acceptance_compatible",
+  "ConsentRestrictedMarkdown",
   "Profesional y sede",
   "disabled={busy || !reviewed || selected.missing_variables.length > 0}",
+  "handledAcceptances.current.has(acceptanceId)",
+  "subscribeConsentSigned",
+  "getConsentInstance",
+  "pollingInFlight",
+  "window.setInterval",
+  "5000",
+  "document.visibilityState !== \"visible\"",
+  "Esperando la firma del paciente",
 ]) {
   assert.ok(workspace.includes(expected), `missing consent-instance UI contract: ${expected}`);
 }
 
 for (const endpoint of [
   "/api/consent-instances?patient_id=",
+  "/api/consent-instances/${id}",
   "/api/consent-instances/applicable-templates",
   "/api/consent-instances/batch",
   "method: \"PATCH\"",

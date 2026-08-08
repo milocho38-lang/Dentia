@@ -85,3 +85,7 @@ Nunca debe ocurrir:
 ## Regla para rutas nuevas
 
 Toda nueva ruta privada debe quedar clasificada en `backend/tests/route_security_registry.py`. Si es crítica, debe contar con DB-backed. Si es descarga, debe contar con DB-backed siempre.
+
+## C019A.4
+
+Aceptación, firma, evidencia, PDF y entregas incluyen `empresa_id` y se derivan de la sesión/instancia, nunca del request público. `PLATFORM_ADMIN` no recibe permisos clínicos. Secretaría no ve el manifiesto técnico. La descarga pública solo acepta un token separado, opaco, temporal y hasheado.

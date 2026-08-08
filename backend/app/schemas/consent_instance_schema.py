@@ -4,6 +4,46 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class ConsentResponsibleAdultInput(BaseModel):
+    patient_responsible_id: UUID | None = None
+    full_name: str | None = Field(default=None, max_length=250)
+    document_type: str | None = Field(default=None, max_length=30)
+    document_number: str | None = Field(default=None, max_length=80)
+    relationship_type: str = Field(max_length=40)
+    relationship_other: str | None = Field(default=None, max_length=160)
+    email: str | None = Field(default=None, max_length=220)
+    phone: str | None = Field(default=None, max_length=80)
+    identity_verified: bool = False
+
+    @field_validator("relationship_type")
+    @classmethod
+    def normalize_relationship(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @field_validator("full_name", "document_type", "document_number", "relationship_other", "phone", mode="before")
+    @classmethod
+    def clean_optional_text(cls, value):
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+
+class ConsentResponsibleAdultResponse(BaseModel):
+    id: UUID | None = None
+    patient_responsible_id: UUID | None = None
+    full_name: str | None = None
+    document_type: str | None = None
+    document_number: str | None = None
+    relationship_type: str | None = None
+    relationship_other: str | None = None
+    relationship_label: str | None = None
+    email_masked: str | None = None
+    phone: str | None = None
+    identity_verified_at: datetime | None = None
+    identity_verified_by: UUID | None = None
+
+
 class ConsentContextInput(BaseModel):
     patient_id: UUID
     site_id: UUID
@@ -13,6 +53,10 @@ class ConsentContextInput(BaseModel):
     procedure_catalog_ids: list[UUID] = Field(default_factory=list, max_length=50)
     dentist_profile_id: UUID
     clinical_date: date | None = None
+    signer_actor_type: str | None = Field(default=None, max_length=40)
+    responsible_adult: ConsentResponsibleAdultInput | None = None
+    minor_participation_status: str | None = Field(default=None, max_length=80)
+    minor_participation_observation: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
     def no_duplicates(self):
@@ -44,6 +88,7 @@ class ApplicableConsentTemplateResponse(BaseModel):
     missing_variables: list[str]
     missing_variable_labels: list[str]
     rendered_preview: str
+    signer_policy: str = "PATIENT_SELF"
 
 
 class ApplicableTemplatesResponse(BaseModel):
@@ -114,6 +159,13 @@ class ConsentInstanceResponse(BaseModel):
     clinical_date: date
     timezone: str
     display_title: str
+    signer_policy: str
+    signer_actor_type: str
+    signer_name: str | None
+    signer_email_masked: str | None
+    responsible_adult: ConsentResponsibleAdultResponse | None
+    minor_participation_status: str | None
+    minor_participation_observation: str | None
     rendered_content: str | None
     template_version_number: int
     template_content_sha256: str
@@ -124,6 +176,14 @@ class ConsentInstanceResponse(BaseModel):
     missing_variables: list[str]
     missing_variable_labels: list[str]
     context_snapshot: dict
+    acceptance_compatible: bool
+    acceptance_block_code: str | None
+    acceptance_block_message: str | None
+    is_test_document: bool
+    test_notice: str | None
+    legal_review_status: str | None
+    declaration_set_code: str | None
+    declaration_set_version: str | None
     procedures: list[ConsentInstanceProcedureResponse]
     professional_confirmed_at: datetime | None
     professional_confirmed_by: UUID | None

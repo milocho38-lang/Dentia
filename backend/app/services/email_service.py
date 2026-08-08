@@ -10,6 +10,7 @@ class EmailDelivery:
     recipient: str
     subject: str
     body: str
+    attachments: tuple[tuple[str, str, bytes], ...] = ()
 
 
 class EmailDeliveryError(RuntimeError):
@@ -52,6 +53,9 @@ class SmtpEmailProvider(EmailProvider):
         message["To"] = delivery.recipient
         message["Subject"] = delivery.subject
         message.set_content(delivery.body)
+        for filename, mime_type, content in delivery.attachments:
+            maintype, subtype = mime_type.split("/", 1)
+            message.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
         try:
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout_seconds) as client:
                 if settings.smtp_use_tls:

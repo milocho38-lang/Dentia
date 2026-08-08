@@ -68,7 +68,24 @@ def get_active_permission_codes(session: Session, user_id: UUID) -> list[str]:
         .distinct()
         .order_by(Permission.code)
     )
-    return list(session.scalars(statement))
+    permission_codes = set(session.scalars(statement))
+    role_codes = set(get_active_role_codes(session, user_id))
+    if role_codes.intersection({"ADMINISTRATOR", "DENTIST_ADMIN"}):
+        permission_codes.update(
+            {
+                "consent.library.read",
+                "consent.library.install",
+                "consent.library.clone",
+                "consent.responsible.read",
+                "consent.responsible.create",
+                "consent.responsible.update",
+            }
+        )
+    if role_codes.intersection({"DENTIST", "SECRETARY"}):
+        permission_codes.update({"consent.responsible.read", "consent.responsible.create", "consent.responsible.update"})
+    if "PLATFORM_ADMIN" in role_codes:
+        permission_codes.update({"consent.library.read", "consent.library.manage"})
+    return sorted(permission_codes)
 
 
 def get_active_site(session: Session, site_id: UUID | None) -> Site | None:

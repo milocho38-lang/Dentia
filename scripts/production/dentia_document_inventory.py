@@ -69,6 +69,33 @@ FROM (
     COALESCE(finalized_at::text, '') AS finalized_at
   FROM recetas
   WHERE estado IN ('FINALIZED', 'VOIDED')
+  UNION ALL
+  SELECT
+    'consent_final_pdf', d.id::text, d.empresa_id::text, a.status,
+    COALESCE(d.storage_key, ''),
+    CASE WHEN d.storage_key IS NULL OR d.storage_key = '' THEN '' ELSE 'backend/storage/consents/' || d.storage_key END,
+    COALESCE(d.sha256, ''), COALESCE(d.generated_at::text, '')
+  FROM consentimiento_documentos_finales d
+  JOIN consentimiento_aceptaciones a ON a.id = d.acceptance_id
+  WHERE a.status = 'COMPLETED'
+  UNION ALL
+  SELECT
+    'consent_signature', s.id::text, s.empresa_id::text, a.status,
+    COALESCE(s.storage_key, ''),
+    CASE WHEN s.storage_key IS NULL OR s.storage_key = '' THEN '' ELSE 'backend/storage/consents/' || s.storage_key END,
+    COALESCE(s.sha256, ''), COALESCE(s.created_at::text, '')
+  FROM consentimiento_firmas_artefactos s
+  JOIN consentimiento_aceptaciones a ON a.id = s.acceptance_id
+  WHERE a.status = 'COMPLETED'
+  UNION ALL
+  SELECT
+    'consent_evidence_manifest', m.id::text, m.empresa_id::text, a.status,
+    COALESCE(m.storage_key, ''),
+    CASE WHEN m.storage_key IS NULL OR m.storage_key = '' THEN '' ELSE 'backend/storage/consents/' || m.storage_key END,
+    COALESCE(m.manifest_sha256, ''), COALESCE(m.created_at::text, '')
+  FROM consentimiento_evidencia_manifiestos m
+  JOIN consentimiento_aceptaciones a ON a.id = m.acceptance_id
+  WHERE a.status = 'COMPLETED'
 ) AS documents
 ORDER BY entity_type, empresa_id, record_id;
 """

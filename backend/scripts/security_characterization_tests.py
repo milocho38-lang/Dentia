@@ -41,6 +41,9 @@ PUBLIC_ROUTES = {
     ("POST", "/api/public/consents/{token}/otp/verify"),
     ("GET", "/api/public/consents/{token}/document"),
     ("POST", "/api/public/consents/{token}/clarification"),
+    ("GET", "/api/public/consents/{token}/acceptance-requirements"),
+    ("POST", "/api/public/consents/{token}/acceptance"),
+    ("GET", "/api/public/consents/final-documents/{download_token}"),
 }
 
 AUTHENTICATED_ONLY_ROUTES = {
@@ -51,7 +54,7 @@ AUTHENTICATED_ONLY_ROUTES = {
     ("POST", "/api/auth/change-password"),
 }
 
-EXPECTED_ROUTE_COUNT = 229
+EXPECTED_ROUTE_COUNT = 241
 
 
 def read(relative: str) -> str:
@@ -228,6 +231,9 @@ class DocumentStorageSafetyTests(unittest.TestCase):
         self.assertIn("\"..\"", source)
         self.assertIn("member.issym() or member.islnk()", source)
         self.assertIn("hash_mismatch", source)
+        self.assertIn("consent_final_pdf", source)
+        self.assertIn("consent_signature", source)
+        self.assertIn("consent_evidence_manifest", source)
 
 
 class AuthorizationCatalogTests(unittest.TestCase):

@@ -1,8 +1,12 @@
-import { apiRequest } from "@/services/apiClient";
+import { apiBlob, apiRequest } from "@/services/apiClient";
 import type { ApplicableConsentTemplate, ConsentAccessAudit, ConsentAccessSession, ConsentClarification, ConsentContextInput, ConsentInstance, ConsentInstanceAudit } from "@/types/consentInstance";
 
 export async function listConsentInstances(patientId: string): Promise<ConsentInstance[]> {
   return (await apiRequest<{ items: ConsentInstance[] }>(`/api/consent-instances?patient_id=${encodeURIComponent(patientId)}`)).items;
+}
+
+export async function getConsentInstance(id: string): Promise<ConsentInstance> {
+  return apiRequest(`/api/consent-instances/${id}`);
 }
 
 export async function applicableConsentTemplates(context: ConsentContextInput): Promise<ApplicableConsentTemplate[]> {
@@ -40,3 +44,7 @@ export const reissueConsentAccess = (id: string) => apiRequest<ConsentAccessSess
 export const revokeConsentAccess = (instanceId: string, accessId: string, reason: string) => apiRequest<ConsentAccessSession>(`/api/consent-instances/${instanceId}/access-sessions/${accessId}/revoke`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
 export const listConsentClarifications = (id: string) => apiRequest<ConsentClarification[]>(`/api/consent-instances/${id}/clarifications`);
 export const resolveConsentClarification = (instanceId: string, clarificationId: string) => apiRequest<ConsentClarification>(`/api/consent-instances/${instanceId}/clarifications/${clarificationId}/resolve`, { method: "POST" });
+export type ConsentAcceptanceSummary = { acceptance_id:string; status:string; accepted_at:string; actor_type:string; patient_name:string; declarations_version:string; declaration_set_code:string; declarations_country_code:string; declarations_locale:string; declarations_legal_status:string; declarations_set_sha256:string; test_document:boolean; test_notice:string|null; final_document_sha256:string; copy_delivery_status:string|null };
+export const getConsentAcceptance = (id:string) => apiRequest<ConsentAcceptanceSummary>(`/api/consent-instances/${id}/acceptance`);
+export const downloadConsentFinalDocument = (id:string) => apiBlob(`/api/consent-instances/${id}/final-document`);
+export const resendConsentCopy = (id:string) => apiRequest<{status:string;recipient_masked:string;attempted_at:string}>(`/api/consent-instances/${id}/copy-deliveries/resend`,{method:"POST"});

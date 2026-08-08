@@ -259,6 +259,14 @@ class ConsentVersionResponse(BaseModel):
     used_variables: list[str]
     variable_schema_snapshot: dict | None
     content_sha256: str | None
+    source_library_version_id: UUID | None = None
+    source_document_hash: str | None = None
+    legacy_quarantined: bool = False
+    legacy_quarantine_reasons: list[str] = Field(default_factory=list)
+    legacy_quarantine_message: str | None = None
+    legal_review_status: str | None = None
+    clinical_review_status: str | None = None
+    reviewed_countries: list[str] = Field(default_factory=list)
     based_on_version_id: UUID | None
     change_summary: str | None
     scope_type: str
@@ -289,6 +297,9 @@ class ConsentTemplateResponse(BaseModel):
     country_code: str
     language_code: str
     is_active: bool
+    template_origin: str = "CLINIC_CUSTOM"
+    content_responsibility: str = "CLINIC"
+    source_library_document_id: UUID | None = None
     published_version: ConsentVersionResponse | None
     draft_versions: list[ConsentVersionResponse]
     versions_count: int

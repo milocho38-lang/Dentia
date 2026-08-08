@@ -16,6 +16,7 @@ from tests.security_guard import TestDatabaseTarget, assert_safe_test_database
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("JWT_SECRET", "dentia-test-secret-that-is-long-enough-for-local-tests")
 os.environ.setdefault("DENTIA_TEST_DATABASE_CONFIRMATION", "DENTIA_TEST_DATABASE_CONFIRMED")
+os.environ.setdefault("CONSENT_ACCEPTANCE_ENABLED", "true")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 assert_safe_test_database(
@@ -28,6 +29,7 @@ assert_safe_test_database(
 
 TEST_STORAGE_ROOT = Path(os.environ.get("DENTIA_TEST_STORAGE_ROOT", "/tmp/dentia-security-storage")).resolve()
 os.environ.setdefault("BRANDING_STORAGE_DIR", str(TEST_STORAGE_ROOT / "branding"))
+os.environ.setdefault("CONSENT_FINAL_STORAGE_DIR", str(TEST_STORAGE_ROOT / "consents"))
 
 from app.main import create_app  # noqa: E402
 from app.database.session import get_db  # noqa: E402

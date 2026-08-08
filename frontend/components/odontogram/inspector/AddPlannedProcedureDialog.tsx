@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/services/apiClient";
+import { secureRandomUuid } from "@/lib/secureRandomUuid.mjs";
 import { createPlannedProcedureFromOdontogramEvent } from "@/services/odontogramService";
 import { listProcedureCatalog, listTreatments } from "@/services/treatmentService";
 import type { OdontogramEvent, OdontogramLinkedProcedure } from "@/types/odontogram";
@@ -11,8 +12,7 @@ import { detailSurfaceLabel, eventCardTitle } from "./dentalInspectorMapper";
 const SURFACES = ["VESTIBULAR", "PALATAL", "LINGUAL", "MESIAL", "DISTAL", "OCCLUSAL", "INCISAL"];
 
 function newKey() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return `odontogram-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `odontogram-${secureRandomUuid()}`;
 }
 
 function firstEligibleDetail(event: OdontogramEvent) {
@@ -61,7 +61,7 @@ export function AddPlannedProcedureDialog({
   const [tooth, setTooth] = useState(scope.tooth);
   const [surfaces, setSurfaces] = useState<string[]>(scope.surfaces);
   const [observation, setObservation] = useState("");
-  const [idempotencyKey, setIdempotencyKey] = useState(newKey);
+  const [idempotencyKey, setIdempotencyKey] = useState("");
   const [warningLinks, setWarningLinks] = useState<OdontogramLinkedProcedure[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [createdNeedsRefresh, setCreatedNeedsRefresh] = useState(false);
@@ -113,8 +113,10 @@ export function AddPlannedProcedureDialog({
     setSaving(true);
     setError(null);
     try {
+      const requestKey = forceDuplicate ? newKey() : idempotencyKey || newKey();
+      if (!forceDuplicate && !idempotencyKey) setIdempotencyKey(requestKey);
       const response = await createPlannedProcedureFromOdontogramEvent(event.id, {
-        idempotency_key: forceDuplicate ? newKey() : idempotencyKey,
+        idempotency_key: requestKey,
         treatment_id: targetMode === "existing" ? treatmentId : null,
         new_treatment:
           targetMode === "new"
@@ -140,7 +142,7 @@ export function AddPlannedProcedureDialog({
       });
       if (response.similar_duplicate_detected) {
         setWarningLinks(response.linked_procedures);
-        setIdempotencyKey(newKey());
+        setIdempotencyKey("");
         return;
       }
       try {

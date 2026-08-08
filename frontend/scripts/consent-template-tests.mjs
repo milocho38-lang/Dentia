@@ -108,6 +108,43 @@ const component = fs.readFileSync(path.join(root, "frontend/components/consents/
 for (const expected of ["Nueva plantilla", "Nombre del consentimiento", "Personalizar título visible", "Título visible", "Nombre con el que encontrará esta plantilla en Dentia.", "Encabezado que aparecerá en el documento para el paciente.", "Editor de borrador", "Vista previa", "Publicar versión", "Historial de versiones", "Retirar", "Anular borrador", "disabled={saving}", "openCreateModal", "closeCreateModal", "resetCreateModalState", "ConsentVisualEditor", "borrador"] ) {
   assert.ok(component.includes(expected), `missing characterized UI contract: ${expected}`);
 }
+for (const expected of [
+  "const canReadLibrary = hasPermission(\"consent.library.read\")",
+  "const canManageLibrary = isPlatformAdmin && hasPermission(\"consent.library.manage\")",
+  "Biblioteca Dentia",
+  "{canReadLibrary && <button",
+  "setLibraryError",
+  "Reintentar",
+  "La Biblioteca Dentia todavía no tiene documentos disponibles en esta base de datos.",
+  "Pendiente de revisión humana antes de instalarse como oficial.",
+  "Normalización:",
+  "Apto para adulto en nombre propio",
+  "Adulto responsable requerido",
+  "Versión actual: v",
+  "Ver historial",
+  "Versión histórica no apta para nuevos consentimientos.",
+  "Firmante:",
+  "No requiere firma",
+  "Versión anterior no apta para nuevos consentimientos",
+  "getConsentLibrarySourceReview",
+  "Texto fuente de procedencia",
+  "Contenido normalizado para paciente",
+  "version.legal_review_status === \"APPROVED\" && version.clinical_review_status === \"APPROVED\"",
+  "Crear copia editable",
+  "{canManageLibrary && <button",
+  "Revisar equivalencia",
+  "const isPlatformAdmin = user?.roles.includes(\"PLATFORM_ADMIN\") ?? false",
+  "const canManageLibrary = isPlatformAdmin && hasPermission(\"consent.library.manage\")",
+  "libraryCurrentVersion",
+  "version.is_current",
+  "libraryAction(version.id, \"clone\")",
+]) {
+  assert.ok(component.includes(expected), `missing library UI contract: ${expected}`);
+}
+assert.equal(component.includes("libraryItems.length > 0 &&"), false, "library tab must not depend on non-empty items");
+assert.equal(component.includes("consent.library.manage\") && <button type=\"button\" onClick={() => setActiveTab(\"library\")"), false, "tenant library tab must not require manage permission");
+assert.equal(component.includes("item.versions.find((version) => version.country_code === \"CO\") ?? item.versions[0]"), false, "library cards must not select legacy v1 as current by insertion order");
+assert.equal(component.includes("item.versions.find((version) => version.country_code === \"CL\") ?? item.versions[0]"), false, "library cards must not select legacy v1 as current by insertion order");
 const visualComponent = fs.readFileSync(path.join(root, "frontend/components/consents/ConsentVisualEditor.tsx"), "utf8");
 for (const expected of ["Insertar dato automático", "Ver código de plantilla", "Volver al editor visual", "Quitar lista", "onPaste", "richTextHtmlToRestrictedMarkdown", "onEditorKeyDown", "role=\"toolbar\"", "aria-label=\"Contenido del consentimiento\""] ) {
   assert.ok(visualComponent.includes(expected), `missing visual editor contract: ${expected}`);

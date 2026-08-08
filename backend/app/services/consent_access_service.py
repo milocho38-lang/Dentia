@@ -12,11 +12,14 @@ from app.models.agenda import Patient
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
 from app.models.consent_template import ConsentAccessSession, ConsentClarificationRequest, ConsentInstance, ConsentInstanceProcedure, ConsentOtpChallenge, ConsentPublicSession
-from app.models.user import User
 from app.schemas.consent_access_schema import AccessAuditResponse, AccessIssuedResponse, AccessSessionResponse, ClarificationResponse, PublicConsentDocumentResponse
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.consent_library_normalization import validate_patient_facing_content
 from app.services.consent_instance_service import ConsentInstanceError, _require_instance, _verify_seal
+from app.services.consent_declaration_catalog import DECLARATION_SETS, TEST_DOCUMENT_NOTICE, declaration_set_for
+from app.services.consent_acceptance_context import inspect_acceptance_context
 from app.services.email_service import EmailDeliveryError, build_consent_otp_email, get_email_provider
+from app.services.consent_signer import RESPONSIBLE_ADULT, signer_snapshot_from_instance
 
 
 class ConsentAccessError(RuntimeError):
@@ -28,6 +31,7 @@ def _now(): return datetime.now(timezone.utc)
 def _hash(value: str) -> str: return hashlib.sha256(value.encode()).hexdigest()
 def _otp_hash(value: str) -> str: return hmac.new(settings.jwt_secret.encode(), value.encode(), hashlib.sha256).hexdigest()
 def _token() -> str: return secrets.token_urlsafe(32)
+def _public_path(token: str) -> str: return f"/consentimiento/{token}"
 
 
 def mask_email(email: str) -> str:
@@ -55,10 +59,12 @@ def issue_access(session: Session, context: AuthContext, instance_id: UUID, meta
     if instance.status not in ({"READY_FOR_REVIEW","PENDING_SIGNATURE"} if reissue else {"READY_FOR_REVIEW"}):
         raise ConsentAccessError("Solo una instancia revisada puede emitir acceso.",409)
     if instance.missing_variables: raise ConsentAccessError("La instancia todavía tiene variables pendientes.",409)
+    patient_content=instance.rendered_content_snapshot or ""; content_validation=validate_patient_facing_content(patient_content,allowed_variables=None,document_type=instance.document_kind,signer_compatibility=getattr(instance, "signer_policy", "PATIENT_SELF"),normalized_hash=_hash(patient_content),enforce_electronic_readiness=True)
+    if content_validation.status=="BLOCKED": raise ConsentAccessError("El documento no está disponible para firma electrónica. Contacta a la clínica.",409)
     _verify_seal(instance)
-    patient = session.scalar(select(Patient).where(Patient.id==instance.patient_id,Patient.company_id==instance.company_id))
-    email = (patient.email or "").strip() if patient else ""
-    if not email or "@" not in email: raise ConsentAccessError("El paciente no tiene un correo válido. Actualiza su ficha antes de emitir acceso.",422)
+    signer = signer_snapshot_from_instance(instance)
+    email = (signer.email or "").strip()
+    if not email or "@" not in email: raise ConsentAccessError("El firmante no tiene un correo válido. Actualiza la información antes de emitir acceso.",422)
     now=_now()
     active=list(session.scalars(select(ConsentAccessSession).where(ConsentAccessSession.consent_instance_id==instance.id,ConsentAccessSession.status.notin_(["REVOKED","EXPIRED"])).with_for_update()))
     if active and not reissue: raise ConsentAccessError("Ya existe un acceso activo. Revócalo o utiliza reemitir.",409)
@@ -70,7 +76,8 @@ def issue_access(session: Session, context: AuthContext, instance_id: UUID, meta
     previous=instance.status; instance.status="PENDING_SIGNATURE"; instance.updated_by=context.user.id; instance.row_version+=1
     _audit(session,access,"CONSENT_ACCESS_SESSION_REISSUED" if reissue else "CONSENT_ACCESS_SESSION_ISSUED",metadata,user_id=context.user.id,detail={"previous_instance_status":previous,"new_instance_status":instance.status,"expires_at":access.expires_at.isoformat()})
     session.commit()
-    return AccessIssuedResponse(**_response(access).model_dump(),public_url=f"{settings.public_frontend_url.rstrip('/')}/consentimiento/{raw}")
+    public_path = _public_path(raw)
+    return AccessIssuedResponse(**_response(access).model_dump(),public_url=f"{settings.public_frontend_url.rstrip('/')}{public_path}",public_path=public_path)
 
 
 def list_access(session: Session, context: AuthContext, instance_id: UUID) -> list[AccessSessionResponse]:
@@ -122,7 +129,7 @@ def public_link(session: Session, token: str, metadata: RequestMetadata):
 
 
 def request_otp(session: Session, token: str, metadata: RequestMetadata):
-    access=_public_access(session,token,metadata,lock=True); now=_now(); instance=session.get(ConsentInstance,access.consent_instance_id); patient=session.get(Patient,instance.patient_id); email=(patient.email or "").strip()
+    access=_public_access(session,token,metadata,lock=True); now=_now(); instance=session.get(ConsentInstance,access.consent_instance_id); signer=signer_snapshot_from_instance(instance); email=(signer.email or "").strip()
     recipient_hash=_otp_hash(email.casefold()); ip_hash=_hash(metadata.ip_address) if metadata.ip_address else None
     recent=now-timedelta(minutes=15); daily=now-timedelta(days=1)
     if ip_hash and session.scalar(select(func.count()).select_from(ConsentOtpChallenge).where(ConsentOtpChallenge.request_ip_hash==ip_hash,ConsentOtpChallenge.issued_at>=recent))>=settings.consent_otp_max_sends: raise ConsentAccessError("No fue posible enviar otro código en este momento.",429)
@@ -155,7 +162,10 @@ def verify_otp(session: Session, token: str, code: str, metadata: RequestMetadat
         _audit(session,access,"CONSENT_OTP_VERIFICATION_FAILED",metadata,result="FAILURE"); session.commit(); raise ConsentAccessError("El código no es válido o expiró.",429 if blocked else 400)
     challenge.status="VERIFIED"; challenge.verified_at=now; access.status="VERIFIED"; access.verified_at=now; access.last_activity_at=now; access.row_version+=1
     for old in session.scalars(select(ConsentPublicSession).where(ConsentPublicSession.access_session_id==access.id,ConsentPublicSession.status=="ACTIVE")): old.status="REVOKED"; old.revoked_at=now
-    raw=_token(); public=ConsentPublicSession(company_id=access.company_id,access_session_id=access.id,session_token_hash=_hash(raw),status="ACTIVE",issued_at=now,expires_at=now+timedelta(minutes=settings.consent_public_session_minutes),last_activity_at=now); session.add(public); _audit(session,access,"CONSENT_OTP_VERIFIED",metadata); _audit(session,access,"CONSENT_PUBLIC_SESSION_CREATED",metadata); session.commit()
+    raw=_token(); public=ConsentPublicSession(company_id=access.company_id,access_session_id=access.id,session_token_hash=_hash(raw),status="ACTIVE",issued_at=now,expires_at=now+timedelta(minutes=settings.consent_public_session_minutes),last_activity_at=now); session.add(public); instance=session.get(ConsentInstance,access.consent_instance_id); _audit(session,access,"CONSENT_OTP_VERIFIED",metadata);
+    if getattr(instance, "signer_actor_type", "PATIENT_SELF") == RESPONSIBLE_ADULT:
+        _audit(session,access,"RESPONSIBLE_ADULT_OTP_VERIFIED",metadata)
+    _audit(session,access,"CONSENT_PUBLIC_SESSION_CREATED",metadata); session.commit()
     return raw, public.expires_at
 
 
@@ -177,9 +187,12 @@ def _verified(session: Session, token: str, cookie: str | None, metadata: Reques
 
 
 def public_document(session: Session, token: str, cookie: str | None, metadata: RequestMetadata):
-    access,instance,_=_verified(session,token,cookie,metadata); company=session.get(Company,instance.company_id); patient=session.get(Patient,instance.patient_id); professional=session.get(User,instance.professional_user_id); procedures=list(session.scalars(select(ConsentInstanceProcedure).where(ConsentInstanceProcedure.instance_id==instance.id).order_by(ConsentInstanceProcedure.order_number)))
+    access,instance,_=_verified(session,token,cookie,metadata); company=session.get(Company,instance.company_id); procedures=list(session.scalars(select(ConsentInstanceProcedure).where(ConsentInstanceProcedure.instance_id==instance.id).order_by(ConsentInstanceProcedure.order_number)));context=instance.context_snapshot or {};patient_snapshot=context.get("patient") or {};professional_snapshot=context.get("professional") or {};compatibility=inspect_acceptance_context(instance);declaration_set=declaration_set_for(compatibility.country_code,compatibility.locale,actor_type=getattr(instance,"signer_actor_type","PATIENT_SELF"),app_env=settings.app_env,acceptance_enabled=settings.consent_acceptance_enabled,on_date=_now().date()) if compatibility.compatible else None;test_document=bool(declaration_set.is_test_document) if declaration_set else bool(settings.consent_acceptance_enabled and settings.app_env.casefold()!="production")
+    patient_content=instance.rendered_content_snapshot or ""; content_validation=validate_patient_facing_content(patient_content,allowed_variables=None,document_type=instance.document_kind,signer_compatibility=getattr(instance, "signer_policy", "PATIENT_SELF"),normalized_hash=_hash(patient_content),enforce_electronic_readiness=True)
+    if content_validation.status=="BLOCKED": raise ConsentAccessError("El documento no está disponible para firma electrónica. Contacta a la clínica.",409)
     now=_now(); first=access.viewed_at is None; access.viewed_at=access.viewed_at or now; access.status="VIEWED" if access.status!="CLARIFICATION_REQUESTED" else access.status; access.row_version+=1; _audit(session,access,"CONSENT_DOCUMENT_VIEWED",metadata,detail={"first_view":first}); session.commit()
-    return PublicConsentDocumentResponse(title=instance.display_title,clinic_name=company.name,patient_name=f"{patient.first_names} {patient.last_names}",professional_name=professional.name,clinical_date=instance.clinical_date.isoformat(),procedures=[p.name_snapshot for p in procedures],content=instance.rendered_content_snapshot or "",template_version=instance.template_version_number)
+    signer=signer_snapshot_from_instance(instance)
+    return PublicConsentDocumentResponse(title=instance.display_title,clinic_name=company.name,patient_name=patient_snapshot.get("full_name") or "Paciente",signer_actor_type=signer.actor_type,signer_name=signer.full_name,signer_relationship=signer.relationship_label,professional_name=professional_snapshot.get("full_name") or "Profesional",clinical_date=instance.clinical_date.isoformat(),procedures=[p.name_snapshot for p in procedures],content=patient_content,template_version=instance.template_version_number,test_document=test_document,is_test_document=test_document,test_notice=TEST_DOCUMENT_NOTICE if test_document else None,legal_review_status=declaration_set.legal_status if declaration_set else None,declaration_set_code=declaration_set.code if declaration_set else None,declaration_set_version=declaration_set.version if declaration_set else None,acceptance_compatible=compatibility.compatible,acceptance_block_message=compatibility.public_message)
 
 
 def create_clarification(session: Session, token: str, cookie: str | None, message: str | None, metadata: RequestMetadata):

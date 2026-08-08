@@ -44,6 +44,13 @@ def _error(exc: ConsentInstanceError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
+def _creation_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="No fue posible crear el consentimiento. Intenta nuevamente.",
+    )
+
+
 def require_consent_permission(permission: str):
     def permission_dependency(
         request: Request,
@@ -85,12 +92,14 @@ def instances(session: Annotated[Session, Depends(get_db)], context: Annotated[A
 def create(payload: ConsentInstanceCreateRequest, request: Request, session: Annotated[Session, Depends(get_db)], context: Annotated[AuthContext, Depends(require_consent_permission("consent.instance.create"))]):
     try: return create_batch(session, context, ConsentInstanceBatchCreateRequest(context=payload.context, template_version_ids=[payload.template_version_id]), get_request_metadata(request))[0]
     except ConsentInstanceError as exc: raise _error(exc)
+    except Exception as exc: raise _creation_error() from exc
 
 
 @router.post("/batch", response_model=list[ConsentInstanceResponse], status_code=201)
 def batch(payload: ConsentInstanceBatchCreateRequest, request: Request, session: Annotated[Session, Depends(get_db)], context: Annotated[AuthContext, Depends(require_consent_permission("consent.instance.create"))]):
     try: return create_batch(session, context, payload, get_request_metadata(request))
     except ConsentInstanceError as exc: raise _error(exc)
+    except Exception as exc: raise _creation_error() from exc
 
 
 @router.get("/{instance_id}", response_model=ConsentInstanceResponse)

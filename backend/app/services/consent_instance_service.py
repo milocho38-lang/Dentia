@@ -1,15 +1,17 @@
 import hashlib
 import hmac
 import json
+import logging
 import re
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.agenda import Appointment, Dentist, DentistSite, Patient
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
@@ -20,6 +22,7 @@ from app.models.consent_template import (
     ConsentInstance,
     ConsentInstanceProcedure,
     ConsentInstanceSequence,
+    ConsentResponsibleAdult,
     ConsentTemplate,
     ConsentTemplateVersion,
 )
@@ -37,18 +40,35 @@ from app.schemas.consent_instance_schema import (
     ConsentInstancePreviewResponse,
     ConsentInstanceProcedureResponse,
     ConsentInstanceResponse,
+    ConsentResponsibleAdultResponse,
     ConsentInstanceUpdateRequest,
     ConsentInstanceVoidRequest,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.consent_library_normalization import validate_patient_facing_content
 from app.services.consent_template_service import VARIABLE_CATALOG, find_applicable_published_templates, validate_content
 from app.services.patient_service import calculate_age
+from app.services.consent_acceptance_context import (
+    ACCEPTANCE_CONTEXT_SCHEMA_VERSION,
+    JURISDICTION_CODES,
+    inspect_acceptance_context,
+)
+from app.services.consent_declaration_catalog import DECLARATION_SETS, TEST_DOCUMENT_NOTICE, declaration_set_for
+from app.services.consent_signer import (
+    RESPONSIBLE_ADULT,
+    apply_signer_snapshot,
+    canonical_signer_policy,
+    resolve_signer_snapshot,
+    responsible_relationship_label,
+    signer_policy_from_library_version,
+)
 from app.services.site_access_service import authorized_site_ids
 from app.utils.clinical_dates import clinical_date_or_local_default, effective_timezone
 
 
 PREVIEW_WARNING = "Documento preparado para revisión profesional. Todavía no ha sido enviado ni firmado."
 VARIABLE_PATTERN = re.compile(r"\{\{\s*([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)\s*\}\}")
+logger = logging.getLogger(__name__)
 
 
 class ConsentInstanceError(RuntimeError):
@@ -68,6 +88,107 @@ def _sha(value) -> str:
 
 def _label(code: str) -> str:
     return VARIABLE_CATALOG.get(code, (code, "", "", ""))[0]
+
+
+def _ensure_patient_facing_snapshot(content: str | None, document_kind: str, signer_policy: str = "PATIENT_SELF") -> None:
+    validation = validate_patient_facing_content(
+        content or "",
+        allowed_variables=None,
+        document_type=document_kind,
+        signer_compatibility=canonical_signer_policy(signer_policy),
+        normalized_hash=_sha(content or ""),
+        enforce_electronic_readiness=True,
+    )
+    if validation.status == "BLOCKED":
+        raise ConsentInstanceError(
+            "El contenido del consentimiento contiene artefactos internos de biblioteca o no es compatible con el flujo electrónico actual.",
+            422,
+        )
+
+
+def _mask_email(email: str | None) -> str | None:
+    if not email or "@" not in email:
+        return None
+    local, domain = email.split("@", 1)
+    return f"{local[:1]}***@{domain}"
+
+
+def _signer_context_dict(signer) -> dict:
+    return {
+        "policy": signer.policy,
+        "actor_type": signer.actor_type,
+        "full_name": signer.full_name,
+        "document_type": signer.document_type,
+        "document_number": signer.document_number,
+        "email_masked": signer.recipient_masked,
+        "phone": signer.phone,
+        "relationship_type": signer.relationship_type,
+        "relationship_other": signer.relationship_other,
+        "relationship_label": signer.relationship_label,
+        "minor_participation_status": signer.minor_participation_status,
+        "minor_participation_observation": signer.minor_participation_observation,
+    }
+
+
+def _responsible_response(session: Session, instance: ConsentInstance) -> ConsentResponsibleAdultResponse | None:
+    row = session.scalar(select(ConsentResponsibleAdult).where(ConsentResponsibleAdult.consent_instance_id == instance.id))
+    if not row:
+        return None
+    relationship_label = responsible_relationship_label(row.relationship_type, row.relationship_other)
+    return ConsentResponsibleAdultResponse(
+        id=row.id,
+        patient_responsible_id=row.patient_responsible_id,
+        full_name=row.full_name,
+        document_type=row.document_type,
+        document_number=row.document_number,
+        relationship_type=row.relationship_type,
+        relationship_other=row.relationship_other,
+        relationship_label=relationship_label,
+        email_masked=_mask_email(row.email),
+        phone=row.phone,
+        identity_verified_at=row.identity_verified_at,
+        identity_verified_by=row.identity_verified_by,
+    )
+
+
+def _save_responsible_snapshot(session: Session, context: AuthContext, instance: ConsentInstance, signer) -> None:
+    existing = session.scalar(select(ConsentResponsibleAdult).where(ConsentResponsibleAdult.consent_instance_id == instance.id).with_for_update())
+    if signer.actor_type != RESPONSIBLE_ADULT:
+        if existing:
+            session.delete(existing)
+        return
+    statement = "La clínica verificó presencialmente la identidad del adulto responsable y registró sus datos antes de emitir el consentimiento."
+    if existing is None:
+        existing = ConsentResponsibleAdult(
+            company_id=instance.company_id,
+            patient_id=instance.patient_id,
+            consent_instance_id=instance.id,
+            patient_responsible_id=signer.responsible_adult_id,
+            full_name=signer.full_name,
+            document_type=signer.document_type or "No informado",
+            document_number=signer.document_number or "No informado",
+            relationship_type=signer.relationship_type or "OTHER",
+            relationship_other=signer.relationship_other,
+            email=signer.email,
+            phone=signer.phone or "No informado",
+            identity_verified_by=context.user.id,
+            identity_verified_at=_now(),
+            verification_statement=statement,
+        )
+        session.add(existing)
+    else:
+        existing.patient_responsible_id=signer.responsible_adult_id
+        existing.full_name=signer.full_name
+        existing.document_type=signer.document_type or "No informado"
+        existing.document_number=signer.document_number or "No informado"
+        existing.relationship_type=signer.relationship_type or "OTHER"
+        existing.relationship_other=signer.relationship_other
+        existing.email=signer.email
+        existing.phone=signer.phone or "No informado"
+        existing.identity_verified_by=context.user.id
+        existing.identity_verified_at=_now()
+        existing.verification_statement=statement
+        existing.row_version += 1
 
 
 def _audit(session: Session, context: AuthContext, metadata: RequestMetadata, instance: ConsentInstance, action: str, *, before: str | None = None, detail: dict | None = None, result: str = "SUCCESS") -> None:
@@ -142,13 +263,25 @@ def _values(company, site, patient, user, dentist, treatment, procedures: list[d
         "document.language": language_code, "document.version": str(version_number),
     }
     procedure_snapshot = json.loads(json.dumps(procedures, default=str))
+    jurisdiction_code = JURISDICTION_CODES.get((country_code, language_code))
     context_snapshot = {
+        "schema_version": ACCEPTANCE_CONTEXT_SCHEMA_VERSION,
         "patient": {"id": str(patient.id), "full_name": values["patient.full_name"], "document_type": patient.document_type, "document_number": patient.document, "birth_date": values["patient.birth_date"], "age": age},
         "company": {"id": str(company.id), "name": company.name, "tax_id": company.tax_id},
-        "site": {"id": str(site.id), "name": site.name, "address": site.address, "city": site.city, "timezone": timezone_name},
+        "site": {"id": str(site.id), "name": site.name, "address": site.address, "city": site.city, "country_code": country_code, "timezone": timezone_name},
         "professional": {"user_id": str(user.id), "dentist_profile_id": str(dentist.id), "full_name": user.name, "specialty": company.professional_specialty, "license_number": company.professional_license},
         "treatment": {"id": str(treatment.id), "name": treatment.name, "description": treatment.description} if treatment else None,
-        "procedures": procedure_snapshot, "clinical_date": clinical_date.isoformat(), "generated_at_utc": _now().isoformat(),
+        "procedures": procedure_snapshot,
+        "template": {"country_code": country_code, "locale": language_code, "version_number": version_number},
+        "document": {
+            "schema_version": ACCEPTANCE_CONTEXT_SCHEMA_VERSION,
+            "country": country_code,
+            "country_code": country_code,
+            "locale": language_code,
+            "jurisdiction_code": jurisdiction_code,
+            "timezone": timezone_name,
+        },
+        "clinical_date": clinical_date.isoformat(), "generated_at_utc": _now().isoformat(),
     }
     return values, context_snapshot
 
@@ -212,7 +345,15 @@ def _verify_seal(instance: ConsentInstance) -> None:
 def _response(session: Session, instance: ConsentInstance) -> ConsentInstanceResponse:
     _verify_seal(instance)
     rows = _procedures(session, instance.id)
-    return ConsentInstanceResponse(id=instance.id, visible_number=instance.visible_number, patient_id=instance.patient_id, site_id=instance.site_id, template_id=instance.template_id, template_version_id=instance.template_version_id, appointment_id=instance.appointment_id, treatment_id=instance.treatment_id, professional_user_id=instance.professional_user_id, dentist_profile_id=instance.dentist_profile_id, status=instance.status, document_kind=instance.document_kind, country_code=instance.country_code, language_code=instance.language_code, clinical_date=instance.clinical_date, timezone=instance.timezone_name, display_title=instance.display_title, rendered_content=instance.rendered_content_snapshot, template_version_number=instance.template_version_number, template_content_sha256=instance.template_content_sha256, instance_content_sha256=instance.instance_content_sha256, context_sha256=instance.context_sha256, integrity_hash=instance.integrity_hash, variable_values=instance.variable_values_snapshot, missing_variables=instance.missing_variables, missing_variable_labels=[_label(code) for code in instance.missing_variables], context_snapshot=instance.context_snapshot, procedures=[ConsentInstanceProcedureResponse(id=row.id, procedure_catalog_id=row.procedure_catalog_id, treatment_procedure_id=row.treatment_procedure_id, code=row.code_snapshot, name=row.name_snapshot, description=row.description_snapshot, order=row.order_number) for row in rows], professional_confirmed_at=instance.professional_confirmed_at, professional_confirmed_by=instance.professional_confirmed_by, ready_at=instance.ready_at, voided_at=instance.voided_at, voided_by=instance.voided_by, void_reason=instance.void_reason, row_version=instance.row_version, created_by=instance.created_by, updated_by=instance.updated_by, created_at=instance.created_at, updated_at=instance.updated_at)
+    compatibility = inspect_acceptance_context(instance)
+    declaration_set = None
+    if compatibility.compatible:
+        try:
+            declaration_set = declaration_set_for(compatibility.country_code, compatibility.locale, actor_type=getattr(instance, "signer_actor_type", "PATIENT_SELF"), app_env=settings.app_env, acceptance_enabled=settings.consent_acceptance_enabled, on_date=_now().date())
+        except Exception:
+            declaration_set = None
+    is_test_document = declaration_set.is_test_document if declaration_set else bool(settings.consent_acceptance_enabled and settings.app_env.casefold() != "production")
+    return ConsentInstanceResponse(id=instance.id, visible_number=instance.visible_number, patient_id=instance.patient_id, site_id=instance.site_id, template_id=instance.template_id, template_version_id=instance.template_version_id, appointment_id=instance.appointment_id, treatment_id=instance.treatment_id, professional_user_id=instance.professional_user_id, dentist_profile_id=instance.dentist_profile_id, status=instance.status, document_kind=instance.document_kind, country_code=instance.country_code, language_code=instance.language_code, clinical_date=instance.clinical_date, timezone=instance.timezone_name, display_title=instance.display_title, signer_policy=getattr(instance, "signer_policy", "PATIENT_SELF"), signer_actor_type=getattr(instance, "signer_actor_type", "PATIENT_SELF"), signer_name=getattr(instance, "signer_full_name_snapshot", None), signer_email_masked=_mask_email(getattr(instance, "signer_email_snapshot", None)), responsible_adult=_responsible_response(session, instance), minor_participation_status=getattr(instance, "minor_participation_status", None), minor_participation_observation=getattr(instance, "minor_participation_observation", None), rendered_content=instance.rendered_content_snapshot, template_version_number=instance.template_version_number, template_content_sha256=instance.template_content_sha256, instance_content_sha256=instance.instance_content_sha256, context_sha256=instance.context_sha256, integrity_hash=instance.integrity_hash, variable_values=instance.variable_values_snapshot, missing_variables=instance.missing_variables, missing_variable_labels=[_label(code) for code in instance.missing_variables], context_snapshot=instance.context_snapshot, acceptance_compatible=compatibility.compatible, acceptance_block_code=compatibility.code, acceptance_block_message=compatibility.private_message, is_test_document=is_test_document, test_notice=TEST_DOCUMENT_NOTICE if is_test_document else None, legal_review_status=declaration_set.legal_status if declaration_set else None, declaration_set_code=declaration_set.code if declaration_set else None, declaration_set_version=declaration_set.version if declaration_set else None, procedures=[ConsentInstanceProcedureResponse(id=row.id, procedure_catalog_id=row.procedure_catalog_id, treatment_procedure_id=row.treatment_procedure_id, code=row.code_snapshot, name=row.name_snapshot, description=row.description_snapshot, order=row.order_number) for row in rows], professional_confirmed_at=instance.professional_confirmed_at, professional_confirmed_by=instance.professional_confirmed_by, ready_at=instance.ready_at, voided_at=instance.voided_at, voided_by=instance.voided_by, void_reason=instance.void_reason, row_version=instance.row_version, created_by=instance.created_by, updated_by=instance.updated_by, created_at=instance.created_at, updated_at=instance.updated_at)
 
 
 def applicable_templates(session: Session, context: AuthContext, payload: ConsentContextInput) -> ApplicableTemplatesResponse:
@@ -228,6 +369,9 @@ def applicable_templates(session: Session, context: AuthContext, payload: Consen
         values, _ = _values(company, site, patient, user, dentist, treatment, procedures, clinical_date_or_local_default(payload.clinical_date, company, site), effective_timezone(company, site), version.version_number, candidate.country_code, candidate.language_code)
         used = validate_content(version.content, require_registered=True).used_variables
         rendered, missing = _resolve_content(version.content, values)
+        candidate_template = session.get(ConsentTemplate, candidate.template_id)
+        signer_policy = signer_policy_from_library_version(session, version)
+        _ensure_patient_facing_snapshot(rendered, candidate_template.document_kind, signer_policy)
         reason_codes = ["GENERAL_TEMPLATE"] if candidate.scope_type == "GENERAL" else []
         reasons = ["Plantilla general"] if candidate.scope_type == "GENERAL" else []
         if candidate.site_ids:
@@ -239,7 +383,7 @@ def applicable_templates(session: Session, context: AuthContext, payload: Consen
         if candidate.scope_type == "SPECIFIC" and candidate.specialties:
             reason_codes.append("SPECIALTY_MATCH")
             reasons.append("Aplica por especialidad")
-        result.append(ApplicableConsentTemplateResponse(template_id=candidate.template_id, version_id=candidate.version_id, template_name=candidate.template_name, title=version.title, document_kind=session.get(ConsentTemplate, candidate.template_id).document_kind, country_code=candidate.country_code, language_code=candidate.language_code, version_number=candidate.version_number, applicability_reason_codes=reason_codes, applicability_reasons=reasons, covered_procedure_ids=sorted(catalog_ids.intersection(set(candidate.procedure_ids)), key=str), required_variables=used, required_variable_labels=[_label(code) for code in used], missing_variables=missing, missing_variable_labels=[_label(code) for code in missing], rendered_preview=rendered))
+        result.append(ApplicableConsentTemplateResponse(template_id=candidate.template_id, version_id=candidate.version_id, template_name=candidate.template_name, title=version.title, document_kind=candidate_template.document_kind, country_code=candidate.country_code, language_code=candidate.language_code, version_number=candidate.version_number, applicability_reason_codes=reason_codes, applicability_reasons=reasons, covered_procedure_ids=sorted(catalog_ids.intersection(set(candidate.procedure_ids)), key=str), required_variables=used, required_variable_labels=[_label(code) for code in used], missing_variables=missing, missing_variable_labels=[_label(code) for code in missing], rendered_preview=rendered, signer_policy=signer_policy))
     return ApplicableTemplatesResponse(items=result, total=len(result))
 
 
@@ -257,25 +401,49 @@ def _create_one(session: Session, context: AuthContext, payload: ConsentContextI
     procedure_data = _procedure_rows(treatment_procedures, catalog_items)
     clinical_date = clinical_date_or_local_default(payload.clinical_date, company, site)
     timezone_name = effective_timezone(company, site)
+    signer_policy = signer_policy_from_library_version(session, version)
+    try:
+        signer = resolve_signer_snapshot(session, company_id=company.id, patient=patient, payload_context=payload, policy=signer_policy, actor_type=payload.signer_actor_type, verified_by_user_id=context.user.id)
+    except ValueError as exc:
+        raise ConsentInstanceError(str(exc), 422) from exc
     values, context_snapshot = _values(company, site, patient, user, dentist, treatment, procedure_data, clinical_date, timezone_name, version.version_number, template.country_code, template.language_code)
+    context_snapshot["signer"] = _signer_context_dict(signer)
     rendered, missing = _resolve_content(version.content, values)
+    _ensure_patient_facing_snapshot(rendered, template.document_kind, signer_policy)
     sequence, visible = _next_number(session, company.id)
     instance = ConsentInstance(company_id=company.id, site_id=site.id, patient_id=patient.id, template_id=template.id, template_version_id=version.id, appointment_id=appointment.id if appointment else None, treatment_id=treatment.id if treatment else None, professional_user_id=user.id, dentist_profile_id=dentist.id, sequence_number=sequence, visible_number=visible, status="DRAFT", document_kind=template.document_kind, country_code=template.country_code, language_code=template.language_code, clinical_date=clinical_date, timezone_name=timezone_name, display_title=version.title, rendered_content_snapshot=rendered, template_content_snapshot=version.content, variable_values_snapshot=values, missing_variables=missing, context_snapshot=context_snapshot, template_version_number=version.version_number, template_content_sha256=version.content_sha256 or _sha(version.content), created_by=context.user.id, updated_by=context.user.id)
-    session.add(instance); session.flush()
+    apply_signer_snapshot(instance, signer); instance.signer_selected_by = context.user.id
+    session.add(instance); session.flush(); _save_responsible_snapshot(session, context, instance, signer)
     for order, item in enumerate(procedure_data, 1):
         session.add(ConsentInstanceProcedure(company_id=company.id, instance_id=instance.id, procedure_catalog_id=item["catalog_id"], treatment_procedure_id=item["treatment_id"], code_snapshot=item["code"], name_snapshot=item["name"], description_snapshot=item["description"], order_number=order))
     _audit(session, context, metadata, instance, "CONSENT_INSTANCE_CREATED", detail={"template_version_id": str(version.id), "visible_number": visible, "procedure_count": len(procedure_data)})
     _audit(session, context, metadata, instance, "CONSENT_INSTANCE_TEMPLATE_SELECTED", detail={"template_id": str(template.id), "template_version_id": str(version.id)})
+    _audit(session, context, metadata, instance, "CONSENT_SIGNER_MODE_SELECTED", detail={"signer_policy": instance.signer_policy, "signer_actor_type": instance.signer_actor_type})
+    if instance.signer_actor_type == RESPONSIBLE_ADULT:
+        _audit(session, context, metadata, instance, "RESPONSIBLE_ADULT_SELECTED", detail={"relationship_type": instance.signer_relationship_type_snapshot})
+        if signer.responsible_adult_id is None:
+            _audit(session, context, metadata, instance, "RESPONSIBLE_ADULT_CREATED", detail={"relationship_type": instance.signer_relationship_type_snapshot})
+        _audit(session, context, metadata, instance, "RESPONSIBLE_ADULT_IDENTITY_CONFIRMED")
+        if instance.minor_participation_status:
+            _audit(session, context, metadata, instance, "MINOR_PARTICIPATION_RECORDED", detail={"status": instance.minor_participation_status})
     _audit(session, context, metadata, instance, "CONSENT_INSTANCE_VARIABLES_RESOLVED", detail={"missing_variable_count": len(missing)})
     return instance
 
 
 def create_batch(session: Session, context: AuthContext, payload: ConsentInstanceBatchCreateRequest, metadata: RequestMetadata) -> list[ConsentInstanceResponse]:
+    correlation_id = uuid4().hex
     try:
         instances = [_create_one(session, context, payload.context, version_id, metadata) for version_id in payload.template_version_ids]
         session.commit()
     except Exception:
         session.rollback()
+        logger.exception(
+            "Consent instance batch creation failed correlation_id=%s company_id=%s actor_id=%s template_count=%s",
+            correlation_id,
+            context.user.company_id,
+            context.user.id,
+            len(payload.template_version_ids),
+        )
         raise
     return [_response(session, item) for item in instances]
 
@@ -301,9 +469,16 @@ def update_instance(session: Session, context: AuthContext, instance_id: UUID, p
     procedure_data = _procedure_rows(treatment_procedures, catalog_items)
     clinical_date = clinical_date_or_local_default(payload.clinical_date, company, site)
     timezone_name = effective_timezone(company, site)
+    signer_policy = signer_policy_from_library_version(session, version)
+    try:
+        signer = resolve_signer_snapshot(session, company_id=company.id, patient=patient, payload_context=payload, policy=signer_policy, actor_type=payload.signer_actor_type or instance.signer_actor_type, verified_by_user_id=context.user.id)
+    except ValueError as exc:
+        raise ConsentInstanceError(str(exc), 422) from exc
     values, snapshot = _values(company, site, patient, user, dentist, treatment, procedure_data, clinical_date, timezone_name, version.version_number, instance.country_code, instance.language_code)
+    snapshot["signer"] = _signer_context_dict(signer)
     rendered, missing = _resolve_content(instance.template_content_snapshot, values)
-    instance.site_id=site.id; instance.appointment_id=appointment.id if appointment else None; instance.treatment_id=treatment.id if treatment else None; instance.professional_user_id=user.id; instance.dentist_profile_id=dentist.id; instance.clinical_date=clinical_date; instance.timezone_name=timezone_name; instance.variable_values_snapshot=values; instance.context_snapshot=snapshot; instance.rendered_content_snapshot=rendered; instance.missing_variables=missing; instance.updated_by=context.user.id; instance.row_version += 1
+    _ensure_patient_facing_snapshot(rendered, instance.document_kind, signer_policy)
+    instance.site_id=site.id; instance.appointment_id=appointment.id if appointment else None; instance.treatment_id=treatment.id if treatment else None; instance.professional_user_id=user.id; instance.dentist_profile_id=dentist.id; instance.clinical_date=clinical_date; instance.timezone_name=timezone_name; instance.variable_values_snapshot=values; instance.context_snapshot=snapshot; instance.rendered_content_snapshot=rendered; instance.missing_variables=missing; apply_signer_snapshot(instance, signer); instance.signer_selected_by=context.user.id; _save_responsible_snapshot(session, context, instance, signer); instance.updated_by=context.user.id; instance.row_version += 1
     session.execute(delete(ConsentInstanceProcedure).where(ConsentInstanceProcedure.instance_id == instance.id))
     for order, item in enumerate(procedure_data, 1): session.add(ConsentInstanceProcedure(company_id=company.id, instance_id=instance.id, procedure_catalog_id=item["catalog_id"], treatment_procedure_id=item["treatment_id"], code_snapshot=item["code"], name_snapshot=item["name"], description_snapshot=item["description"], order_number=order))
     _audit(session, context, metadata, instance, "CONSENT_INSTANCE_CONTEXT_UPDATED", detail={"row_version": instance.row_version})
@@ -320,6 +495,7 @@ def resolve_instance(session: Session, context: AuthContext, instance_id: UUID, 
 
 def preview_instance(session: Session, context: AuthContext, instance_id: UUID, metadata: RequestMetadata) -> ConsentInstancePreviewResponse:
     instance = _require_instance(session, context, instance_id)
+    _ensure_patient_facing_snapshot(instance.rendered_content_snapshot, instance.document_kind, getattr(instance, "signer_policy", "PATIENT_SELF"))
     _audit(session, context, metadata, instance, "CONSENT_INSTANCE_PREVIEWED", detail={"missing_variable_count": len(instance.missing_variables)})
     session.commit(); return ConsentInstancePreviewResponse(warning=PREVIEW_WARNING, instance=_response(session, instance))
 
@@ -330,6 +506,7 @@ def confirm_professionally(session: Session, context: AuthContext, instance_id: 
     if instance.status != "DRAFT": raise ConsentInstanceError("La instancia ya no está disponible para revisión.", 409)
     if payload.row_version != instance.row_version: raise ConsentInstanceError("La instancia cambió. Recarga antes de confirmar.", 409)
     if instance.missing_variables: raise ConsentInstanceError("No se puede confirmar mientras existan datos faltantes: " + ", ".join(_label(code) for code in instance.missing_variables), 422)
+    _ensure_patient_facing_snapshot(instance.rendered_content_snapshot, instance.document_kind, getattr(instance, "signer_policy", "PATIENT_SELF"))
     dentist = session.scalar(select(Dentist).where(Dentist.company_id == context.user.company_id, Dentist.user_id == context.user.id, Dentist.is_active.is_(True)))
     if dentist is None or instance.professional_user_id != context.user.id:
         raise ConsentInstanceError("La confirmación debe realizarla el profesional seleccionado con perfil odontológico activo.", 403)
@@ -347,6 +524,7 @@ def mark_pending_signature(session: Session, context: AuthContext, instance_id: 
 def void_instance(session: Session, context: AuthContext, instance_id: UUID, payload: ConsentInstanceVoidRequest, metadata: RequestMetadata) -> ConsentInstanceResponse:
     instance = _require_instance(session, context, instance_id, lock=True)
     if instance.status == "VOIDED": raise ConsentInstanceError("La instancia ya está anulada.", 409)
+    if instance.status == "SIGNED": raise ConsentInstanceError("Una instancia firmada es inmutable y no puede anularse desde este flujo.", 409)
     before=instance.status; instance.status="VOIDED"; instance.voided_at=_now(); instance.voided_by=context.user.id; instance.void_reason=payload.reason; instance.updated_by=context.user.id; instance.row_version += 1
     for access in session.scalars(select(ConsentAccessSession).where(ConsentAccessSession.consent_instance_id == instance.id, ConsentAccessSession.status.notin_(["REVOKED", "EXPIRED"])).with_for_update()):
         access.status = "REVOKED"; access.revoked_at = _now(); access.revoked_by = context.user.id; access.revoke_reason = "INSTANCE_VOIDED"; access.row_version += 1

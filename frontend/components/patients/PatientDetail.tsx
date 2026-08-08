@@ -540,6 +540,9 @@ export function PatientDetail({ patientId }: { patientId: string }) {
             canReissueAccess={hasPermission("consent.access.reissue")}
             canManageClarifications={hasPermission("consent.clarification.manage")}
             canViewAccessAudit={hasPermission("consent.access.view_audit")}
+            canReadAcceptance={hasPermission("consent.acceptance.read")}
+            canDownloadFinal={hasPermission("consent.final_document.download")}
+            canResendCopy={hasPermission("consent.copy.resend")}
           />
         )}
 

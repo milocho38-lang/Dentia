@@ -82,6 +82,9 @@ PUBLIC_ROUTES = {
     ("POST", "/api/public/consents/{token}/otp/verify"),
     ("GET", "/api/public/consents/{token}/document"),
     ("POST", "/api/public/consents/{token}/clarification"),
+    ("GET", "/api/public/consents/{token}/acceptance-requirements"),
+    ("POST", "/api/public/consents/{token}/acceptance"),
+    ("GET", "/api/public/consents/final-documents/{download_token}"),
 }
 
 AUTHENTICATED_ONLY_ROUTES = {
@@ -102,6 +105,8 @@ def _module_for(path: str) -> str:
         return "consent_access_public"
     if path.startswith("/api/platform"):
         return "platform"
+    if path.startswith("/api/consent-library"):
+        return "consent_library"
     if path.startswith(("/api/consent-templates", "/api/consent-template-catalog")):
         return "consent_templates"
     if path.startswith("/api/consent-instances"):
@@ -164,7 +169,7 @@ def _category_for(path: str) -> RouteCategory:
         return RouteCategory.FILE_DOWNLOAD
     if path.startswith(("/api/finance", "/api/payments", "/api/budgets")):
         return RouteCategory.FINANCIAL
-    if path.startswith(("/api/company", "/api/sites", "/api/dentists", "/api/users", "/api/procedure-catalog", "/api/consent-templates", "/api/consent-template-catalog")):
+    if path.startswith(("/api/company", "/api/sites", "/api/dentists", "/api/users", "/api/procedure-catalog", "/api/consent-library", "/api/consent-templates", "/api/consent-template-catalog")):
         return RouteCategory.ADMINISTRATIVE
     if path.startswith("/api/reports"):
         return RouteCategory.FINANCIAL
@@ -173,6 +178,8 @@ def _category_for(path: str) -> RouteCategory:
 
 def _scope_for(path: str) -> Scope:
     if path.startswith("/api/platform"):
+        return Scope.PLATFORM
+    if path.startswith("/api/consent-library") and "approve-equivalence" in path:
         return Scope.PLATFORM
     if path.startswith("/api/auth"):
         return Scope.USER
@@ -198,6 +205,8 @@ def _controls_for(path: str, category: RouteCategory) -> tuple[ControlType, ...]
 
 def _is_critical(path: str, method: str, category: RouteCategory) -> bool:
     if category in {RouteCategory.FILE_DOWNLOAD, RouteCategory.FINANCIAL, RouteCategory.PLATFORM}:
+        return True
+    if path.startswith("/api/consent-library") and "approve-equivalence" in path:
         return True
     if path.startswith(("/api/users", "/api/company", "/api/sites", "/api/dentists", "/api/reports", "/api/consent-templates", "/api/consent-instances")):
         return True
@@ -236,6 +245,8 @@ def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: 
         return TestStatus.DB_BACKED, "backend/tests/administration/test_admin_finance_reports.py::test_reports_are_tenant_scoped_financially_restricted_and_platform_denied", ""
     if path.startswith(("/api/company", "/api/sites", "/api/dentists", "/api/users")):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_admin_finance_reports.py", ""
+    if path.startswith("/api/consent-library"):
+        return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_library_package.py", ""
     if path.startswith(("/api/consent-templates", "/api/consent-template-catalog")):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_templates.py", ""
     if path.startswith("/api/consent-instances"):

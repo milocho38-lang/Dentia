@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -10,6 +13,7 @@ from app.routers.clinical_record_router import (
 )
 from app.routers.clinical_document_router import router as clinical_document_router
 from app.routers.consent_template_router import router as consent_template_router
+from app.routers.consent_library_router import router as consent_library_router
 from app.routers.consent_instance_router import router as consent_instance_router
 from app.routers.consent_access_router import private as consent_access_router, public as public_consent_router
 from app.routers.health_router import router as health_router
@@ -35,6 +39,12 @@ def create_app() -> FastAPI:
         debug=settings.app_debug,
     )
 
+    @app.exception_handler(RequestValidationError)
+    async def safe_public_consent_validation_error(request: Request, exc: RequestValidationError):
+        if request.method == "POST" and request.url.path.startswith("/api/public/consents/") and request.url.path.endswith("/acceptance"):
+            return JSONResponse(status_code=422,content={"detail":{"code":"REQUEST_INVALID","message":"La solicitud de aceptación está incompleta o no es válida."}})
+        return await request_validation_exception_handler(request,exc)
+
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(user_router)
@@ -47,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(clinical_evolution_router)
     app.include_router(clinical_document_router)
     app.include_router(consent_template_router)
+    app.include_router(consent_library_router)
     app.include_router(consent_instance_router)
     app.include_router(consent_access_router)
     app.include_router(public_consent_router)

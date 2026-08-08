@@ -37,6 +37,7 @@ from app.schemas.consent_template_schema import (
     VariableValidationResponse,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.consent_library_normalization import assess_legacy_patient_content
 
 
 CONTENT_FORMAT = "RESTRICTED_MARKDOWN_V1"
@@ -46,6 +47,8 @@ ANY_TEMPLATE_PATTERN = re.compile(r"\{\{.*?\}\}", re.DOTALL)
 HTML_PATTERN = re.compile(r"<\s*/?\s*[a-zA-Z!][^>]*>")
 DANGEROUS_URI_PATTERN = re.compile(r"(?:javascript|vbscript|data\s*:\s*text/html)\s*:", re.IGNORECASE)
 MARKDOWN_LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\([^)]*\)")
+
+OFFICIAL_STANDARD_CONSENT_KINDS = {"GENERAL_CLINICAL_CONSENT", "PROCEDURE_CONSENT", "TREATMENT_AUTHORIZATION"}
 
 DOCUMENT_KIND_CATALOG = (
     ("GENERAL_CLINICAL_CONSENT", "Consentimiento clínico general"),
@@ -171,6 +174,11 @@ def _require_template(session: Session, context: AuthContext, template_id: UUID,
     return template
 
 
+def _ensure_not_read_only(template: ConsentTemplate) -> None:
+    if getattr(template, "template_origin", "CLINIC_CUSTOM") == "DENTIA_LIBRARY":
+        raise ConsentTemplateError("Las plantillas oficiales Dentia instaladas de forma exacta no se pueden editar. Crea una copia editable si necesitas cambios.", 409)
+
+
 def _require_version(session: Session, context: AuthContext, template_id: UUID, version_id: UUID, *, lock: bool = False) -> tuple[ConsentTemplate, ConsentTemplateVersion]:
     template = _require_template(session, context, template_id, lock=lock)
     statement = select(ConsentTemplateVersion).where(ConsentTemplateVersion.id == version_id, ConsentTemplateVersion.template_id == template.id, ConsentTemplateVersion.company_id == context.user.company_id)
@@ -202,16 +210,21 @@ def _association_maps(session: Session, version_ids: list[UUID]):
     return sites, procedures, specialties
 
 
+def _legacy_assessment(version: ConsentTemplateVersion):
+    return assess_legacy_patient_content(version.content)
+
+
 def _version_response(version: ConsentTemplateVersion, maps) -> ConsentVersionResponse:
     sites, procedures, specialties = maps
     validation = validate_content(version.content)
-    return ConsentVersionResponse(id=version.id, template_id=version.template_id, version_number=version.version_number, status=version.status, title=version.title, content=version.content, content_format=version.content_format, used_variables=validation.used_variables, variable_schema_snapshot=version.variable_schema_snapshot, content_sha256=version.content_sha256, based_on_version_id=version.based_on_version_id, change_summary=version.change_summary, scope_type=version.scope_type, priority=version.priority, site_ids=sorted(sites[version.id], key=str), procedure_ids=sorted(procedures[version.id], key=str), specialties=sorted(specialties[version.id], key=lambda item: item.code), row_version=version.row_version, published_at=version.published_at, published_by=version.published_by, retired_at=version.retired_at, retire_reason=version.retire_reason, voided_at=version.voided_at, void_reason=version.void_reason, created_by=version.created_by, updated_by=version.updated_by, created_at=version.created_at, updated_at=version.updated_at)
+    legacy = _legacy_assessment(version)
+    return ConsentVersionResponse(id=version.id, template_id=version.template_id, version_number=version.version_number, status=version.status, title=version.title, content=version.content, content_format=version.content_format, used_variables=validation.used_variables, variable_schema_snapshot=version.variable_schema_snapshot, content_sha256=version.content_sha256, source_library_version_id=version.source_library_version_id, source_document_hash=version.source_document_hash, legacy_quarantined=legacy.is_legacy, legacy_quarantine_reasons=legacy.reasons, legacy_quarantine_message="Versión anterior no apta para nuevos consentimientos" if legacy.is_legacy else None, legal_review_status=version.legal_review_status, clinical_review_status=version.clinical_review_status, reviewed_countries=version.reviewed_countries or [], based_on_version_id=version.based_on_version_id, change_summary=version.change_summary, scope_type=version.scope_type, priority=version.priority, site_ids=sorted(sites[version.id], key=str), procedure_ids=sorted(procedures[version.id], key=str), specialties=sorted(specialties[version.id], key=lambda item: item.code), row_version=version.row_version, published_at=version.published_at, published_by=version.published_by, retired_at=version.retired_at, retire_reason=version.retire_reason, voided_at=version.voided_at, void_reason=version.void_reason, created_by=version.created_by, updated_by=version.updated_by, created_at=version.created_at, updated_at=version.updated_at)
 
 
 def _template_response(template: ConsentTemplate, versions: list[ConsentTemplateVersion], maps) -> ConsentTemplateResponse:
     published = next((item for item in versions if item.status == "PUBLISHED"), None)
     drafts = [item for item in versions if item.status == "DRAFT"]
-    return ConsentTemplateResponse(id=template.id, company_id=template.company_id, code=template.code, name=template.name, description=template.description, document_kind=template.document_kind, country_code=template.country_code, language_code=template.language_code, is_active=template.is_active, published_version=_version_response(published, maps) if published else None, draft_versions=[_version_response(item, maps) for item in drafts], versions_count=len(versions), created_by=template.created_by, updated_by=template.updated_by, created_at=template.created_at, updated_at=template.updated_at)
+    return ConsentTemplateResponse(id=template.id, company_id=template.company_id, code=template.code, name=template.name, description=template.description, document_kind=template.document_kind, country_code=template.country_code, language_code=template.language_code, is_active=template.is_active, template_origin=template.template_origin, content_responsibility=template.content_responsibility, source_library_document_id=template.source_library_document_id, published_version=_version_response(published, maps) if published else None, draft_versions=[_version_response(item, maps) for item in drafts], versions_count=len(versions), created_by=template.created_by, updated_by=template.updated_by, created_at=template.created_at, updated_at=template.updated_at)
 
 
 def _validate_associations(session: Session, context: AuthContext, payload: ConsentVersionDraftInput) -> None:
@@ -332,6 +345,7 @@ def create_template(session: Session, context: AuthContext, payload: ConsentTemp
 
 def update_template(session: Session, context: AuthContext, template_id: UUID, payload: ConsentTemplateUpdateRequest, metadata: RequestMetadata) -> ConsentTemplateResponse:
     template = _require_template(session, context, template_id, lock=True)
+    _ensure_not_read_only(template)
     if not {"ADMINISTRATOR", "DENTIST_ADMIN"}.intersection(context.roles) and template.created_by != context.user.id:
         raise ConsentTemplateError("Solo el autor o un rol superior puede actualizar esta plantilla.", 403)
     has_published_history = bool(session.scalar(select(func.count()).select_from(ConsentTemplateVersion).where(ConsentTemplateVersion.template_id == template.id, ConsentTemplateVersion.status.in_(["PUBLISHED", "SUPERSEDED", "RETIRED"]))))
@@ -369,6 +383,7 @@ def get_version(session: Session, context: AuthContext, template_id: UUID, versi
 
 def create_draft(session: Session, context: AuthContext, template_id: UUID, payload: ConsentVersionDraftInput, metadata: RequestMetadata) -> ConsentVersionResponse:
     template = _require_template(session, context, template_id, lock=True)
+    _ensure_not_read_only(template)
     _ensure_safe_draft(payload.content)
     _validate_associations(session, context, payload)
     next_number = (session.scalar(select(func.max(ConsentTemplateVersion.version_number)).where(ConsentTemplateVersion.template_id == template.id)) or 0) + 1
@@ -386,7 +401,8 @@ def create_draft(session: Session, context: AuthContext, template_id: UUID, payl
 
 
 def update_draft(session: Session, context: AuthContext, template_id: UUID, version_id: UUID, payload: ConsentVersionUpdateRequest, metadata: RequestMetadata) -> ConsentVersionResponse:
-    _, version = _require_version(session, context, template_id, version_id, lock=True)
+    template, version = _require_version(session, context, template_id, version_id, lock=True)
+    _ensure_not_read_only(template)
     if version.status != "DRAFT":
         raise ConsentTemplateError("Solo las versiones en borrador pueden editarse.", 409)
     if not _can_edit_draft(context, version):
@@ -429,6 +445,7 @@ def validate_version(session: Session, context: AuthContext, template_id: UUID, 
 
 def publish_version(session: Session, context: AuthContext, template_id: UUID, version_id: UUID, metadata: RequestMetadata) -> ConsentVersionResponse:
     template, version = _require_version(session, context, template_id, version_id, lock=True)
+    _ensure_not_read_only(template)
     if version.status == "PUBLISHED":
         raise ConsentTemplateError("La versión ya está publicada.", 409)
     if version.status != "DRAFT":
@@ -463,6 +480,7 @@ def publish_version(session: Session, context: AuthContext, template_id: UUID, v
 
 def create_draft_from_version(session: Session, context: AuthContext, template_id: UUID, version_id: UUID, payload: ConsentVersionCreateFromRequest, metadata: RequestMetadata) -> ConsentVersionResponse:
     template, source = _require_version(session, context, template_id, version_id, lock=True)
+    _ensure_not_read_only(template)
     if source.status == "VOIDED":
         raise ConsentTemplateError("Un borrador anulado no puede usarse como base.", 409)
     next_number = (session.scalar(select(func.max(ConsentTemplateVersion.version_number)).where(ConsentTemplateVersion.template_id == template.id)) or 0) + 1
@@ -482,7 +500,8 @@ def create_draft_from_version(session: Session, context: AuthContext, template_i
 
 
 def retire_version(session: Session, context: AuthContext, template_id: UUID, version_id: UUID, payload: ConsentReasonRequest, metadata: RequestMetadata) -> ConsentVersionResponse:
-    _, version = _require_version(session, context, template_id, version_id, lock=True)
+    template, version = _require_version(session, context, template_id, version_id, lock=True)
+    _ensure_not_read_only(template)
     if version.status != "PUBLISHED":
         raise ConsentTemplateError("Solo la versión publicada vigente puede retirarse.", 409)
     version.status = "RETIRED"
@@ -497,7 +516,8 @@ def retire_version(session: Session, context: AuthContext, template_id: UUID, ve
 
 
 def void_draft(session: Session, context: AuthContext, template_id: UUID, version_id: UUID, payload: ConsentReasonRequest, metadata: RequestMetadata) -> ConsentVersionResponse:
-    _, version = _require_version(session, context, template_id, version_id, lock=True)
+    template, version = _require_version(session, context, template_id, version_id, lock=True)
+    _ensure_not_read_only(template)
     if version.status != "DRAFT":
         raise ConsentTemplateError("Solo un borrador puede anularse.", 409)
     if not _can_edit_draft(context, version):
@@ -516,7 +536,7 @@ def void_draft(session: Session, context: AuthContext, template_id: UUID, versio
 def find_applicable_published_templates(session: Session, *, company_id: UUID, country_code: str, language_code: str, site_id: UUID | None = None, procedure_ids: set[UUID] | None = None, specialty_codes: set[str] | None = None) -> list[ApplicableTemplateCandidate]:
     procedures = procedure_ids or set()
     specialties = {item.upper() for item in (specialty_codes or set())}
-    templates = list(session.scalars(select(ConsentTemplate).where(ConsentTemplate.company_id == company_id, ConsentTemplate.country_code == country_code.upper(), ConsentTemplate.language_code == language_code, ConsentTemplate.is_active.is_(True))))
+    templates = list(session.scalars(select(ConsentTemplate).where(ConsentTemplate.company_id == company_id, ConsentTemplate.country_code == country_code.upper(), ConsentTemplate.language_code == language_code, ConsentTemplate.is_active.is_(True), ConsentTemplate.document_kind.in_(OFFICIAL_STANDARD_CONSENT_KINDS))))
     if not templates:
         return []
     versions = list(session.scalars(select(ConsentTemplateVersion).where(ConsentTemplateVersion.template_id.in_([item.id for item in templates]), ConsentTemplateVersion.company_id == company_id, ConsentTemplateVersion.status == "PUBLISHED")))
@@ -524,6 +544,8 @@ def find_applicable_published_templates(session: Session, *, company_id: UUID, c
     template_map = {item.id: item for item in templates}
     candidates: list[ApplicableTemplateCandidate] = []
     for version in versions:
+        if _legacy_assessment(version).is_legacy:
+            continue
         site_scope = set(maps[0][version.id])
         procedure_scope = set(maps[1][version.id])
         specialty_scope = {item.code for item in maps[2][version.id]}
