@@ -1,5 +1,5 @@
 import { apiBlob, apiRequest } from "@/services/apiClient";
-import type { ApplicableConsentTemplate, ConsentAccessAudit, ConsentAccessSession, ConsentClarification, ConsentContextInput, ConsentInstance, ConsentInstanceAudit } from "@/types/consentInstance";
+import type { ApplicableConsentTemplate, ConsentAccessAudit, ConsentAccessSession, ConsentClarification, ConsentContextInput, ConsentInstance, ConsentInstanceAudit, ConsentPaperPacket } from "@/types/consentInstance";
 
 export async function listConsentInstances(patientId: string): Promise<ConsentInstance[]> {
   return (await apiRequest<{ items: ConsentInstance[] }>(`/api/consent-instances?patient_id=${encodeURIComponent(patientId)}`)).items;
@@ -48,3 +48,14 @@ export type ConsentAcceptanceSummary = { acceptance_id:string; status:string; ac
 export const getConsentAcceptance = (id:string) => apiRequest<ConsentAcceptanceSummary>(`/api/consent-instances/${id}/acceptance`);
 export const downloadConsentFinalDocument = (id:string) => apiBlob(`/api/consent-instances/${id}/final-document`);
 export const resendConsentCopy = (id:string) => apiRequest<{status:string;recipient_masked:string;attempted_at:string}>(`/api/consent-instances/${id}/copy-deliveries/resend`,{method:"POST"});
+export const getConsentPaperPacket = (id:string) => apiRequest<ConsentPaperPacket>(`/api/consent-instances/${id}/paper`);
+export const prepareConsentPaperPacket = (id:string) => apiRequest<ConsentPaperPacket>(`/api/consent-instances/${id}/paper`,{method:"POST"});
+export const downloadConsentPaperPrint = (id:string) => apiBlob(`/api/consent-instances/${id}/paper/print-document`);
+export const recordConsentPaperSigned = (id:string) => apiRequest<ConsentPaperPacket>(`/api/consent-instances/${id}/paper/record-signed`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true})});
+export async function uploadConsentPaperPages(id:string,file:File){const form=new FormData();form.append("file",file);return apiRequest<ConsentPaperPacket>(`/api/consent-instances/${id}/paper/pages`,{method:"POST",body:form});}
+export const removeConsentPaperPage = (id:string,pageId:string) => apiRequest<ConsentPaperPacket>(`/api/consent-instances/${id}/paper/pages/${pageId}`,{method:"DELETE"});
+export const reorderConsentPaperPages = (id:string,pageIds:string[]) => apiRequest<ConsentPaperPacket>(`/api/consent-instances/${id}/paper/pages/order`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({page_ids:pageIds})});
+export const finalizeConsentPaper = (id:string,verification:Record<string,boolean>) => apiRequest<ConsentPaperPacket>(`/api/consent-instances/${id}/paper/finalize`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(verification)});
+export const downloadConsentPaperFinal = (id:string) => apiBlob(`/api/consent-instances/${id}/paper/final-document?download=true`);
+export const viewConsentPaperFinal = (id:string) => apiBlob(`/api/consent-instances/${id}/paper/final-document`);
+export const previewConsentPaperPage = (id:string,pageId:string) => apiBlob(`/api/consent-instances/${id}/paper/pages/${pageId}/preview`);

@@ -146,3 +146,58 @@ class ConsentCopyDelivery(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     requested_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+
+
+class ConsentPaperPacket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_paquetes_papel"
+    __table_args__ = (
+        UniqueConstraint("consent_instance_id", name="uq_consent_paper_packet_instance"),
+        CheckConstraint("status IN ('PRINTED','SIGNED_PENDING_DIGITIZATION','DIGITIZING','FINALIZED')", name="ck_consent_paper_packet_status"),
+        CheckConstraint("expected_page_count >= 1", name="ck_consent_paper_expected_pages"),
+        CheckConstraint("uploaded_page_count >= 0", name="ck_consent_paper_uploaded_pages"),
+        Index("ix_consent_paper_company_instance", "empresa_id", "consent_instance_id"),
+        Index("ix_consent_paper_company_status", "empresa_id", "status"),
+    )
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    site_id: Mapped[UUID] = mapped_column("sede_id", PGUUID(as_uuid=True), ForeignKey("sedes.id", ondelete="RESTRICT"), nullable=False)
+    patient_id: Mapped[UUID] = mapped_column("paciente_id", PGUUID(as_uuid=True), ForeignKey("pacientes.id", ondelete="RESTRICT"), nullable=False)
+    consent_instance_id: Mapped[UUID] = mapped_column(ForeignKey("consentimiento_instancias.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="PRINTED", server_default="PRINTED")
+    print_storage_key: Mapped[str] = mapped_column(String(700), nullable=False)
+    print_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    print_byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expected_page_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    printed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    printed_by: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
+    paper_signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paper_signed_recorded_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=True)
+    digitalization_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    digitization_finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finalized_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=True)
+    original_physical_retention_acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verification_statements: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    verification_version: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    final_pdf_storage_key: Mapped[str | None] = mapped_column(String(700), nullable=True)
+    final_pdf_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    final_pdf_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    final_page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+
+
+class ConsentPaperPage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_paginas_papel"
+    __table_args__ = (
+        UniqueConstraint("paper_packet_id", "position", name="uq_consent_paper_page_position"),
+        Index("ix_consent_paper_page_company_packet", "empresa_id", "paper_packet_id"),
+    )
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    paper_packet_id: Mapped[UUID] = mapped_column(ForeignKey("consentimiento_paquetes_papel.id", ondelete="CASCADE"), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(700), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    byte_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_mime_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    upload_group_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    original_page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_by: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)

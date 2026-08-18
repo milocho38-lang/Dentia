@@ -30,6 +30,8 @@ from app.models.consent_acceptance import (
     ConsentCopyDelivery,
     ConsentEvidenceManifest,
     ConsentFinalDocument,
+    ConsentPaperPacket,
+    ConsentPaperPage,
     ConsentSignatureArtifact,
 )
 from app.models.consent_template import (
@@ -96,6 +98,8 @@ __all__ = [
     "ConsentCopyDelivery",
     "ConsentEvidenceManifest",
     "ConsentFinalDocument",
+    "ConsentPaperPacket",
+    "ConsentPaperPage",
     "ConsentSignatureArtifact",
     "ConsentInstance",
     "ConsentAccessSession",

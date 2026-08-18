@@ -82,6 +82,8 @@ export interface ConsentInstance {
   professional_user_id: string;
   dentist_profile_id: string | null;
   status: "DRAFT" | "READY_FOR_REVIEW" | "PENDING_SIGNATURE" | "SIGNED" | "VOIDED";
+  completion_channel: "ELECTRONIC" | "PAPER" | null;
+  paper_status: "PRINTED" | "SIGNED_PENDING_DIGITIZATION" | "DIGITIZING" | "FINALIZED" | null;
   document_kind: string;
   country_code: string;
   language_code: string;
@@ -143,3 +145,15 @@ export interface ConsentAccessSession {
 }
 export interface ConsentClarification { id: string; status: string; message: string | null; requested_at: string; resolved_at: string | null; }
 export interface ConsentAccessAudit { id:string; action:string; result:string; user_id:string|null; occurred_at:string; detail:Record<string,unknown>|null; }
+
+export interface ConsentPaperPage {
+  id: string; position: number; sha256: string; byte_size: number; source_mime_type: string; original_page_number: number;
+}
+export interface ConsentPaperPacket {
+  id: string; consent_instance_id: string; status: "PRINTED" | "SIGNED_PENDING_DIGITIZATION" | "DIGITIZING" | "FINALIZED";
+  expected_page_count: number; uploaded_page_count: number; print_sha256: string; print_byte_size: number;
+  printed_at: string; printed_by: string; paper_signed_at: string | null; paper_signed_recorded_by: string | null;
+  digitalization_started_at: string | null; digitization_finalized_at: string | null; finalized_by: string | null;
+  final_pdf_sha256: string | null; final_pdf_size: number | null; final_page_count: number | null;
+  verification_version: string | null; pages: ConsentPaperPage[]; row_version: number;
+}

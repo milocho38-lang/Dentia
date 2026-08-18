@@ -4,6 +4,7 @@
 - [C019A.2 — Instancias y flujo clínico previo a firma](C019A2-Consent-Instances-and-Clinical-Flow.md)
 - [C019A.3 — Acceso, portal y OTP](C019A3-Consent-Access-Portal-and-OTP.md)
 - [C019A.4 — Aceptación, firma capturada y documento final](C019A4-Consent-Acceptance-Signature-and-Final-Document.md)
+- [C019A.5 — Firma en papel y copia digitalizada](C019A5-Paper-Consent-and-Digitization.md)
 
 - [C019A4-LIB1 — Biblioteca oficial Dentia](C019A4-LIB1-Dentia-Official-Document-Library.md)
 - [C019A4-LIB1 — Inventario fuente](C019A4-LIB1-Source-Document-Inventory.md)

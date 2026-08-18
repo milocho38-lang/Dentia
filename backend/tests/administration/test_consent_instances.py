@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from uuid import UUID, uuid4
 import base64
+import hashlib
 import fitz
 import json
 from io import BytesIO
@@ -26,7 +27,7 @@ from app.models.consent_template import (
     ConsentResponsibleAdult,
     ConsentTemplateVersion,
 )
-from app.models.consent_acceptance import ConsentAcceptance, ConsentAcceptanceDeclaration, ConsentEvidenceManifest, ConsentFinalDocument, ConsentSignatureArtifact
+from app.models.consent_acceptance import ConsentAcceptance, ConsentAcceptanceDeclaration, ConsentEvidenceManifest, ConsentFinalDocument, ConsentSignatureArtifact, ConsentPaperPacket, ConsentPaperPage
 from app.models.treatment import ProcedureCatalogItem, TreatmentProcedure
 from app.services.consent_template_service import find_applicable_published_templates
 from app.services.email_service import get_test_email_outbox
@@ -163,6 +164,105 @@ def _prepare_acceptance(api_client, db_session, tenant, code, *, country="CO", c
     if expected_requirements_status!=200: return created,token,cookie,requirements,None
     data=requirements.json();payload={"idempotency_key":f"review-{uuid4()}","acting_on_own_behalf":data["signer_actor_type"] == "PATIENT_SELF","declaration_set_code":data["declaration_set_code"],"declarations_version":data["declarations_version"],"declarations_set_sha256":data["declarations_set_sha256"],"declarations":[{"code":item["code"],"accepted":True} for item in data["declarations"]],"typed_full_name":data["signer_name"] or data["patient_name"],"signature_data_url":_signature_data_url()}
     return created,token,cookie,data,payload
+
+
+def _prepare_paper(api_client, db_session, tenant, code="PAPER-FLOW", *, signer_policy=None, context_changes=None):
+    _, procedure = _procedure(db_session, tenant)
+    content = "# Consentimiento de prueba en papel\n\nPaciente: {{ patient.full_name }}\n\n" + "\n\n".join(f"Cláusula clínica ficticia {index}: información revisada para validar paginación y preservación documental." for index in range(1, 80))
+    version = _template(api_client, tenant.dentist_admin, code, content=content)
+    if signer_policy:
+        _set_template_signer_policy(db_session, version["id"], signer_policy)
+    created = api_client.post("/api/consent-instances/batch", token=tenant.dentist_admin.token, json={"context": _context(tenant, procedure, **(context_changes or {})), "template_version_ids": [version["id"]]})
+    assert created.status_code == 201, created.text
+    instance = created.json()[0]
+    confirmed = api_client.post(f"/api/consent-instances/{instance['id']}/professional-confirm", token=tenant.dentist_admin.token, json={"confirmed": True, "row_version": instance["row_version"]})
+    assert confirmed.status_code == 200, confirmed.text
+    return confirmed.json()
+
+
+def _paper_verification():
+    return {"all_pages_present": True, "correct_order": True, "legible": True, "signature_page_included": True, "matches_printed_packet": True, "physical_original_retained": True}
+
+
+def test_paper_consent_adult_packet_digitization_reorder_finalize_and_immutable(api_client, db_session, security_world):
+    tenant = security_world.tenant_a
+    instance = _prepare_paper(api_client, db_session, tenant)
+    prepared = api_client.post(f"/api/consent-instances/{instance['id']}/paper", token=tenant.dentist_admin.token)
+    assert prepared.status_code == 200, prepared.text
+    packet = prepared.json(); assert packet["status"] == "PRINTED" and packet["expected_page_count"] >= 2 and len(packet["print_sha256"]) == 64
+    assert api_client.get(f"/api/consent-instances/{instance['id']}", token=tenant.dentist_admin.token).json()["paper_status"] == "PRINTED"
+    printable = api_client.get(f"/api/consent-instances/{instance['id']}/paper/print-document", token=tenant.dentist_admin.token)
+    assert printable.status_code == 200 and printable.content.startswith(b"%PDF")
+    assert b"source_text" not in printable.content
+    signed = api_client.post(f"/api/consent-instances/{instance['id']}/paper/record-signed", token=tenant.dentist_admin.token, json={"confirmed": True})
+    assert signed.status_code == 200 and signed.json()["status"] == "SIGNED_PENDING_DIGITIZATION"
+    assert api_client.get(f"/api/consent-instances/{instance['id']}", token=tenant.dentist_admin.token).json()["paper_status"] == "SIGNED_PENDING_DIGITIZATION"
+    uploaded = api_client.post(f"/api/consent-instances/{instance['id']}/paper/pages", token=tenant.dentist_admin.token, files={"file": ("scan.pdf", printable.content, "application/pdf")})
+    assert uploaded.status_code == 200, uploaded.text
+    page_ids = [row["id"] for row in uploaded.json()["pages"]]
+    assert len(page_ids) == packet["expected_page_count"]
+    reordered = api_client.patch(f"/api/consent-instances/{instance['id']}/paper/pages/order", token=tenant.dentist_admin.token, json={"page_ids": list(reversed(page_ids))})
+    assert reordered.status_code == 200 and reordered.json()["pages"][0]["id"] == page_ids[-1]
+    finalized = api_client.post(f"/api/consent-instances/{instance['id']}/paper/finalize", token=tenant.dentist_admin.token, json=_paper_verification())
+    assert finalized.status_code == 200, finalized.text
+    result = finalized.json(); assert result["status"] == "FINALIZED" and result["final_page_count"] == packet["expected_page_count"] and len(result["final_pdf_sha256"]) == 64
+    final_pdf = api_client.get(f"/api/consent-instances/{instance['id']}/paper/final-document?download=true", token=tenant.dentist_admin.token)
+    assert final_pdf.status_code == 200 and hashlib.sha256(final_pdf.content).hexdigest() == result["final_pdf_sha256"]
+    state = api_client.get(f"/api/consent-instances/{instance['id']}", token=tenant.dentist_admin.token).json()
+    assert state["status"] == "SIGNED" and state["completion_channel"] == "PAPER" and state["paper_status"] == "FINALIZED"
+    assert api_client.post(f"/api/consent-instances/{instance['id']}/paper/pages", token=tenant.dentist_admin.token, files={"file": ("overwrite.pdf", printable.content, "application/pdf")}).status_code == 409
+    assert api_client.post(f"/api/consent-instances/{instance['id']}/access-sessions", token=tenant.dentist_admin.token, json={}).status_code == 409
+    persisted = db_session.scalar(select(ConsentPaperPacket).where(ConsentPaperPacket.consent_instance_id == UUID(instance["id"])))
+    assert persisted and persisted.verification_version == "PAPER_VERIFY_V1" and persisted.original_physical_retention_acknowledged_at
+
+
+def test_paper_consent_minor_responsible_adult_and_human_relationship(api_client, db_session, security_world):
+    tenant = security_world.tenant_a
+    responsible = {"full_name": "Tía Responsable Prueba", "document_type": "CC", "document_number": "900011", "relationship_type": "AUNT_UNCLE", "email": "tia@example.test", "phone": "3000000000", "identity_verified": True}
+    instance = _prepare_paper(api_client, db_session, tenant, "PAPER-MINOR", signer_policy="RESPONSIBLE_ADULT_REQUIRED", context_changes={"signer_actor_type":"RESPONSIBLE_ADULT", "responsible_adult": responsible, "minor_participation_status":"INFORMED_AND_AGREED"})
+    prepared = api_client.post(f"/api/consent-instances/{instance['id']}/paper", token=tenant.dentist_admin.token)
+    assert prepared.status_code == 200, prepared.text
+    printable = api_client.get(f"/api/consent-instances/{instance['id']}/paper/print-document", token=tenant.dentist_admin.token)
+    with fitz.open(stream=printable.content, filetype="pdf") as document:
+        text = "\n".join(page.get_text() for page in document)
+    assert "Adulto responsable" in text and "Tía Responsable Prueba" in text and "Tío/a" in text and "tutor legal" not in text.casefold()
+
+
+def test_paper_channel_revokes_electronic_qr_and_enforces_tenant_permissions(api_client, db_session, security_world):
+    tenant = security_world.tenant_a
+    instance = _prepare_paper(api_client, db_session, tenant, "PAPER-REVOKE")
+    issued = api_client.post(f"/api/consent-instances/{instance['id']}/access-sessions", token=tenant.dentist_admin.token, json={})
+    assert issued.status_code == 201, issued.text
+    public_token = issued.json()["public_url"].rsplit("/", 1)[-1]
+    assert api_client.post(f"/api/consent-instances/{instance['id']}/paper", token=tenant.dentist_admin.token).status_code == 200
+    assert api_client.get(f"/api/public/consents/{public_token}").status_code == 404
+    access = db_session.scalar(select(ConsentAccessSession).where(ConsentAccessSession.consent_instance_id == UUID(instance["id"])))
+    assert access and access.status == "REVOKED" and access.revoke_reason == "PAPER_CHANNEL_SELECTED"
+    assert api_client.get(f"/api/consent-instances/{instance['id']}/paper", token=security_world.tenant_b.dentist_admin.token).status_code == 404
+    assert api_client.get(f"/api/consent-instances/{instance['id']}/paper", token=security_world.platform_admin.token).status_code == 403
+
+
+def test_paper_rejects_malformed_and_incomplete_digitization(api_client, db_session, security_world):
+    tenant=security_world.tenant_a; instance=_prepare_paper(api_client,db_session,tenant,"PAPER-INVALID")
+    prepared=api_client.post(f"/api/consent-instances/{instance['id']}/paper",token=tenant.dentist_admin.token).json()
+    assert api_client.post(f"/api/consent-instances/{instance['id']}/paper/record-signed",token=tenant.dentist_admin.token,json={"confirmed":True}).status_code==200
+    bad=api_client.post(f"/api/consent-instances/{instance['id']}/paper/pages",token=tenant.dentist_admin.token,files={"file":("attack.svg",b"<svg><script>alert(1)</script></svg>","image/svg+xml")})
+    assert bad.status_code==422
+    corrupt_pdf=api_client.post(f"/api/consent-instances/{instance['id']}/paper/pages",token=tenant.dentist_admin.token,files={"file":("scan.pdf",b"%PDF-corrupt","application/pdf")})
+    assert corrupt_pdf.status_code==422
+    invalid_image=api_client.post(f"/api/consent-instances/{instance['id']}/paper/pages",token=tenant.dentist_admin.token,files={"file":("scan.png",b"\x89PNG\r\n\x1a\ninvalid","image/png")})
+    assert invalid_image.status_code==422
+    oversized=api_client.post(f"/api/consent-instances/{instance['id']}/paper/pages",token=tenant.dentist_admin.token,files={"file":("scan.pdf",b"x"*(15*1024*1024+1),"application/pdf")})
+    assert oversized.status_code==413
+    image=Image.new("RGB",(800,1000),"white");buffer=BytesIO();image.save(buffer,format="JPEG")
+    uploaded=api_client.post(f"/api/consent-instances/{instance['id']}/paper/pages",token=tenant.dentist_admin.token,files={"file":("../../patient-name.jpg",buffer.getvalue(),"image/jpeg")})
+    assert uploaded.status_code==200 and uploaded.json()["uploaded_page_count"]==1
+    stored_page=db_session.scalar(select(ConsentPaperPage).where(ConsentPaperPage.paper_packet_id==UUID(prepared["id"])))
+    assert stored_page and "patient-name" not in stored_page.storage_key and ".." not in stored_page.storage_key
+    incomplete=api_client.post(f"/api/consent-instances/{instance['id']}/paper/finalize",token=tenant.dentist_admin.token,json=_paper_verification())
+    assert incomplete.status_code==422 and str(prepared["expected_page_count"]) in incomplete.text
+    confirmations=api_client.post(f"/api/consent-instances/{instance['id']}/paper/finalize",token=tenant.dentist_admin.token,json={**_paper_verification(),"legible":False})
+    assert confirmations.status_code==422
 
 
 

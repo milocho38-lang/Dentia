@@ -543,6 +543,11 @@ export function PatientDetail({ patientId }: { patientId: string }) {
             canReadAcceptance={hasPermission("consent.acceptance.read")}
             canDownloadFinal={hasPermission("consent.final_document.download")}
             canResendCopy={hasPermission("consent.copy.resend")}
+            canReadPaper={hasPermission("consent.paper.read")}
+            canPreparePaper={hasPermission("consent.paper.prepare")}
+            canRecordPaper={hasPermission("consent.paper.record_signed")}
+            canUploadPaper={hasPermission("consent.paper.upload")}
+            canFinalizePaper={hasPermission("consent.paper.finalize")}
           />
         )}
 

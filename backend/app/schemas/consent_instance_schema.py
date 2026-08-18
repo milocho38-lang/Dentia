@@ -153,6 +153,8 @@ class ConsentInstanceResponse(BaseModel):
     professional_user_id: UUID
     dentist_profile_id: UUID | None
     status: str
+    completion_channel: str | None
+    paper_status: str | None = None
     document_kind: str
     country_code: str
     language_code: str
@@ -219,3 +221,52 @@ class ConsentInstanceAuditResponse(BaseModel):
 
 class ReservedTransitionResponse(BaseModel):
     detail: str
+
+
+class ConsentPaperPageResponse(BaseModel):
+    id: UUID
+    position: int
+    sha256: str
+    byte_size: int
+    source_mime_type: str
+    original_page_number: int
+
+
+class ConsentPaperPacketResponse(BaseModel):
+    id: UUID
+    consent_instance_id: UUID
+    status: str
+    expected_page_count: int
+    uploaded_page_count: int
+    print_sha256: str
+    print_byte_size: int
+    printed_at: datetime
+    printed_by: UUID
+    paper_signed_at: datetime | None
+    paper_signed_recorded_by: UUID | None
+    digitalization_started_at: datetime | None
+    digitization_finalized_at: datetime | None
+    finalized_by: UUID | None
+    final_pdf_sha256: str | None
+    final_pdf_size: int | None
+    final_page_count: int | None
+    verification_version: str | None
+    pages: list[ConsentPaperPageResponse]
+    row_version: int
+
+
+class ConsentPaperSignedRequest(BaseModel):
+    confirmed: bool
+
+
+class ConsentPaperReorderRequest(BaseModel):
+    page_ids: list[UUID] = Field(min_length=1, max_length=50)
+
+
+class ConsentPaperVerificationRequest(BaseModel):
+    all_pages_present: bool
+    correct_order: bool
+    legible: bool
+    signature_page_included: bool
+    matches_printed_packet: bool
+    physical_original_retained: bool

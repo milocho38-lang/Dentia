@@ -210,6 +210,7 @@ class ConsentInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("sequence_number >= 1", name="ck_consent_instance_sequence_positive"),
         CheckConstraint("row_version >= 1", name="ck_consent_instance_row_version_positive"),
         CheckConstraint("status IN ('DRAFT','READY_FOR_REVIEW','PENDING_SIGNATURE','SIGNED','VOIDED')", name="ck_consent_instance_status"),
+        CheckConstraint("completion_channel IS NULL OR completion_channel IN ('ELECTRONIC','PAPER')", name="ck_consent_instance_completion_channel"),
         CheckConstraint("signer_policy IN ('PATIENT_SELF','PATIENT_OR_RESPONSIBLE_ADULT','RESPONSIBLE_ADULT_REQUIRED','NO_PATIENT_SIGNATURE','SPECIAL_WORKFLOW')", name="ck_consent_instance_signer_policy"),
         CheckConstraint("signer_actor_type IN ('PATIENT_SELF','RESPONSIBLE_ADULT')", name="ck_consent_instance_signer_actor"),
         CheckConstraint("minor_participation_status IS NULL OR minor_participation_status IN ('INFORMED_AND_AGREED','INFORMED_NO_OBJECTION','COULD_NOT_EXPRESS_DUE_TO_AGE_OR_CONDITION','NOT_APPLICABLE','OTHER')", name="ck_consent_instance_minor_participation"),
@@ -231,6 +232,7 @@ class ConsentInstance(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
     visible_number: Mapped[str] = mapped_column(String(30), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", server_default="DRAFT")
+    completion_channel: Mapped[str | None] = mapped_column(String(20), nullable=True)
     document_kind: Mapped[str] = mapped_column(String(60), nullable=False)
     country_code: Mapped[str] = mapped_column(String(2), nullable=False)
     language_code: Mapped[str] = mapped_column(String(10), nullable=False)

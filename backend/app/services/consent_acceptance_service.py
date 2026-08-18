@@ -391,6 +391,7 @@ def _validate_recipient(email: str | None, access: ConsentAccessSession, challen
 
 
 def _validate_eligibility(session: Session, access, instance):
+    if instance.completion_channel == "PAPER": raise ConsentAcceptanceError("Este consentimiento fue preparado para firma en papel.",409)
     if instance.status!="PENDING_SIGNATURE": raise ConsentAcceptanceError("El consentimiento no está pendiente de aceptación.",409)
     if instance.missing_variables: raise ConsentAcceptanceError("El documento tiene información pendiente.",409)
     patient_snapshot, declaration_set, birth_date = _sealed_context(instance)
@@ -645,7 +646,7 @@ def submit_acceptance(session: Session, token: str, cookie: str | None, payload:
         session.add(ConsentSignatureArtifact(company_id=instance.company_id,acceptance_id=acceptance.id,storage_key=str(sig_path.relative_to(Path(settings.consent_final_storage_dir).resolve())),signature_type="DRAWN_CANVAS_PNG",typed_name_snapshot=acceptance.typed_full_name,graphic_present=True,sanitization_version="PNG_CANVAS_V1",sha256=_sha_bytes(signature),mime_type="image/png",byte_size=len(signature),width=width,height=height))
         evidence=ConsentEvidenceManifest(company_id=instance.company_id,acceptance_id=acceptance.id,schema_version="1.2",manifest=manifest,manifest_sha256=_sha_bytes(manifest_bytes),storage_key=str(manifest_path.relative_to(Path(settings.consent_final_storage_dir).resolve())));session.add(evidence);session.flush()
         final=ConsentFinalDocument(company_id=instance.company_id,consent_instance_id=instance.id,acceptance_id=acceptance.id,evidence_manifest_id=evidence.id,storage_key=str(pdf_path.relative_to(Path(settings.consent_final_storage_dir).resolve())),filename=pdf_name,byte_size=len(pdf),sha256=_sha_bytes(pdf),generated_at=now,renderer_version="REPORTLAB_DENTIA_V1",immutable=True,public_download_token_hash=_hash(raw_download),public_download_expires_at=now+timedelta(minutes=settings.consent_final_download_minutes)); session.add(final); session.flush(); _failure_point("DB_PERSISTED")
-        acceptance.status="COMPLETED"; instance.status="SIGNED"; instance.signed_at=now; instance.row_version+=1
+        acceptance.status="COMPLETED"; instance.status="SIGNED"; instance.completion_channel="ELECTRONIC"; instance.signed_at=now; instance.row_version+=1
         for item in session.scalars(select(ConsentAccessSession).where(ConsentAccessSession.consent_instance_id==instance.id,ConsentAccessSession.status.notin_(["REVOKED","EXPIRED"]))): item.status="REVOKED";item.revoked_at=now;item.revoke_reason="SIGNED"
         for item in session.scalars(select(ConsentPublicSession).join(ConsentAccessSession,ConsentAccessSession.id==ConsentPublicSession.access_session_id).where(ConsentAccessSession.consent_instance_id==instance.id,ConsentPublicSession.status=="ACTIVE")): item.status="REVOKED";item.revoked_at=now
         for item in session.scalars(select(ConsentOtpChallenge).join(ConsentAccessSession,ConsentAccessSession.id==ConsentOtpChallenge.access_session_id).where(ConsentAccessSession.consent_instance_id==instance.id,ConsentOtpChallenge.status=="PENDING")): item.status="INVALIDATED"

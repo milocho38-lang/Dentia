@@ -137,6 +137,11 @@ PERMISSIONS = (
     PermissionDefinition("consent.final_document.read", "Consultar documento final de consentimiento", "consent_acceptance", "Consultar metadatos del PDF final inmutable."),
     PermissionDefinition("consent.final_document.download", "Descargar documento final de consentimiento", "consent_acceptance", "Descargar el PDF final autorizado."),
     PermissionDefinition("consent.copy.resend", "Reenviar copia de consentimiento", "consent_acceptance", "Reenviar al paciente la copia del documento final."),
+    PermissionDefinition("consent.paper.read", "Consultar consentimiento en papel", "consent_paper", "Consultar packet y copia digitalizada de consentimientos en papel."),
+    PermissionDefinition("consent.paper.prepare", "Preparar consentimiento en papel", "consent_paper", "Generar el packet inmutable para firma manuscrita."),
+    PermissionDefinition("consent.paper.record_signed", "Registrar firma manuscrita", "consent_paper", "Declarar que existe el original físico firmado."),
+    PermissionDefinition("consent.paper.upload", "Digitalizar consentimiento en papel", "consent_paper", "Cargar, ordenar y corregir páginas antes del sellado."),
+    PermissionDefinition("consent.paper.finalize", "Finalizar consentimiento en papel", "consent_paper", "Verificar y sellar la copia digitalizada final."),
     PermissionDefinition("reports.view", "Ver reportes", "reports", "Consultar reportes autorizados."),
     PermissionDefinition("reports.operational", "Ver reportes operativos", "reports", "Consultar métricas operativas de agenda, pacientes y seguimientos."),
     PermissionDefinition("reports.financial", "Ver reportes financieros", "reports", "Consultar ingresos, producción clínica, ventas aprobadas y cartera."),
@@ -388,6 +393,11 @@ DENTIST_ADMIN_PERMISSIONS = SECRETARY_PERMISSIONS | DENTIST_PERMISSIONS | frozen
         "consent.final_document.read",
         "consent.final_document.download",
         "consent.copy.resend",
+        "consent.paper.read",
+        "consent.paper.prepare",
+        "consent.paper.record_signed",
+        "consent.paper.upload",
+        "consent.paper.finalize",
     }
 )
 

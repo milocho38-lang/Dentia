@@ -1063,3 +1063,6 @@ Al finalizar el roadmap completo se obtendrá una plataforma:
 ## C019A4-LIB1 — Biblioteca oficial Dentia
 
 Se incorpora la biblioteca oficial de documentos odontológicos con variantes CO/CL, importador idempotente, procedencia y separación entre contenido oficial y copias editables por clínica.
+# C019A.5 — Firma en papel y copia digitalizada
+
+Implementación local completada; pendiente de validación manual adulto/menor y aprobación antes de commit o producción.

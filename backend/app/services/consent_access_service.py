@@ -56,6 +56,8 @@ def _revoke_related(session: Session, access: ConsentAccessSession, now: datetim
 
 def issue_access(session: Session, context: AuthContext, instance_id: UUID, metadata: RequestMetadata, expires_in_hours: int | None = None, *, reissue=False) -> AccessIssuedResponse:
     instance = _require_instance(session, context, instance_id, lock=True)
+    if instance.completion_channel == "PAPER":
+        raise ConsentAccessError("Este consentimiento fue preparado para firma en papel.", 409)
     if instance.status not in ({"READY_FOR_REVIEW","PENDING_SIGNATURE"} if reissue else {"READY_FOR_REVIEW"}):
         raise ConsentAccessError("Solo una instancia revisada puede emitir acceso.",409)
     if instance.missing_variables: raise ConsentAccessError("La instancia todavía tiene variables pendientes.",409)
@@ -73,7 +75,7 @@ def issue_access(session: Session, context: AuthContext, instance_id: UUID, meta
     raw=_token(); hours=expires_in_hours or settings.consent_access_expire_hours
     access=ConsentAccessSession(company_id=instance.company_id,site_id=instance.site_id,consent_instance_id=instance.id,status="ISSUED",public_token_hash=_hash(raw),public_token_prefix=raw[:8],issued_at=now,expires_at=now+timedelta(hours=hours),last_activity_at=now,recipient_masked=mask_email(email),created_by=context.user.id)
     session.add(access); session.flush()
-    previous=instance.status; instance.status="PENDING_SIGNATURE"; instance.updated_by=context.user.id; instance.row_version+=1
+    previous=instance.status; instance.status="PENDING_SIGNATURE"; instance.completion_channel="ELECTRONIC"; instance.updated_by=context.user.id; instance.row_version+=1
     _audit(session,access,"CONSENT_ACCESS_SESSION_REISSUED" if reissue else "CONSENT_ACCESS_SESSION_ISSUED",metadata,user_id=context.user.id,detail={"previous_instance_status":previous,"new_instance_status":instance.status,"expires_at":access.expires_at.isoformat()})
     session.commit()
     public_path = _public_path(raw)

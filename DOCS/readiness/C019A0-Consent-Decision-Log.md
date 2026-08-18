@@ -223,3 +223,10 @@ Se implementó el mecanismo técnico provisional para adulto actuando en nombre 
 ## C019A4-LIB1
 
 Decisión: la biblioteca oficial se implementa como catálogo global desacoplado. La instalación exacta conserva contenido Dentia; las copias editables pasan a responsabilidad de la clínica. Documentos especiales no se ofrecen como consentimientos comunes.
+# Actualización C019A.5 — 2026-08-07
+
+- Dentia adopta un canal manuscrito separado de la aceptación electrónica.
+- Un mismo snapshot clínico alimenta ambos canales, pero sus evidencias nunca se mezclan.
+- Elegir papel revoca accesos electrónicos activos; el packet impreso queda congelado.
+- `SIGNED` solo se asigna al canal papel cuando la copia completa fue verificada y sellada.
+- La clínica conserva el original físico; Dentia conserva la copia digitalizada y evidencia técnica sin fijar un periodo legal universal.
