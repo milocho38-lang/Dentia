@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -118,6 +118,12 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
         nullable=False,
         default="Activa",
         server_default="Activa",
+    )
+    max_active_dentists: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
     )
     installation_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

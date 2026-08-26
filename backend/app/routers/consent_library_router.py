@@ -29,7 +29,10 @@ def list_library_endpoint(
     signer_scope: str | None = None,
     publication_status: str | None = None,
 ) -> ConsentLibraryListResponse:
-    return list_library(session, context, text_query=q, country=country, document_type=document_type, specialty=specialty, category=category, signer_scope=signer_scope, publication_status=publication_status)
+    try:
+        return list_library(session, context, text_query=q, country=country, document_type=document_type, specialty=specialty, category=category, signer_scope=signer_scope, publication_status=publication_status)
+    except ConsentLibraryError as exc:
+        raise _http_error(exc)
 
 
 @router.get("/api/consent-library/versions/{version_id}/source", response_model=ConsentLibrarySourceResponse)

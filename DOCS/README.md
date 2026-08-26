@@ -86,6 +86,7 @@ Idea → Documento de diseño → Aprobación funcional → Implementación → 
 - [C019A.2 — Decisiones y compuerta para C019A.3](readiness/C019A2-Consent-Instance-Decision-Update.md)
 - [C019A.3 — Decisiones y compuerta para C019A.4](readiness/C019A3-Consent-Access-Decision-Update.md)
 - [C019A.4 — Decisiones y compuerta de producción](readiness/C019A4-Consent-Acceptance-Decision-Update.md)
+- [C019 — Preparación productiva y responsabilidades](product/C019-Consent-Production-Readiness.md)
 
 ## Producto
 

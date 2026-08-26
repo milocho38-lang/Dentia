@@ -75,6 +75,8 @@ def _template(api_client, actor, code="INSTANCE-DEMO", content="# Consentimiento
     draft = created.json()["draft_versions"][0]
     if not publish:
         return created.json(), draft
+    reviewed = api_client.post(f"/api/consent-templates/{created.json()['id']}/versions/{draft['id']}/review-content", token=actor.token, json={"confirmed": True})
+    assert reviewed.status_code == 200, reviewed.text
     published = api_client.post(f"/api/consent-templates/{created.json()['id']}/versions/{draft['id']}/publish", token=actor.token)
     assert published.status_code == 200, published.text
     return published.json()
@@ -371,7 +373,11 @@ def test_general_and_specific_templates_are_combined_without_duplicates(api_clie
     general_site = _template(api_client, tenant_a.dentist_admin, "GENERAL-SITE-A", site_ids=[str(tenant_a.site_1.id)])
     specific = _template(api_client, tenant_a.dentist_admin, "SPECIFIC-MATCH", scope="SPECIFIC", procedure_ids=[str(catalog.id)])
     _template(api_client, tenant_a.dentist_admin, "SPECIFIC-OTHER", scope="SPECIFIC", procedure_ids=[str(other_catalog.id)])
+    tenant_a.company.country = "Chile"
+    db_session.commit()
     _template(api_client, tenant_a.dentist_admin, "GENERAL-CL", country="CL")
+    tenant_a.company.country = "Colombia"
+    db_session.commit()
     _template(api_client, tenant_b.dentist_admin, "GENERAL-OTHER-TENANT")
     _template(api_client, tenant_a.dentist_admin, "GENERAL-DRAFT", publish=False)
 
@@ -384,6 +390,8 @@ def test_general_and_specific_templates_are_combined_without_duplicates(api_clie
     superseded = _template(api_client, tenant_a.dentist_admin, "GENERAL-SUPERSEDED")
     new_draft = api_client.post(f"/api/consent-templates/{superseded['template_id']}/versions/{superseded['id']}/create-draft", token=tenant_a.dentist_admin.token, json={"change_summary": "Versión vigente de prueba"})
     assert new_draft.status_code == 201, new_draft.text
+    reviewed = api_client.post(f"/api/consent-templates/{superseded['template_id']}/versions/{new_draft.json()['id']}/review-content", token=tenant_a.dentist_admin.token, json={"confirmed": True})
+    assert reviewed.status_code == 200, reviewed.text
     current = api_client.post(f"/api/consent-templates/{superseded['template_id']}/versions/{new_draft.json()['id']}/publish", token=tenant_a.dentist_admin.token)
     assert current.status_code == 200, current.text
 
@@ -531,7 +539,7 @@ def test_adult_self_acceptance_is_atomic_idempotent_and_tenant_scoped(api_client
     issued=api_client.post(f"/api/consent-instances/{created['id']}/access-sessions",token=tenant.dentist_admin.token,json={}); token=issued.json()["public_url"].rsplit("/",1)[-1]
     assert api_client.post(f"/api/public/consents/{token}/otp").status_code==200
     otp=re.search(r"\b\d{6}\b",get_test_email_outbox()[-1].body).group(0); verified=api_client.post(f"/api/public/consents/{token}/otp/verify",json={"code":otp}); cookie=verified.headers["set-cookie"].split(";",1)[0]
-    monkeypatch.setattr(settings,"app_env","production"); assert api_client.get(f"/api/public/consents/{token}/acceptance-requirements",headers={"Cookie":cookie}).status_code==404; monkeypatch.setattr(settings,"app_env","test")
+    monkeypatch.setattr(settings,"app_env","production"); assert api_client.get(f"/api/public/consents/{token}/acceptance-requirements",headers={"Cookie":cookie}).status_code==409; monkeypatch.setattr(settings,"app_env","test")
     requirements=api_client.get(f"/api/public/consents/{token}/acceptance-requirements",headers={"Cookie":cookie}); assert requirements.status_code==200
     declarations=requirements.json()["declarations"]; assert declarations and all("accepted" not in item for item in declarations)
     requirements_data=requirements.json(); assert requirements_data["declarations_country_code"]=="CO" and requirements_data["declarations_locale"]=="es-CO" and requirements_data["test_document"] is True
@@ -639,7 +647,7 @@ def test_declaration_sets_are_exactly_bound_to_country_locale_and_legal_status(a
     with pytest.raises(consent_declaration_catalog.ConsentDeclarationSetError): consent_declaration_catalog.declaration_set_for("CO","es-CO",app_env="test",acceptance_enabled=True,on_date=date.today())
     approved=replace(consent_declaration_catalog.CO_DRAFT,code="CONSENT_PATIENT_SELF_CO_APPROVED_TEST",version="APPROVED_TEST_V1",legal_status="APPROVED",effective_from=date.today())
     monkeypatch.setitem(consent_declaration_catalog.DECLARATION_SETS,("CO","es-CO"),approved)
-    assert consent_declaration_catalog.declaration_set_for("CO","es-CO",app_env="test",acceptance_enabled=True,on_date=date.today()).is_test_document is False
+    assert consent_declaration_catalog.declaration_set_for("CO","es-CO",app_env="test",acceptance_enabled=True,on_date=date.today()).is_test_document is True
 
 
 @pytest.mark.parametrize("legacy_mutation", ["missing_country", "missing_locale", "previous_schema"])
@@ -676,9 +684,9 @@ def test_incompatible_country_locale_and_live_master_changes_cannot_repair_seale
     confirmed=api_client.post(f"/api/consent-instances/{created['id']}/professional-confirm",token=tenant.dentist_admin.token,json={"confirmed":True,"row_version":created["row_version"]});assert confirmed.status_code==200
     db_session.expire_all();sealed=db_session.get(ConsentInstance,created["id"]);snapshot_before=deepcopy(sealed.context_snapshot);hashes_before=(sealed.context_sha256,sealed.integrity_hash)
     tenant.company.country="Chile";tenant.site_1.timezone="America/Santiago";tenant.patient.first_names="Paciente maestro cambiado";db_session.commit()
-    issued=api_client.post(f"/api/consent-instances/{created['id']}/access-sessions",token=tenant.dentist_admin.token,json={});token=issued.json()["public_url"].rsplit("/",1)[-1]
-    api_client.post(f"/api/public/consents/{token}/otp");otp=re.search(r"\b\d{6}\b",get_test_email_outbox()[-1].body).group(0);verified=api_client.post(f"/api/public/consents/{token}/otp/verify",json={"code":otp});cookie=verified.headers["set-cookie"].split(";",1)[0]
-    blocked=api_client.get(f"/api/public/consents/{token}/acceptance-requirements",headers={"Cookie":cookie});assert blocked.status_code==409 and blocked.json()["detail"]==PUBLIC_LEGACY_MESSAGE
+    issued=api_client.post(f"/api/consent-instances/{created['id']}/access-sessions",token=tenant.dentist_admin.token,json={})
+    assert issued.status_code==409
+    assert "declaraciones" in issued.json()["detail"]
     db_session.expire_all();unchanged=db_session.get(ConsentInstance,created["id"]);assert unchanged.context_snapshot==snapshot_before and (unchanged.context_sha256,unchanged.integrity_hash)==hashes_before
 
 
@@ -816,15 +824,17 @@ def test_pdf_human_dates_use_sealed_timezone_and_spanish_locale():
     assert consent_acceptance_service._human_datetime(value,"America/Santiago","es-CL")=="1 de agosto de 2026, 3:05 p. m."
 
 
-def test_locally_authorized_approved_set_generates_no_test_mark(api_client, db_session, security_world, monkeypatch):
+def test_local_approved_set_still_generates_test_mark(api_client, db_session, security_world, monkeypatch):
     approved=replace(consent_declaration_catalog.CO_DRAFT,code="CONSENT_PATIENT_SELF_CO_APPROVED_TEST",version="APPROVED_TEST_V1",legal_status="APPROVED",effective_from=date.today())
     monkeypatch.setitem(consent_declaration_catalog.DECLARATION_SETS,("CO","es-CO"),approved)
     created,token,cookie,requirements,payload=_prepare_acceptance(api_client,db_session,security_world.tenant_a,"REVIEW-APPROVED-NO-MARK")
-    document=api_client.get(f"/api/public/consents/{token}/document",headers={"Cookie":cookie}).json();assert document["is_test_document"] is False and document["test_notice"] is None and document["legal_review_status"]=="APPROVED"
-    assert requirements["test_document"] is False and requirements["declarations_legal_status"]=="APPROVED"
+    document=api_client.get(f"/api/public/consents/{token}/document",headers={"Cookie":cookie}).json();assert document["is_test_document"] is True and document["test_notice"]==consent_declaration_catalog.TEST_DOCUMENT_NOTICE and document["legal_review_status"]=="APPROVED"
+    assert requirements["test_document"] is True and requirements["declarations_legal_status"]=="APPROVED"
     signed=api_client.post(f"/api/public/consents/{token}/acceptance",headers={"Cookie":cookie},json=payload);assert signed.status_code==200,signed.text
-    final=api_client.get(signed.json()["download_url"]);assert consent_declaration_catalog.TEST_DOCUMENT_NOTICE.encode("utf-8") not in final.content and b"DOCUMENTO DE PRUEBA" not in final.content
-    summary=api_client.get(f"/api/consent-instances/{created['id']}/acceptance",token=security_world.tenant_a.dentist_admin.token).json();assert summary["test_document"] is False
+    final=api_client.get(signed.json()["download_url"])
+    final_text="\n".join(page.get_text() for page in fitz.open(stream=final.content,filetype="pdf"))
+    assert "DOCUMENTO DE PRUEBA" in final_text
+    summary=api_client.get(f"/api/consent-instances/{created['id']}/acceptance",token=security_world.tenant_a.dentist_admin.token).json();assert summary["test_document"] is True
 
 
 def test_signer1_responsible_adult_relationships_and_minor_policy():

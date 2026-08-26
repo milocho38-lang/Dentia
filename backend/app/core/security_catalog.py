@@ -108,6 +108,7 @@ PERMISSIONS = (
     PermissionDefinition("consent.template.create", "Crear plantillas de consentimiento", "consent_templates", "Crear plantillas y nuevas versiones en borrador."),
     PermissionDefinition("consent.template.edit_draft", "Editar borradores de consentimiento", "consent_templates", "Editar contenido y aplicabilidad de versiones en borrador."),
     PermissionDefinition("consent.template.publish", "Publicar plantillas de consentimiento", "consent_templates", "Publicar versiones inmutables y reemplazar prospectivamente la vigente."),
+    PermissionDefinition("consent.template.review_content", "Revisar contenido de plantillas de consentimiento", "consent_templates", "Confirmar que la clínica revisó y adoptó el contenido exacto de una versión tenant."),
     PermissionDefinition("consent.template.retire", "Retirar plantillas de consentimiento", "consent_templates", "Retirar una versión publicada sin eliminar historial."),
     PermissionDefinition("consent.template.void_draft", "Anular borradores de consentimiento", "consent_templates", "Anular borradores con motivo y trazabilidad."),
     PermissionDefinition("consent.template.view_audit", "Auditar plantillas de consentimiento", "consent_templates", "Consultar trazabilidad administrativa autorizada de plantillas."),
@@ -198,6 +199,27 @@ CLINICAL_SENSITIVE_PERMISSION_CODES = frozenset(
         "consent.clarification.read",
         "consent.clarification.manage",
         "consent.acceptance.view_evidence",
+    }
+)
+DENTIST_IDENTITY_PERMISSION_CODES = frozenset(
+    {
+        "clinical_records.create",
+        "clinical_records.update_draft",
+        "clinical_evolutions.create",
+        "clinical_evolutions.update_draft",
+        "clinical_evolutions.sign",
+        "clinical_evolutions.add_addendum",
+        "odontogram.create",
+        "odontogram.update_draft",
+        "odontogram.confirm",
+        "odontogram.correct",
+        "clinical_documents.create",
+        "clinical_documents.edit_draft",
+        "clinical_documents.finalize",
+        "prescriptions.create",
+        "prescriptions.edit_draft",
+        "prescriptions.finalize",
+        "consent.instance.review",
     }
 )
 CLINIC_ADMIN_PERMISSION_CODES = (
@@ -375,6 +397,7 @@ DENTIST_ADMIN_PERMISSIONS = SECRETARY_PERMISSIONS | DENTIST_PERMISSIONS | frozen
         "consent.template.create",
         "consent.template.edit_draft",
         "consent.template.publish",
+        "consent.template.review_content",
         "consent.template.retire",
         "consent.template.void_draft",
         "consent.template.view_audit",

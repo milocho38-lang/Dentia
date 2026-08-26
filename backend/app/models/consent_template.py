@@ -169,6 +169,75 @@ class ConsentTemplateVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     updated_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
 
 
+class ConsentTemplateContentReview(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_plantilla_revisiones_contenido"
+    __table_args__ = (
+        Index("ix_consent_content_review_company_version", "empresa_id", "template_version_id"),
+        Index(
+            "uq_consent_content_review_active_version",
+            "template_version_id",
+            unique=True,
+            postgresql_where=text("invalidated_at IS NULL"),
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False)
+    template_version_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("consentimiento_plantilla_versiones.id", ondelete="RESTRICT"), nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    reviewed_by: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="RESTRICT"), nullable=False)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    acknowledgement_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    acknowledgement_text: Mapped[str] = mapped_column(Text, nullable=False)
+    acknowledgement_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    origin: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_library_version_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("consentimiento_biblioteca_versiones.id", ondelete="SET NULL"), nullable=True)
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invalidated_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    invalidation_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+
+class ConsentProcedureApproval(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_procedimientos_aprobados"
+    __table_args__ = (
+        UniqueConstraint("procedure_version", name="uq_consent_procedure_approval_version"),
+        CheckConstraint("status IN ('APPROVED','RETIRED')", name="ck_consent_procedure_approval_status"),
+    )
+
+    procedure_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    procedure_scope: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    electronic_channel_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    paper_channel_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    responsible_adult_flow_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    declaration_flow_reviewed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    countries: Mapped[list] = mapped_column(JSONB, nullable=False)
+    review_reference: Mapped[str] = mapped_column(String(300), nullable=False)
+    review_recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reviewer_roles: Mapped[list] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class ConsentDeclarationVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "consentimiento_declaracion_versiones"
+    __table_args__ = (
+        UniqueConstraint("code", "version", name="uq_consent_declaration_code_version"),
+        CheckConstraint("status IN ('APPROVED','RETIRED')", name="ck_consent_declaration_version_status"),
+        Index("ix_consent_declaration_runtime", "country_code", "locale", "actor_type", "status"),
+    )
+
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    locale: Mapped[str] = mapped_column(String(10), nullable=False)
+    actor_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    version: Mapped[str] = mapped_column(String(50), nullable=False)
+    declarations: Mapped[list] = mapped_column(JSONB, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    procedure_version: Mapped[str] = mapped_column(String(80), ForeignKey("consentimiento_procedimientos_aprobados.procedure_version", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    review_reference: Mapped[str] = mapped_column(String(300), nullable=False)
+    approval_recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
 class ConsentTemplateVersionSite(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "consentimiento_plantilla_version_sedes"
     __table_args__ = (UniqueConstraint("version_id", "site_id", name="uq_consent_version_site"), Index("ix_consent_version_site_empresa", "empresa_id", "site_id"))

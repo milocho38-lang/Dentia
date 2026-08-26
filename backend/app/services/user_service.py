@@ -9,11 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, normalize_email, utc_now
 from app.core.config import settings
-from app.models.associations import UserRole, UserSite
+from app.models.associations import RolePermission, UserRole, UserSite
 from app.models.agenda import Dentist, DentistSite
 from app.models.audit_event import AuditEvent
 from app.models.auth_session import AuthSession
 from app.models.role import Role
+from app.models.permission import Permission
 from app.models.user import User
 from app.repositories.user_repository import (
     count_active_administrators,
@@ -50,6 +51,15 @@ from app.schemas.user_schema import (
 )
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.site_access_service import authorized_sites
+from app.services.tenant_dentist_quota import (
+    TenantDentistLimitError,
+    deactivate_user_dentist_profile,
+    get_user_dentist_profile,
+    lock_company_and_require_dentist_slot,
+    roles_require_dentist_profile,
+    user_has_active_dentist_profile,
+)
+from app.core.security_catalog import PLATFORM_PERMISSION_CODES
 
 
 class UserManagementError(RuntimeError):
@@ -176,6 +186,22 @@ def _validate_roles(
     roles = get_active_roles(session, context.user.company_id, unique_ids)
     if len(roles) != len(unique_ids):
         raise UserManagementError("Uno o más roles no son válidos.")
+    global_role_ids = set(
+        session.scalars(
+            select(RolePermission.role_id)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(
+                RolePermission.role_id.in_(unique_ids),
+                RolePermission.is_active.is_(True),
+                Permission.code.in_(PLATFORM_PERMISSION_CODES),
+            )
+        )
+    )
+    if any(role.code == "PLATFORM_ADMIN" or role.id in global_role_ids for role in roles):
+        raise UserManagementError(
+            "Solo se pueden asignar roles empresariales.",
+            403,
+        )
     if any(role.code == "ADMINISTRATOR" for role in roles):
         if "ADMINISTRATOR" not in context.roles:
             raise UserManagementError(
@@ -367,6 +393,74 @@ def _target_site_ids_for_clinical_profile(
     return [target.default_site_id] if target.default_site_id else []
 
 
+def _ensure_user_dentist_profile(
+    session: Session,
+    *,
+    target: User,
+    role_codes: set[str],
+    actor_id: UUID,
+    active: bool = True,
+) -> tuple[Dentist, bool]:
+    dentist = get_user_dentist_profile(
+        session,
+        company_id=target.company_id,
+        user_id=target.id,
+        lock=True,
+    )
+    created = False
+    if dentist is None:
+        dentist = Dentist(
+            company_id=target.company_id,
+            user_id=target.id,
+            name=target.name,
+            status="Activo" if active else "Inactivo",
+            is_active=active,
+            created_by=actor_id,
+        )
+        session.add(dentist)
+        session.flush()
+        created = True
+    else:
+        dentist.name = target.name
+        dentist.status = "Activo" if active else "Inactivo"
+        dentist.is_active = active
+
+    target_site_ids = set(
+        _target_site_ids_for_clinical_profile(session, target, role_codes)
+    )
+    existing_dentist_sites = {
+        assignment.site_id: assignment
+        for assignment in session.scalars(
+            select(DentistSite)
+            .where(
+                DentistSite.company_id == target.company_id,
+                DentistSite.dentist_id == dentist.id,
+            )
+            .with_for_update()
+        )
+    }
+    active_existing = {
+        site_id
+        for site_id, assignment in existing_dentist_sites.items()
+        if assignment.is_active
+    }
+    if not active_existing and target_site_ids:
+        for site_id in target_site_ids:
+            assignment = existing_dentist_sites.get(site_id)
+            if assignment is None:
+                session.add(
+                    DentistSite(
+                        company_id=target.company_id,
+                        dentist_id=dentist.id,
+                        site_id=site_id,
+                        created_by=actor_id,
+                    )
+                )
+            else:
+                assignment.is_active = True
+    return dentist, created
+
+
 def list_users(
     session: Session,
     context: AuthContext,
@@ -412,6 +506,22 @@ def get_access_options(
     context: AuthContext,
 ) -> AccessOptionsResponse:
     roles = get_active_roles(session, context.user.company_id)
+    global_role_ids = set(
+        session.scalars(
+            select(RolePermission.role_id)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(
+                RolePermission.role_id.in_([role.id for role in roles]),
+                RolePermission.is_active.is_(True),
+                Permission.code.in_(PLATFORM_PERMISSION_CODES),
+            )
+        )
+    )
+    roles = [
+        role
+        for role in roles
+        if role.code != "PLATFORM_ADMIN" and role.id not in global_role_ids
+    ]
     if "ADMINISTRATOR" not in context.roles:
         roles = [role for role in roles if role.code != "ADMINISTRATOR"]
     sites = get_active_sites(session, context.user.company_id)
@@ -491,6 +601,17 @@ def create_user(
         default_site_id=data.default_site_id,
         actor_id=context.user.id,
     )
+    dentist_profile_created = False
+    dentist_id = None
+    if roles_require_dentist_profile(session, {role.id for role in roles}):
+        dentist, dentist_profile_created = _ensure_user_dentist_profile(
+            session,
+            target=user,
+            role_codes={role.code for role in roles},
+            actor_id=context.user.id,
+            active=False,
+        )
+        dentist_id = dentist.id
     _audit(
         session,
         context=context,
@@ -501,6 +622,8 @@ def create_user(
             "status": "Pendiente",
             "role_codes": sorted(role.code for role in roles),
             "site_ids": sorted(str(site_id) for site_id in data.site_ids),
+            "dentist_profile_id": str(dentist_id) if dentist_id else None,
+            "dentist_profile_created": dentist_profile_created,
         },
     )
     try:
@@ -575,8 +698,21 @@ def change_status(
         raise UserManagementError("No puedes suspender o desactivar tu cuenta.", 409)
     if new_status != "Activo":
         _protect_last_admin(session, context, target)
+    old_status = target.status
+    roles = get_user_roles(session, target.id)
+    role_ids = {role.id for _, role in roles}
+    role_codes = {role.code for _, role in roles}
+    requires_dentist_profile = roles_require_dentist_profile(
+        session, role_ids
+    )
     if new_status == "Activo":
-        roles = get_user_roles(session, target.id)
+        if old_status != "Activo" and requires_dentist_profile:
+            try:
+                lock_company_and_require_dentist_slot(
+                    session, context.user.company_id
+                )
+            except TenantDentistLimitError as exc:
+                raise UserManagementError(str(exc), 409) from exc
         is_administrator = any(
             role.code == "ADMINISTRATOR" for _, role in roles
         )
@@ -592,7 +728,25 @@ def change_status(
                 "El usuario necesita una sede predeterminada.",
                 409,
             )
-    old_status = target.status
+        if requires_dentist_profile:
+            _ensure_user_dentist_profile(
+                session,
+                target=target,
+                role_codes=role_codes,
+                actor_id=context.user.id,
+            )
+        else:
+            deactivate_user_dentist_profile(
+                session,
+                company_id=target.company_id,
+                user_id=target.id,
+            )
+    else:
+        deactivate_user_dentist_profile(
+            session,
+            company_id=target.company_id,
+            user_id=target.id,
+        )
     target.status = new_status
     target.is_active = new_status != "Inactivo"
     revoked = 0
@@ -608,6 +762,8 @@ def change_status(
         "Suspendido": "USER_SUSPENDED",
         "Inactivo": "USER_DEACTIVATED",
     }[new_status]
+    if new_status == "Activo" and old_status == "Inactivo":
+        action = "USER_REACTIVATED"
     _audit(
         session,
         context=context,
@@ -693,7 +849,9 @@ def assign_roles(
 ) -> UserSummaryResponse:
     target = _get_target(session, context, user_id, lock=True)
     roles = _validate_roles(session, context, data.role_ids)
-    old_codes = {role.code for _, role in get_user_roles(session, target.id)}
+    old_role_rows = get_user_roles(session, target.id)
+    old_codes = {role.code for _, role in old_role_rows}
+    old_role_ids = {role.id for _, role in old_role_rows}
     new_codes = {role.code for role in roles}
     if old_codes == new_codes:
         return _build_user_summary(session, target)
@@ -701,12 +859,56 @@ def assign_roles(
         raise UserManagementError("No puedes retirar tu propio rol Administrador.", 409)
     if "ADMINISTRATOR" in old_codes and "ADMINISTRATOR" not in new_codes:
         _protect_last_admin(session, context, target)
+    had_dentist_capability = roles_require_dentist_profile(
+        session, old_role_ids
+    )
+    has_dentist_capability = roles_require_dentist_profile(
+        session, {role.id for role in roles}
+    )
+    dentist_before = get_user_dentist_profile(
+        session,
+        company_id=target.company_id,
+        user_id=target.id,
+        lock=True,
+    )
+    dentist_was_active = bool(
+        dentist_before
+        and dentist_before.is_active
+        and dentist_before.status == "Activo"
+    )
+    if (
+        target.status == "Activo"
+        and target.is_active
+        and has_dentist_capability
+        and not dentist_was_active
+    ):
+        try:
+            lock_company_and_require_dentist_slot(
+                session, target.company_id
+            )
+        except TenantDentistLimitError as exc:
+            raise UserManagementError(str(exc), 409) from exc
     _sync_roles(
         session,
         target=target,
         role_ids=[role.id for role in roles],
         actor_id=context.user.id,
     )
+    dentist_after = dentist_before
+    if has_dentist_capability:
+        dentist_after, _ = _ensure_user_dentist_profile(
+            session,
+            target=target,
+            role_codes=new_codes,
+            actor_id=context.user.id,
+            active=target.status == "Activo" and target.is_active,
+        )
+    else:
+        dentist_after = deactivate_user_dentist_profile(
+            session,
+            company_id=target.company_id,
+            user_id=target.id,
+        )
     revoked = _invalidate_access(
         session,
         target=target,
@@ -722,6 +924,17 @@ def assign_roles(
         detail={
             "before": sorted(old_codes),
             "after": sorted(new_codes),
+            "had_dentist_capability": had_dentist_capability,
+            "has_dentist_capability": has_dentist_capability,
+            "dentist_profile_id": (
+                str(dentist_after.id) if dentist_after else None
+            ),
+            "dentist_profile_active_before": dentist_was_active,
+            "dentist_profile_active_after": bool(
+                dentist_after
+                and dentist_after.is_active
+                and dentist_after.status == "Activo"
+            ),
             "sessions_revoked": revoked,
         },
     )
@@ -815,30 +1028,17 @@ def enable_clinical_role(
     if clinical_role is None:
         raise UserManagementError("Rol clínico no disponible para esta empresa.", 409)
 
-    dentist = session.scalar(
-        select(Dentist)
-        .where(
-            Dentist.company_id == target.company_id,
-            Dentist.user_id == target.id,
-        )
-        .with_for_update()
-    )
-    dentist_created = False
-    if dentist is None:
-        dentist = Dentist(
-            company_id=target.company_id,
-            user_id=target.id,
-            name=target.name,
-            status="Activo",
-            created_by=context.user.id,
-        )
-        session.add(dentist)
-        session.flush()
-        dentist_created = True
-    else:
-        dentist.is_active = True
-        dentist.status = "Activo"
-        dentist.name = target.name
+    if not user_has_active_dentist_profile(
+        session,
+        company_id=target.company_id,
+        user_id=target.id,
+    ):
+        try:
+            lock_company_and_require_dentist_slot(
+                session, target.company_id
+            )
+        except TenantDentistLimitError as exc:
+            raise UserManagementError(str(exc), 409) from exc
 
     role_added = False
     if data.role_code not in existing_role_codes:
@@ -864,39 +1064,18 @@ def enable_clinical_role(
             assignment.is_active = True
         role_added = True
 
-    target_site_ids = set(
-        _target_site_ids_for_clinical_profile(session, target, existing_role_codes)
+    updated_role_codes = existing_role_codes | {data.role_code}
+    dentist, dentist_created = _ensure_user_dentist_profile(
+        session,
+        target=target,
+        role_codes=updated_role_codes,
+        actor_id=context.user.id,
     )
-    existing_dentist_sites = {
-        assignment.site_id: assignment
-        for assignment in session.scalars(
-            select(DentistSite)
-            .where(
-                DentistSite.company_id == target.company_id,
-                DentistSite.dentist_id == dentist.id,
-            )
-            .with_for_update()
+    target_site_ids = set(
+        _target_site_ids_for_clinical_profile(
+            session, target, updated_role_codes
         )
-    }
-    active_existing = {
-        site_id
-        for site_id, assignment in existing_dentist_sites.items()
-        if assignment.is_active
-    }
-    if not active_existing and target_site_ids:
-        for site_id in target_site_ids:
-            assignment = existing_dentist_sites.get(site_id)
-            if assignment is None:
-                session.add(
-                    DentistSite(
-                        company_id=target.company_id,
-                        dentist_id=dentist.id,
-                        site_id=site_id,
-                        created_by=context.user.id,
-                    )
-                )
-            else:
-                assignment.is_active = True
+    )
 
     revoked = _invalidate_access(
         session,

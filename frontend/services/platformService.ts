@@ -55,3 +55,17 @@ export function updatePlatformCompanyUserRoles(
     },
   );
 }
+
+export function updatePlatformCompanyDentistLimit(
+  companyId: string,
+  maxActiveDentists: number,
+) {
+  return apiRequest<{ company: PlatformCompanyDetail; message: string }>(
+    `/api/platform/companies/${companyId}/dentist-limit`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ max_active_dentists: maxActiveDentists }),
+    },
+  );
+}

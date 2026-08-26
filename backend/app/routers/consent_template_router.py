@@ -8,6 +8,7 @@ from app.core.auth_dependencies import get_request_metadata, require_permission
 from app.database.session import get_db
 from app.schemas.consent_template_schema import (
     CatalogItemResponse,
+    ConsentContentReviewRequest,
     ConsentPreviewResponse,
     ConsentReasonRequest,
     ConsentTemplateCreateRequest,
@@ -24,6 +25,7 @@ from app.schemas.consent_template_schema import (
 from app.services.auth_service import AuthContext
 from app.services.consent_template_service import (
     ConsentTemplateError,
+    confirm_content_review,
     create_draft,
     create_draft_from_version,
     create_template,
@@ -222,6 +224,21 @@ def publish_version_endpoint(
 ) -> ConsentVersionResponse:
     try:
         return publish_version(session, context, template_id, version_id, get_request_metadata(request))
+    except ConsentTemplateError as exc:
+        raise _http_error(exc)
+
+
+@router.post("/api/consent-templates/{template_id}/versions/{version_id}/review-content", response_model=ConsentVersionResponse)
+def review_content_endpoint(
+    template_id: UUID,
+    version_id: UUID,
+    payload: ConsentContentReviewRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("consent.template.review_content"))],
+) -> ConsentVersionResponse:
+    try:
+        return confirm_content_review(session, context, template_id, version_id, payload, get_request_metadata(request))
     except ConsentTemplateError as exc:
         raise _http_error(exc)
 

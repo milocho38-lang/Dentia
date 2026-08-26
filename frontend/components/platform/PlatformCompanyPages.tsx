@@ -12,6 +12,7 @@ import {
   listPlatformCompanies,
   reactivatePlatformCompany,
   updatePlatformCompanyUserRoles,
+  updatePlatformCompanyDentistLimit,
 } from "@/services/platformService";
 import type {
   PlatformCompanyDetail,
@@ -319,11 +320,15 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
   const [selectedUser, setSelectedUser] = useState<PlatformUserSummary | null>(null);
   const [modalMode, setModalMode] = useState<"view" | "edit">("view");
   const [notice, setNotice] = useState<string | null>(null);
+  const [dentistLimit, setDentistLimit] = useState(1);
+  const [savingLimit, setSavingLimit] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      setCompany(await getPlatformCompany(companyId));
+      const loaded = await getPlatformCompany(companyId);
+      setCompany(loaded);
+      setDentistLimit(loaded.max_active_dentists);
     } catch {
       setError("No fue posible cargar la empresa.");
     } finally {
@@ -344,6 +349,23 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
     } else {
       const response = await reactivatePlatformCompany(company.id);
       setCompany(response.company);
+    }
+  }
+
+  async function saveDentistLimit(event: FormEvent) {
+    event.preventDefault();
+    if (!company) return;
+    setSavingLimit(true);
+    setError(null);
+    try {
+      const response = await updatePlatformCompanyDentistLimit(company.id, dentistLimit);
+      setCompany(response.company);
+      setDentistLimit(response.company.max_active_dentists);
+      setNotice(response.message);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No fue posible actualizar el límite de odontólogos.");
+    } finally {
+      setSavingLimit(false);
     }
   }
 
@@ -380,12 +402,36 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
           {company.is_active ? "Inactivar" : "Reactivar"}
         </button>
       </header>
-      <div className="mt-6 grid gap-4 sm:grid-cols-4">
+      <div className="mt-6 grid gap-4 sm:grid-cols-3 xl:grid-cols-6">
         <Card label="Estado" value={company.status} />
         <Card label="Sedes" value={String(company.site_count)} />
         <Card label="Usuarios" value={String(company.user_count)} />
+        <Card label="Odontólogos activos" value={String(company.active_dentist_count)} />
+        <Card label="Límite de odontólogos" value={String(company.max_active_dentists)} />
         <Card label="Creación" value={formatDate(company.created_at)} />
       </div>
+      <form onSubmit={saveDentistLimit} className="mt-6 flex flex-col gap-3 rounded-2xl border bg-white p-5 shadow-sm sm:flex-row sm:items-end">
+        <label className="flex-1 text-sm font-bold text-slate-700">
+          Límite de odontólogos
+          <select
+            value={dentistLimit}
+            onChange={(event) => setDentistLimit(Number(event.target.value))}
+            className="mt-1.5 min-h-11 w-full rounded-xl border bg-white px-3 font-normal"
+          >
+            {[1, 3, 5, 10].map((limit) => (
+              <option key={limit} value={limit} disabled={limit < company.active_dentist_count}>
+                {limit}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          disabled={savingLimit || dentistLimit < company.active_dentist_count}
+          className="min-h-11 rounded-xl bg-green-700 px-4 font-bold text-white disabled:opacity-50"
+        >
+          {savingLimit ? "Guardando…" : "Actualizar límite"}
+        </button>
+      </form>
       <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
         <h2 className="font-black">Datos empresa</h2>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2">

@@ -29,6 +29,11 @@ export interface ConsentVersion {
   legacy_quarantined: boolean;
   legacy_quarantine_reasons: string[];
   legacy_quarantine_message: string | null;
+  clinic_content_review_confirmed: boolean;
+  clinic_content_reviewed_by: string | null;
+  clinic_content_reviewed_at: string | null;
+  clinic_content_review_sha256: string | null;
+  clinic_content_acknowledgement_version: string | null;
   based_on_version_id: string | null;
   change_summary: string | null;
   scope_type: "GENERAL" | "SPECIFIC";

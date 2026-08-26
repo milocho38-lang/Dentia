@@ -105,6 +105,8 @@ class PlatformCompanyListItem(BaseModel):
     is_active: bool
     site_count: int
     user_count: int
+    active_dentist_count: int
+    max_active_dentists: int
     created_at: datetime
     updated_at: datetime
 
@@ -201,3 +203,20 @@ class PlatformCompanyUserRoleUpdateResponse(BaseModel):
     success: bool = True
     message: str
     user: PlatformUserSummary
+
+
+class PlatformCompanyDentistLimitUpdateRequest(BaseModel):
+    max_active_dentists: int
+
+    @field_validator("max_active_dentists")
+    @classmethod
+    def validate_dentist_limit(cls, value: int) -> int:
+        if value not in {1, 3, 5, 10}:
+            raise ValueError("El límite debe ser 1, 3, 5 o 10 odontólogos.")
+        return value
+
+
+class PlatformCompanyDentistLimitUpdateResponse(BaseModel):
+    success: bool = True
+    message: str
+    company: PlatformCompanyDetail

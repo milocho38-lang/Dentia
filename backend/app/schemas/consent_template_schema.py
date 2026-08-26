@@ -233,6 +233,16 @@ class ConsentVersionCreateFromRequest(BaseModel):
         return value.strip()
 
 
+class ConsentContentReviewRequest(BaseModel):
+    confirmed: bool
+
+    @model_validator(mode="after")
+    def confirmation_required(self):
+        if not self.confirmed:
+            raise ValueError("Debes confirmar expresamente la revisión del contenido.")
+        return self
+
+
 class CatalogItemResponse(BaseModel):
     code: str
     label: str
@@ -267,6 +277,11 @@ class ConsentVersionResponse(BaseModel):
     legal_review_status: str | None = None
     clinical_review_status: str | None = None
     reviewed_countries: list[str] = Field(default_factory=list)
+    clinic_content_review_confirmed: bool = False
+    clinic_content_reviewed_by: UUID | None = None
+    clinic_content_reviewed_at: datetime | None = None
+    clinic_content_review_sha256: str | None = None
+    clinic_content_acknowledgement_version: str | None = None
     based_on_version_id: UUID | None
     change_summary: str | None
     scope_type: str

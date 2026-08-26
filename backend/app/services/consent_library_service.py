@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from copy import deepcopy
 from datetime import datetime, time, timezone
 from pathlib import Path
 from uuid import UUID
@@ -14,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.audit_event import AuditEvent
+from app.models.company import Company
 from app.models.consent_template import (
     ConsentLibraryDocument,
     ConsentLibraryInstallation,
@@ -31,6 +33,7 @@ from app.schemas.consent_library_schema import (
     ConsentLibraryVersionResponse,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.tenant_country import TenantCountryError, company_country_code
 from app.services.consent_library_normalization import (
     NORM3_SCHEMA_VERSION,
     NORM5_SCHEMA_VERSION,
@@ -43,6 +46,9 @@ from app.services.consent_library_normalization import (
 from app.services.consent_template_service import CONTENT_FORMAT, VARIABLE_CATALOG, validate_content
 
 PACKAGE_PATH = Path(__file__).resolve().parents[1] / "library_data" / "consents" / "v4" / "documents.json"
+ODONTOPEDIATRIC_DOCUMENT_CODE = "CONS_ODONTOPEDIATRIA"
+ODONTOPEDIATRIC_PRODUCTION_VERSION = 4
+ODONTOPEDIATRIC_PRODUCTION_PACKAGE = "LIB1_NORM_V2_NORM5_PRODUCTION_READINESS"
 MAX_TEMPLATE_CODE_LENGTH = 80
 MAX_CLONE_CODE_ATTEMPTS = 25
 TEMPLATE_CODE_UNIQUE_CONSTRAINT = "uq_consent_template_empresa_codigo"
@@ -62,6 +68,36 @@ REQUIRED_APPROVAL_CHECKS = (
     "legal_equivalence_review",
 )
 logger = logging.getLogger(__name__)
+
+
+def _production_ready_library_item(item: dict) -> dict:
+    """Derive the immutable odontopediatric metadata correction from NORM5.
+
+    Version 3 remains untouched in the database. Version 4 freezes the exact
+    same patient-facing text and hashes while correcting the obsolete channel
+    capability metadata after the responsible-adult flow was validated.
+    """
+    if item.get("code") != ODONTOPEDIATRIC_DOCUMENT_CODE:
+        return item
+    corrected = deepcopy(item)
+    corrected["supports_electronic_signature"] = True
+    corrected["source_package_version"] = ODONTOPEDIATRIC_PRODUCTION_PACKAGE
+    derived_versions: list[dict] = []
+    for version in corrected.get("versions", []):
+        derived = deepcopy(version)
+        if derived.get("version_number") == ODONTOPEDIATRIC_PRODUCTION_VERSION - 1:
+            derived["version_number"] = ODONTOPEDIATRIC_PRODUCTION_VERSION
+            notes = list(derived.get("transformation_notes", []))
+            notes.append("production_readiness_change=legacy_supports_electronic_signature_corrected_true")
+            notes.append("content_change=none")
+            derived["transformation_notes"] = notes
+            derived["review_notes"] = (
+                "Nueva versión inmutable: corrige únicamente la capacidad electrónica legacy; "
+                "el contenido normalizado y sus hashes permanecen sin cambios."
+            )
+        derived_versions.append(derived)
+    corrected["versions"] = derived_versions
+    return corrected
 
 
 def _variable_schema_snapshot(variable_codes: list[str]) -> dict:
@@ -186,6 +222,14 @@ def _document_response(document: ConsentLibraryDocument, versions: list[ConsentL
 
 
 def list_library(session: Session, context: AuthContext, *, text_query: str | None = None, country: str | None = None, document_type: str | None = None, specialty: str | None = None, category: str | None = None, signer_scope: str | None = None, publication_status: str | None = None) -> ConsentLibraryListResponse:
+    if "PLATFORM_ADMIN" not in context.roles:
+        company = session.get(Company, context.user.company_id)
+        if company is None:
+            raise ConsentLibraryError("Empresa no encontrada.", 404)
+        try:
+            country = company_country_code(company)
+        except TenantCountryError as exc:
+            raise ConsentLibraryError(str(exc), 409) from exc
     statement = select(ConsentLibraryDocument).where(ConsentLibraryDocument.is_active.is_(True))
     if text_query:
         pattern = f"%{text_query.strip()}%"
@@ -275,10 +319,6 @@ def _integrity_constraint_name(exc: IntegrityError) -> str | None:
 
 
 def _ensure_installable(document: ConsentLibraryDocument, version: ConsentLibraryVersion, *, exact: bool) -> None:
-    if exact and version.publication_status != "PUBLISHED":
-        raise ConsentLibraryError("Solo una versión publicada de la biblioteca puede instalarse como oficial.", 409)
-    if exact and (version.legal_review_status != "APPROVED" or version.clinical_review_status != "APPROVED"):
-        raise ConsentLibraryError("La versión normalizada debe tener equivalencia legal y odontológica aprobada antes de instalarse como oficial.", 409)
     validation = validate_content(version.content, require_registered=True)
     if not validation.valid:
         raise ConsentLibraryError("La versión de biblioteca contiene variables no registradas o sintaxis inválida.", 422)
@@ -309,6 +349,18 @@ def _ensure_installable(document: ConsentLibraryDocument, version: ConsentLibrar
 def install_library_version(session: Session, context: AuthContext, version_id: UUID, payload: ConsentLibraryInstallRequest, metadata: RequestMetadata, *, mode: str) -> ConsentLibraryInstallResponse:
     exact = mode == "EXACT"
     document, version = get_library_version(session, version_id)
+    company = session.get(Company, context.user.company_id)
+    if company is None:
+        raise ConsentLibraryError("Empresa no encontrada.", 404)
+    try:
+        tenant_country = company_country_code(company)
+    except TenantCountryError as exc:
+        raise ConsentLibraryError(str(exc), 409) from exc
+    if version.country_code != tenant_country:
+        raise ConsentLibraryError(
+            "La variante seleccionada no corresponde al país configurado para la empresa.",
+            409,
+        )
     sibling_versions = list(session.scalars(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == version.country_code, ConsentLibraryVersion.language_code == version.language_code)))
     if version.id not in _current_version_ids(sibling_versions):
         raise ConsentLibraryError("Esta es una versión histórica y no puede utilizarse para crear nuevos consentimientos.", 409)
@@ -318,7 +370,7 @@ def install_library_version(session: Session, context: AuthContext, version_id: 
         existing = session.scalar(select(ConsentLibraryInstallation).where(ConsentLibraryInstallation.company_id == context.user.company_id, ConsentLibraryInstallation.library_version_id == version.id, ConsentLibraryInstallation.installation_mode == mode))
     if existing:
         return ConsentLibraryInstallResponse(mode=mode, template_id=existing.installed_template_id, version_id=existing.installed_version_id, already_installed=True, content_responsibility=existing.content_responsibility, message="La versión ya estaba instalada en esta clínica.")
-    version_status = "PUBLISHED" if exact else "DRAFT"
+    version_status = "DRAFT"
     validation = validate_content(version.content)
     patient_validation = validate_patient_facing_content(
         version.content,
@@ -346,7 +398,7 @@ def install_library_version(session: Session, context: AuthContext, version_id: 
                 is_active=True,
                 template_origin="DENTIA_LIBRARY" if exact else "CLONED_FROM_DENTIA",
                 source_library_document_id=document.id,
-                content_responsibility="DENTIA" if exact else "CLINIC",
+                content_responsibility="CLINIC",
                 created_by=context.user.id,
                 updated_by=context.user.id,
             )
@@ -361,7 +413,7 @@ def install_library_version(session: Session, context: AuthContext, version_id: 
                 content=version.content,
                 content_format=CONTENT_FORMAT,
                 variable_schema_snapshot=_variable_schema_snapshot(validation.used_variables),
-                content_sha256=version.normalized_content_sha256,
+                content_sha256=None,
                 source_library_version_id=version.id,
                 source_document_hash=document.source_document_hash,
                 legal_review_status=version.legal_review_status if exact else "CLINIC_REVIEW_REQUIRED_AFTER_CLONE",
@@ -370,8 +422,8 @@ def install_library_version(session: Session, context: AuthContext, version_id: 
                 change_summary=payload.change_summary or ("Instalación exacta desde biblioteca Dentia." if exact else f"Copia editable creada desde biblioteca Dentia v{version.version_number}."),
                 scope_type="GENERAL",
                 priority=0,
-                published_at=_now() if exact else None,
-                published_by=context.user.id if exact else None,
+                published_at=None,
+                published_by=None,
                 installed_from_library_at=_now(),
                 created_by=context.user.id,
                 updated_by=context.user.id,
@@ -385,7 +437,7 @@ def install_library_version(session: Session, context: AuthContext, version_id: 
                 installed_template_id=template.id,
                 installed_version_id=installed_version.id,
                 installation_mode=mode,
-                content_responsibility="DENTIA" if exact else "CLINIC",
+                content_responsibility="CLINIC",
                 installed_by=context.user.id,
                 installed_at=_now(),
             )
@@ -407,7 +459,7 @@ def install_library_version(session: Session, context: AuthContext, version_id: 
                 },
             )
             session.commit()
-            return ConsentLibraryInstallResponse(mode=mode, template_id=template.id, version_id=installed_version.id, already_installed=False, content_responsibility=install.content_responsibility, message="Plantilla instalada como oficial Dentia." if exact else "Copia editable creada para la clínica.")
+            return ConsentLibraryInstallResponse(mode=mode, template_id=template.id, version_id=installed_version.id, already_installed=False, content_responsibility=install.content_responsibility, message="Plantilla sugerida por Dentia agregada para revisión de la clínica." if exact else "Copia editable creada para la clínica.")
         except IntegrityError as exc:
             session.rollback()
             constraint_name = _integrity_constraint_name(exc)
@@ -543,7 +595,8 @@ def import_library_package(session: Session, *, path: Path = PACKAGE_PATH, dry_r
         "conflict_items": [],
         "dry_run": dry_run,
     }
-    for item in payload["documents"]:
+    for source_item in payload["documents"]:
+        item = _production_ready_library_item(source_item)
         counters["documents_seen"] += 1
         document = session.scalar(select(ConsentLibraryDocument).where(ConsentLibraryDocument.code == item["code"]))
         document_values = {

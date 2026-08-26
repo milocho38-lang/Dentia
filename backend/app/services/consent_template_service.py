@@ -10,8 +10,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.audit_event import AuditEvent
+from app.models.company import Company
 from app.models.consent_template import (
     ConsentTemplate,
+    ConsentTemplateContentReview,
     ConsentTemplateVersion,
     ConsentTemplateVersionProcedure,
     ConsentTemplateVersionSite,
@@ -25,6 +27,7 @@ from app.schemas.consent_template_schema import (
     ConsentPreviewResponse,
     ConsentReasonRequest,
     ConsentTemplateCreateRequest,
+    ConsentContentReviewRequest,
     ConsentTemplateAuditResponse,
     ConsentTemplateListResponse,
     ConsentTemplateResponse,
@@ -37,10 +40,16 @@ from app.schemas.consent_template_schema import (
     VariableValidationResponse,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.tenant_country import TenantCountryError, company_country_code
 from app.services.consent_library_normalization import assess_legacy_patient_content
 
 
 CONTENT_FORMAT = "RESTRICTED_MARKDOWN_V1"
+CONTENT_REVIEW_ACKNOWLEDGEMENT_VERSION = "CLINIC_CONTENT_REVIEW_V1"
+CONTENT_REVIEW_ACKNOWLEDGEMENT = (
+    "Confirmo que la clínica revisó el contenido de esta plantilla y considera que es adecuado "
+    "para su utilización con pacientes. La clínica asume responsabilidad sobre el contenido publicado."
+)
 PREVIEW_WARNING = "BORRADOR DE DEMOSTRACIÓN — NO APROBADO PARA USO CLÍNICO"
 VARIABLE_PATTERN = re.compile(r"\{\{\s*([a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+)\s*\}\}")
 ANY_TEMPLATE_PATTERN = re.compile(r"\{\{.*?\}\}", re.DOTALL)
@@ -199,15 +208,18 @@ def _association_maps(session: Session, version_ids: list[UUID]):
     sites: dict[UUID, list[UUID]] = defaultdict(list)
     procedures: dict[UUID, list[UUID]] = defaultdict(list)
     specialties: dict[UUID, list[SpecialtyInput]] = defaultdict(list)
+    reviews: dict[UUID, ConsentTemplateContentReview] = {}
     if not version_ids:
-        return sites, procedures, specialties
+        return sites, procedures, specialties, reviews
     for item in session.scalars(select(ConsentTemplateVersionSite).where(ConsentTemplateVersionSite.version_id.in_(version_ids))):
         sites[item.version_id].append(item.site_id)
     for item in session.scalars(select(ConsentTemplateVersionProcedure).where(ConsentTemplateVersionProcedure.version_id.in_(version_ids))):
         procedures[item.version_id].append(item.procedure_catalog_id)
     for item in session.scalars(select(ConsentTemplateVersionSpecialty).where(ConsentTemplateVersionSpecialty.version_id.in_(version_ids))):
         specialties[item.version_id].append(SpecialtyInput(code=item.specialty_code, name=item.specialty_name))
-    return sites, procedures, specialties
+    for item in session.scalars(select(ConsentTemplateContentReview).where(ConsentTemplateContentReview.template_version_id.in_(version_ids), ConsentTemplateContentReview.invalidated_at.is_(None))):
+        reviews[item.template_version_id] = item
+    return sites, procedures, specialties, reviews
 
 
 def _legacy_assessment(version: ConsentTemplateVersion):
@@ -215,10 +227,11 @@ def _legacy_assessment(version: ConsentTemplateVersion):
 
 
 def _version_response(version: ConsentTemplateVersion, maps) -> ConsentVersionResponse:
-    sites, procedures, specialties = maps
+    sites, procedures, specialties, reviews = maps
     validation = validate_content(version.content)
     legacy = _legacy_assessment(version)
-    return ConsentVersionResponse(id=version.id, template_id=version.template_id, version_number=version.version_number, status=version.status, title=version.title, content=version.content, content_format=version.content_format, used_variables=validation.used_variables, variable_schema_snapshot=version.variable_schema_snapshot, content_sha256=version.content_sha256, source_library_version_id=version.source_library_version_id, source_document_hash=version.source_document_hash, legacy_quarantined=legacy.is_legacy, legacy_quarantine_reasons=legacy.reasons, legacy_quarantine_message="Versión anterior no apta para nuevos consentimientos" if legacy.is_legacy else None, legal_review_status=version.legal_review_status, clinical_review_status=version.clinical_review_status, reviewed_countries=version.reviewed_countries or [], based_on_version_id=version.based_on_version_id, change_summary=version.change_summary, scope_type=version.scope_type, priority=version.priority, site_ids=sorted(sites[version.id], key=str), procedure_ids=sorted(procedures[version.id], key=str), specialties=sorted(specialties[version.id], key=lambda item: item.code), row_version=version.row_version, published_at=version.published_at, published_by=version.published_by, retired_at=version.retired_at, retire_reason=version.retire_reason, voided_at=version.voided_at, void_reason=version.void_reason, created_by=version.created_by, updated_by=version.updated_by, created_at=version.created_at, updated_at=version.updated_at)
+    review = reviews.get(version.id)
+    return ConsentVersionResponse(id=version.id, template_id=version.template_id, version_number=version.version_number, status=version.status, title=version.title, content=version.content, content_format=version.content_format, used_variables=validation.used_variables, variable_schema_snapshot=version.variable_schema_snapshot, content_sha256=version.content_sha256, source_library_version_id=version.source_library_version_id, source_document_hash=version.source_document_hash, legacy_quarantined=legacy.is_legacy, legacy_quarantine_reasons=legacy.reasons, legacy_quarantine_message="Versión anterior no apta para nuevos consentimientos" if legacy.is_legacy else None, legal_review_status=version.legal_review_status, clinical_review_status=version.clinical_review_status, reviewed_countries=version.reviewed_countries or [], clinic_content_review_confirmed=review is not None, clinic_content_reviewed_by=review.reviewed_by if review else None, clinic_content_reviewed_at=review.reviewed_at if review else None, clinic_content_review_sha256=review.content_sha256 if review else None, clinic_content_acknowledgement_version=review.acknowledgement_version if review else None, based_on_version_id=version.based_on_version_id, change_summary=version.change_summary, scope_type=version.scope_type, priority=version.priority, site_ids=sorted(sites[version.id], key=str), procedure_ids=sorted(procedures[version.id], key=str), specialties=sorted(specialties[version.id], key=lambda item: item.code), row_version=version.row_version, published_at=version.published_at, published_by=version.published_by, retired_at=version.retired_at, retire_reason=version.retire_reason, voided_at=version.voided_at, void_reason=version.void_reason, created_by=version.created_by, updated_by=version.updated_by, created_at=version.created_at, updated_at=version.updated_at)
 
 
 def _template_response(template: ConsentTemplate, versions: list[ConsentTemplateVersion], maps) -> ConsentTemplateResponse:
@@ -249,7 +262,7 @@ def _replace_associations(session: Session, version: ConsentTemplateVersion, pay
 
 
 def _canonical_hash(template: ConsentTemplate, version: ConsentTemplateVersion, validation: VariableValidationResponse, maps) -> str:
-    sites, procedures, specialties = maps
+    sites, procedures, specialties, _ = maps
     payload = {
         "template": {
             "code": template.code,
@@ -324,6 +337,19 @@ def list_template_audit(session: Session, context: AuthContext, template_id: UUI
 
 
 def create_template(session: Session, context: AuthContext, payload: ConsentTemplateCreateRequest, metadata: RequestMetadata) -> ConsentTemplateResponse:
+    if "PLATFORM_ADMIN" not in context.roles:
+        company = session.get(Company, context.user.company_id)
+        if company is None:
+            raise ConsentTemplateError("Empresa no encontrada.", 404)
+        try:
+            tenant_country = company_country_code(company)
+        except TenantCountryError as exc:
+            raise ConsentTemplateError(str(exc), 409) from exc
+        if payload.country_code != tenant_country:
+            raise ConsentTemplateError(
+                "La plantilla debe usar el país configurado para la empresa.",
+                409,
+            )
     _ensure_safe_draft(payload.initial_version.content)
     _validate_associations(session, context, payload.initial_version)
     template = ConsentTemplate(company_id=context.user.company_id, code=payload.code, name=payload.name, description=payload.description, document_kind=payload.document_kind, country_code=payload.country_code, language_code=payload.language_code, created_by=context.user.id, updated_by=context.user.id)
@@ -355,6 +381,19 @@ def update_template(session: Session, context: AuthContext, template_id: UUID, p
         raise ConsentTemplateError("País, idioma y tipo documental son inmutables después de la primera publicación.", 409)
     next_country = changes.get("country_code", template.country_code)
     next_language = changes.get("language_code", template.language_code)
+    if "PLATFORM_ADMIN" not in context.roles:
+        company = session.get(Company, context.user.company_id)
+        if company is None:
+            raise ConsentTemplateError("Empresa no encontrada.", 404)
+        try:
+            tenant_country = company_country_code(company)
+        except TenantCountryError as exc:
+            raise ConsentTemplateError(str(exc), 409) from exc
+        if "country_code" in changes and next_country != tenant_country:
+            raise ConsentTemplateError(
+                "La plantilla debe usar el país configurado para la empresa.",
+                409,
+            )
     if next_language != f"es-{next_country}":
         raise ConsentTemplateError("El idioma debe corresponder al país de la plantilla.", 422)
     for field, value in changes.items():
@@ -419,8 +458,62 @@ def update_draft(session: Session, context: AuthContext, template_id: UUID, vers
     version.row_version += 1
     version.updated_by = context.user.id
     _replace_associations(session, version, payload)
+    session.flush()
+    active_review = session.scalar(select(ConsentTemplateContentReview).where(ConsentTemplateContentReview.template_version_id == version.id, ConsentTemplateContentReview.invalidated_at.is_(None)).with_for_update())
+    if active_review is not None:
+        validation = validate_content(version.content, require_registered=True)
+        current_hash = _canonical_hash(template, version, validation, _association_maps(session, [version.id])) if validation.valid else None
+        if current_hash != active_review.content_sha256:
+            active_review.invalidated_at = _now()
+            active_review.invalidated_by = context.user.id
+            active_review.invalidation_reason = "VERSION_CONTENT_CHANGED"
+            _audit(session, context, metadata, action="CONSENT_TEMPLATE_CONTENT_REVIEW_INVALIDATED", template_id=template.id, version_id=version.id, detail={"previous_content_sha256": active_review.content_sha256, "new_content_sha256": current_hash})
     _audit(session, context, metadata, action="CONSENT_TEMPLATE_DRAFT_UPDATED", template_id=template_id, version_id=version.id, detail={"row_version": version.row_version})
     _audit(session, context, metadata, action="CONSENT_TEMPLATE_ASSOCIATIONS_UPDATED", template_id=template_id, version_id=version.id, detail={"sites": len(payload.site_ids), "procedures": len(payload.procedure_ids), "specialties": len(payload.specialties)})
+    session.commit()
+    return get_version(session, context, template_id, version.id)
+
+
+def confirm_content_review(session: Session, context: AuthContext, template_id: UUID, version_id: UUID, payload: ConsentContentReviewRequest, metadata: RequestMetadata) -> ConsentVersionResponse:
+    template, version = _require_version(session, context, template_id, version_id, lock=True)
+    if "PLATFORM_ADMIN" in context.roles:
+        raise ConsentTemplateError("La revisión del contenido corresponde exclusivamente a la clínica.", 403)
+    if version.status not in {"DRAFT", "PUBLISHED"}:
+        raise ConsentTemplateError("Solo una versión en borrador o publicada puede ser revisada por la clínica.", 409)
+    if not payload.confirmed:
+        raise ConsentTemplateError("Debes confirmar expresamente la revisión del contenido.", 422)
+    validation = _require_publishable(version)
+    maps = _association_maps(session, [version.id])
+    current_hash = _canonical_hash(template, version, validation, maps)
+    prior = maps[3].get(version.id)
+    now = _now()
+    if prior is not None:
+        if prior.content_sha256 == current_hash:
+            return _version_response(version, maps)
+        prior.invalidated_at = now
+        prior.invalidated_by = context.user.id
+        prior.invalidation_reason = "REVIEW_REPLACED"
+        _audit(session, context, metadata, action="CONSENT_TEMPLATE_CONTENT_REVIEW_INVALIDATED", template_id=template.id, version_id=version.id, detail={"previous_content_sha256": prior.content_sha256, "new_content_sha256": current_hash})
+        session.flush()
+    acknowledgement_sha256 = hashlib.sha256(CONTENT_REVIEW_ACKNOWLEDGEMENT.encode("utf-8")).hexdigest()
+    review = ConsentTemplateContentReview(
+        company_id=template.company_id,
+        template_version_id=version.id,
+        content_sha256=current_hash,
+        reviewed_by=context.user.id,
+        reviewed_at=now,
+        acknowledgement_version=CONTENT_REVIEW_ACKNOWLEDGEMENT_VERSION,
+        acknowledgement_text=CONTENT_REVIEW_ACKNOWLEDGEMENT,
+        acknowledgement_sha256=acknowledgement_sha256,
+        origin=template.template_origin,
+        source_library_version_id=version.source_library_version_id,
+    )
+    session.add(review)
+    version.content_sha256 = current_hash
+    version.updated_by = context.user.id
+    _audit(session, context, metadata, action="CONSENT_TEMPLATE_CONTENT_REVIEW_CONFIRMED", template_id=template.id, version_id=version.id, detail={"content_sha256": current_hash, "acknowledgement_version": CONTENT_REVIEW_ACKNOWLEDGEMENT_VERSION, "origin": template.template_origin})
+    if version.status == "PUBLISHED":
+        _audit(session, context, metadata, action="CONSENT_TEMPLATE_PUBLISHED_AFTER_REVIEW", template_id=template.id, version_id=version.id, detail={"legacy_published_version_reviewed": True})
     session.commit()
     return get_version(session, context, template_id, version.id)
 
@@ -445,12 +538,16 @@ def validate_version(session: Session, context: AuthContext, template_id: UUID, 
 
 def publish_version(session: Session, context: AuthContext, template_id: UUID, version_id: UUID, metadata: RequestMetadata) -> ConsentVersionResponse:
     template, version = _require_version(session, context, template_id, version_id, lock=True)
-    _ensure_not_read_only(template)
     if version.status == "PUBLISHED":
         raise ConsentTemplateError("La versión ya está publicada.", 409)
     if version.status != "DRAFT":
         raise ConsentTemplateError("Solo un borrador puede publicarse.", 409)
     validation = _require_publishable(version)
+    maps = _association_maps(session, [version.id])
+    current_hash = _canonical_hash(template, version, validation, maps)
+    review = maps[3].get(version.id)
+    if review is None or review.content_sha256 != current_hash:
+        raise ConsentTemplateError("Antes de publicar, la clínica debe revisar y confirmar el contenido exacto de esta versión.", 409)
     current = session.scalar(select(ConsentTemplateVersion).where(ConsentTemplateVersion.template_id == template.id, ConsentTemplateVersion.status == "PUBLISHED").with_for_update())
     if current and current.id != version.id:
         current.status = "SUPERSEDED"
@@ -461,15 +558,15 @@ def publish_version(session: Session, context: AuthContext, template_id: UUID, v
         # first so the new PUBLISHED row can enter the index in the same
         # transaction without a transient two-published state.
         session.flush()
-    maps = _association_maps(session, [version.id])
     version.variable_schema_snapshot = {key: {"label": VARIABLE_CATALOG[key][0], "category": VARIABLE_CATALOG[key][1]} for key in validation.used_variables}
-    version.content_sha256 = _canonical_hash(template, version, validation, maps)
+    version.content_sha256 = current_hash
     version.status = "PUBLISHED"
     version.published_at = _now()
     version.published_by = context.user.id
     version.updated_by = context.user.id
     version.row_version += 1
     _audit(session, context, metadata, action="CONSENT_TEMPLATE_VERSION_PUBLISHED", template_id=template.id, version_id=version.id, detail={"version_number": version.version_number, "content_sha256": version.content_sha256})
+    _audit(session, context, metadata, action="CONSENT_TEMPLATE_PUBLISHED_AFTER_REVIEW", template_id=template.id, version_id=version.id, detail={"content_sha256": current_hash, "reviewed_by": str(review.reviewed_by)})
     try:
         session.commit()
     except IntegrityError as exc:

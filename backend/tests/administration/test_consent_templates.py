@@ -35,6 +35,16 @@ def _create(api_client, actor, payload=None):
     return response.json()
 
 
+def _review_and_publish(api_client, actor, template_id, version_id):
+    reviewed = api_client.post(
+        f"/api/consent-templates/{template_id}/versions/{version_id}/review-content",
+        token=actor.token,
+        json={"confirmed": True},
+    )
+    assert reviewed.status_code == 200, reviewed.text
+    return api_client.post(f"/api/consent-templates/{template_id}/versions/{version_id}/publish", token=actor.token)
+
+
 def test_template_version_lifecycle_is_immutable_atomic_and_audited(api_client, db_session, security_world):
     actor = security_world.tenant_a.dentist_admin
     created = _create(api_client, actor)
@@ -51,7 +61,7 @@ def test_template_version_lifecycle_is_immutable_atomic_and_audited(api_client, 
     assert "PLAN-DEMO-001" in preview.json()["rendered_content"]
     assert "10:30 a. m." in preview.json()["rendered_content"]
 
-    published = api_client.post(f"/api/consent-templates/{template_id}/versions/{first['id']}/publish", token=actor.token)
+    published = _review_and_publish(api_client, actor, template_id, first["id"])
     assert published.status_code == 200, published.text
     first_published = published.json()
     assert first_published["status"] == "PUBLISHED"
@@ -84,7 +94,7 @@ def test_template_version_lifecycle_is_immutable_atomic_and_audited(api_client, 
     assert second["version_number"] == 2
     assert second["based_on_version_id"] == first["id"]
 
-    second_published = api_client.post(f"/api/consent-templates/{template_id}/versions/{second['id']}/publish", token=actor.token)
+    second_published = _review_and_publish(api_client, actor, template_id, second["id"])
     assert second_published.status_code == 200, second_published.text
     history = api_client.get(f"/api/consent-templates/{template_id}/versions", token=actor.token).json()
     assert {item["version_number"]: item["status"] for item in history} == {2: "PUBLISHED", 1: "SUPERSEDED"}
@@ -111,6 +121,7 @@ def test_tenant_associations_idor_and_role_boundaries(api_client, db_session, se
     procedure_a = ProcedureCatalogItem(company_id=tenant_a.company.id, name="Procedimiento ficticio A", normalized_name=f"procedimiento ficticio a {uuid4()}", is_active=True, created_by=tenant_a.admin.user.id)
     procedure_b = ProcedureCatalogItem(company_id=tenant_b.company.id, name="Procedimiento ficticio B", normalized_name=f"procedimiento ficticio b {uuid4()}", is_active=True, created_by=tenant_b.admin.user.id)
     db_session.add_all([procedure_a, procedure_b])
+    tenant_b.company.country = "Chile"
     db_session.commit()
 
     created_a = _create(api_client, tenant_a.dentist, _payload("A-SPECIFIC", scope="SPECIFIC", sites=[str(tenant_a.site_1.id)], procedures=[str(procedure_a.id)]))
@@ -179,7 +190,7 @@ def test_variables_content_limits_void_and_applicability(api_client, db_session,
 
     published_template = _create(api_client, actor, _payload("APPLICABLE"))
     version = published_template["draft_versions"][0]
-    published = api_client.post(f"/api/consent-templates/{published_template['id']}/versions/{version['id']}/publish", token=actor.token)
+    published = _review_and_publish(api_client, actor, published_template["id"], version["id"])
     assert published.status_code == 200
     candidates = find_applicable_published_templates(db_session, company_id=security_world.tenant_a.company.id, country_code="CO", language_code="es-CO")
     assert [item.template_code for item in candidates] == ["APPLICABLE"]

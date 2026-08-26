@@ -16,7 +16,7 @@ Veredicto: **TECHNICALLY IMPLEMENTED — PRODUCTION BLOCKED**.
 
 ## No habilitar hasta completar
 
-Revisión clínica, jurídica Colombia/Chile, declaraciones `APPROVED` vigentes, firma gráfica, representantes, retención/privacidad, SMTP válido, PDF sin marca de prueba, móvil, backup/restore y aprobación explícita. El bloqueo de producción en backend permanece absoluto en esta fase.
+Esta decisión histórica fue sustituida para C019A.6 por la compuerta verificable y el modelo de responsabilidades documentados en [C019 — Preparación productiva de consentimientos](../product/C019-Consent-Production-Readiness.md). El procedimiento técnico fue registrado como revisado; cada clínica debe revisar y adoptar el contenido exacto que publica. Producción permanece bloqueada si falta cualquier requisito técnico, operativo o de revisión tenant.
 
 ## Actualización C019A4-LIB1
 

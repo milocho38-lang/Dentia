@@ -103,6 +103,17 @@ required = {
     "DENTIA_BACKEND_ENV_FILE",
     "BRANDING_STORAGE_DIR",
     "API_PROXY_TARGET",
+    "PUBLIC_FRONTEND_URL",
+    "CONSENT_ACCEPTANCE_ENABLED",
+    "CONSENT_PUBLIC_COOKIE_SECURE",
+    "CONSENT_FINAL_STORAGE_DIR",
+    "CONSENT_STORAGE_PERSISTENT",
+    "CONSENT_PROCEDURE_VERSION",
+    "CONSENT_OTP_EXPIRE_MINUTES",
+    "CONSENT_OTP_MAX_ATTEMPTS",
+    "CONSENT_PUBLIC_SESSION_MINUTES",
+    "SMTP_HOST",
+    "SMTP_FROM_EMAIL",
 }
 
 placeholder_patterns = [
@@ -177,8 +188,29 @@ if db_name != env["POSTGRES_DB"]:
 if db_user != env["POSTGRES_USER"]:
     raise SystemExit("[dentia][ERROR] DATABASE_URL user does not match POSTGRES_USER.")
 
+if env["APP_ENV"].casefold() != "production":
+    raise SystemExit("[dentia][ERROR] APP_ENV must be production.")
+if env["APP_DEBUG"].casefold() != "false":
+    raise SystemExit("[dentia][ERROR] APP_DEBUG must be false.")
+if env["PUBLIC_FRONTEND_URL"].rstrip("/") != "https://dentiapro.com":
+    raise SystemExit("[dentia][ERROR] PUBLIC_FRONTEND_URL must be https://dentiapro.com.")
+for key in ("CONSENT_ACCEPTANCE_ENABLED", "CONSENT_PUBLIC_COOKIE_SECURE", "CONSENT_STORAGE_PERSISTENT"):
+    if env[key].casefold() != "true":
+        raise SystemExit(f"[dentia][ERROR] {key} must be true for clinical consent use.")
+if not env["CONSENT_FINAL_STORAGE_DIR"].startswith("/"):
+    raise SystemExit("[dentia][ERROR] CONSENT_FINAL_STORAGE_DIR must be an absolute persistent path.")
+if env["CONSENT_PROCEDURE_VERSION"] != "DENTIA_CONSENT_PROCEDURE_V1":
+    raise SystemExit("[dentia][ERROR] Unsupported CONSENT_PROCEDURE_VERSION.")
+for key in ("CONSENT_OTP_EXPIRE_MINUTES", "CONSENT_OTP_MAX_ATTEMPTS", "CONSENT_PUBLIC_SESSION_MINUTES"):
+    try:
+        if int(env[key]) <= 0:
+            raise ValueError
+    except ValueError:
+        raise SystemExit(f"[dentia][ERROR] {key} must be a positive integer.")
+
 print("[dentia] OK required variables are present")
 print("[dentia] OK secrets are non-placeholder and structurally valid")
+print("[dentia] OK consent production guardrails are configured")
 print(f"[dentia] OK database URL parsed for host={parsed.hostname} db={db_name} user={db_user}")
 PY
 

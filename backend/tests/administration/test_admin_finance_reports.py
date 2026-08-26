@@ -236,6 +236,8 @@ def test_branding_authorized_update_assets_and_insufficient_role_denied(api_clie
 def test_platform_role_management_contract_and_vertical_escalation(api_client, db_session, security_world) -> None:
     tenant_a = security_world.tenant_a
     tenant_b = security_world.tenant_b
+    tenant_a.company.max_active_dentists = 3
+    db_session.commit()
 
     detail = api_client.get(
         f"/api/platform/companies/{tenant_a.company.id}",
@@ -257,11 +259,47 @@ def test_platform_role_management_contract_and_vertical_escalation(api_client, d
             "site_ids": [str(tenant_a.site_1.id), str(tenant_a.site_2.id)],
             "default_site_id": str(tenant_a.site_1.id),
             "status": "Activo",
-            "ensure_dentist_profile": False,
+            "ensure_dentist_profile": True,
         },
     )
     assert updated.status_code == 200, updated.text
     assert {"ADMINISTRATOR", "DENTIST", "DENTIST_ADMIN"} <= set(updated.json()["user"]["roles"])
+    assert updated.json()["user"]["dentist_profile"] is not None
+    historical_profile_id = updated.json()["user"]["dentist_profile"]["id"]
+
+    administrative_only = api_client.patch(
+        f"/api/platform/companies/{tenant_a.company.id}/users/{tenant_a.secretary.user.id}/roles",
+        token=security_world.platform_admin.token,
+        json={
+            "role_ids": [admin_role["id"]],
+            "site_ids": [str(tenant_a.site_1.id), str(tenant_a.site_2.id)],
+            "default_site_id": str(tenant_a.site_1.id),
+            "status": "Activo",
+            "ensure_dentist_profile": False,
+        },
+    )
+    assert administrative_only.status_code == 200, administrative_only.text
+    inactive_profile = administrative_only.json()["user"]["dentist_profile"]
+    assert inactive_profile["id"] == historical_profile_id
+    assert inactive_profile["is_active"] is False
+    assert inactive_profile["status"] == "Inactivo"
+
+    reused = api_client.patch(
+        f"/api/platform/companies/{tenant_a.company.id}/users/{tenant_a.secretary.user.id}/roles",
+        token=security_world.platform_admin.token,
+        json={
+            "role_ids": [admin_role["id"], dentist_role["id"]],
+            "site_ids": [str(tenant_a.site_1.id), str(tenant_a.site_2.id)],
+            "default_site_id": str(tenant_a.site_1.id),
+            "status": "Activo",
+            "ensure_dentist_profile": False,
+        },
+    )
+    assert reused.status_code == 200, reused.text
+    reused_profile = reused.json()["user"]["dentist_profile"]
+    assert reused_profile["id"] == historical_profile_id
+    assert reused_profile["is_active"] is True
+    assert reused_profile["status"] == "Activo"
 
     denied_cross_company = api_client.patch(
         f"/api/platform/companies/{tenant_a.company.id}/users/{tenant_b.admin.user.id}/roles",

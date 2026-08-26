@@ -11,12 +11,13 @@ from app.core.config import settings
 from app.models.agenda import Patient
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
-from app.models.consent_template import ConsentAccessSession, ConsentClarificationRequest, ConsentInstance, ConsentInstanceProcedure, ConsentOtpChallenge, ConsentPublicSession
+from app.models.consent_template import ConsentAccessSession, ConsentClarificationRequest, ConsentInstance, ConsentInstanceProcedure, ConsentOtpChallenge, ConsentPublicSession, ConsentTemplate, ConsentTemplateVersion
 from app.schemas.consent_access_schema import AccessAuditResponse, AccessIssuedResponse, AccessSessionResponse, ClarificationResponse, PublicConsentDocumentResponse
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.consent_library_normalization import validate_patient_facing_content
+from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
 from app.services.consent_instance_service import ConsentInstanceError, _require_instance, _verify_seal
-from app.services.consent_declaration_catalog import DECLARATION_SETS, TEST_DOCUMENT_NOTICE, declaration_set_for
+from app.services.consent_declaration_catalog import ConsentDeclarationSetError, DECLARATION_SETS, TEST_DOCUMENT_NOTICE, declaration_set_for
 from app.services.consent_acceptance_context import inspect_acceptance_context
 from app.services.email_service import EmailDeliveryError, build_consent_otp_email, get_email_provider
 from app.services.consent_signer import RESPONSIBLE_ADULT, signer_snapshot_from_instance
@@ -61,6 +62,23 @@ def issue_access(session: Session, context: AuthContext, instance_id: UUID, meta
     if instance.status not in ({"READY_FOR_REVIEW","PENDING_SIGNATURE"} if reissue else {"READY_FOR_REVIEW"}):
         raise ConsentAccessError("Solo una instancia revisada puede emitir acceso.",409)
     if instance.missing_variables: raise ConsentAccessError("La instancia todavía tiene variables pendientes.",409)
+    template = session.get(ConsentTemplate, instance.template_id)
+    version = session.get(ConsentTemplateVersion, instance.template_version_id)
+    if template is None or version is None:
+        raise ConsentAccessError("La plantilla sellada ya no está disponible.", 409)
+    try:
+        assert_template_ready(session, template=template, version=version, signer_policy=getattr(instance, "signer_policy", "PATIENT_SELF"), channel="ELECTRONIC")
+        declaration_set_for(
+            instance.country_code,
+            instance.language_code,
+            actor_type=getattr(instance, "signer_actor_type", "PATIENT_SELF"),
+            app_env=settings.app_env,
+            acceptance_enabled=settings.consent_acceptance_enabled,
+            on_date=_now().date(),
+            session=session,
+        )
+    except (ConsentProductionReadinessError, ConsentDeclarationSetError) as exc:
+        raise ConsentAccessError(str(exc), 409) from exc
     patient_content=instance.rendered_content_snapshot or ""; content_validation=validate_patient_facing_content(patient_content,allowed_variables=None,document_type=instance.document_kind,signer_compatibility=getattr(instance, "signer_policy", "PATIENT_SELF"),normalized_hash=_hash(patient_content),enforce_electronic_readiness=True)
     if content_validation.status=="BLOCKED": raise ConsentAccessError("El documento no está disponible para firma electrónica. Contacta a la clínica.",409)
     _verify_seal(instance)
@@ -189,7 +207,12 @@ def _verified(session: Session, token: str, cookie: str | None, metadata: Reques
 
 
 def public_document(session: Session, token: str, cookie: str | None, metadata: RequestMetadata):
-    access,instance,_=_verified(session,token,cookie,metadata); company=session.get(Company,instance.company_id); procedures=list(session.scalars(select(ConsentInstanceProcedure).where(ConsentInstanceProcedure.instance_id==instance.id).order_by(ConsentInstanceProcedure.order_number)));context=instance.context_snapshot or {};patient_snapshot=context.get("patient") or {};professional_snapshot=context.get("professional") or {};compatibility=inspect_acceptance_context(instance);declaration_set=declaration_set_for(compatibility.country_code,compatibility.locale,actor_type=getattr(instance,"signer_actor_type","PATIENT_SELF"),app_env=settings.app_env,acceptance_enabled=settings.consent_acceptance_enabled,on_date=_now().date()) if compatibility.compatible else None;test_document=bool(declaration_set.is_test_document) if declaration_set else bool(settings.consent_acceptance_enabled and settings.app_env.casefold()!="production")
+    access,instance,_=_verified(session,token,cookie,metadata); company=session.get(Company,instance.company_id); procedures=list(session.scalars(select(ConsentInstanceProcedure).where(ConsentInstanceProcedure.instance_id==instance.id).order_by(ConsentInstanceProcedure.order_number)));context=instance.context_snapshot or {};patient_snapshot=context.get("patient") or {};professional_snapshot=context.get("professional") or {};compatibility=inspect_acceptance_context(instance)
+    try:
+        declaration_set=declaration_set_for(compatibility.country_code,compatibility.locale,actor_type=getattr(instance,"signer_actor_type","PATIENT_SELF"),app_env=settings.app_env,acceptance_enabled=settings.consent_acceptance_enabled,on_date=_now().date(),session=session) if compatibility.compatible else None
+    except ConsentDeclarationSetError as exc:
+        raise ConsentAccessError(str(exc), 409) from exc
+    test_document=bool(declaration_set.is_test_document) if declaration_set else True
     patient_content=instance.rendered_content_snapshot or ""; content_validation=validate_patient_facing_content(patient_content,allowed_variables=None,document_type=instance.document_kind,signer_compatibility=getattr(instance, "signer_policy", "PATIENT_SELF"),normalized_hash=_hash(patient_content),enforce_electronic_readiness=True)
     if content_validation.status=="BLOCKED": raise ConsentAccessError("El documento no está disponible para firma electrónica. Contacta a la clínica.",409)
     now=_now(); first=access.viewed_at is None; access.viewed_at=access.viewed_at or now; access.status="VIEWED" if access.status!="CLARIFICATION_REQUESTED" else access.status; access.row_version+=1; _audit(session,access,"CONSENT_DOCUMENT_VIEWED",metadata,detail={"first_view":first}); session.commit()

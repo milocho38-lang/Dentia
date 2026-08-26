@@ -47,6 +47,7 @@ from app.schemas.consent_instance_schema import (
 )
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.consent_library_normalization import validate_patient_facing_content
+from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
 from app.services.consent_template_service import VARIABLE_CATALOG, find_applicable_published_templates, validate_content
 from app.services.patient_service import calculate_age
 from app.services.consent_acceptance_context import (
@@ -350,10 +351,10 @@ def _response(session: Session, instance: ConsentInstance) -> ConsentInstanceRes
     declaration_set = None
     if compatibility.compatible:
         try:
-            declaration_set = declaration_set_for(compatibility.country_code, compatibility.locale, actor_type=getattr(instance, "signer_actor_type", "PATIENT_SELF"), app_env=settings.app_env, acceptance_enabled=settings.consent_acceptance_enabled, on_date=_now().date())
+            declaration_set = declaration_set_for(compatibility.country_code, compatibility.locale, actor_type=getattr(instance, "signer_actor_type", "PATIENT_SELF"), app_env=settings.app_env, acceptance_enabled=settings.consent_acceptance_enabled, on_date=_now().date(), session=session)
         except Exception:
             declaration_set = None
-    is_test_document = declaration_set.is_test_document if declaration_set else bool(settings.consent_acceptance_enabled and settings.app_env.casefold() != "production")
+    is_test_document = declaration_set.is_test_document if declaration_set else True
     paper_status = session.scalar(select(ConsentPaperPacket.status).where(ConsentPaperPacket.consent_instance_id == instance.id)) if instance.completion_channel == "PAPER" else None
     return ConsentInstanceResponse(id=instance.id, visible_number=instance.visible_number, patient_id=instance.patient_id, site_id=instance.site_id, template_id=instance.template_id, template_version_id=instance.template_version_id, appointment_id=instance.appointment_id, treatment_id=instance.treatment_id, professional_user_id=instance.professional_user_id, dentist_profile_id=instance.dentist_profile_id, status=instance.status, completion_channel=instance.completion_channel, paper_status=paper_status, document_kind=instance.document_kind, country_code=instance.country_code, language_code=instance.language_code, clinical_date=instance.clinical_date, timezone=instance.timezone_name, display_title=instance.display_title, signer_policy=getattr(instance, "signer_policy", "PATIENT_SELF"), signer_actor_type=getattr(instance, "signer_actor_type", "PATIENT_SELF"), signer_name=getattr(instance, "signer_full_name_snapshot", None), signer_email_masked=_mask_email(getattr(instance, "signer_email_snapshot", None)), responsible_adult=_responsible_response(session, instance), minor_participation_status=getattr(instance, "minor_participation_status", None), minor_participation_observation=getattr(instance, "minor_participation_observation", None), rendered_content=instance.rendered_content_snapshot, template_version_number=instance.template_version_number, template_content_sha256=instance.template_content_sha256, instance_content_sha256=instance.instance_content_sha256, context_sha256=instance.context_sha256, integrity_hash=instance.integrity_hash, variable_values=instance.variable_values_snapshot, missing_variables=instance.missing_variables, missing_variable_labels=[_label(code) for code in instance.missing_variables], context_snapshot=instance.context_snapshot, acceptance_compatible=compatibility.compatible, acceptance_block_code=compatibility.code, acceptance_block_message=compatibility.private_message, is_test_document=is_test_document, test_notice=TEST_DOCUMENT_NOTICE if is_test_document else None, legal_review_status=declaration_set.legal_status if declaration_set else None, declaration_set_code=declaration_set.code if declaration_set else None, declaration_set_version=declaration_set.version if declaration_set else None, procedures=[ConsentInstanceProcedureResponse(id=row.id, procedure_catalog_id=row.procedure_catalog_id, treatment_procedure_id=row.treatment_procedure_id, code=row.code_snapshot, name=row.name_snapshot, description=row.description_snapshot, order=row.order_number) for row in rows], professional_confirmed_at=instance.professional_confirmed_at, professional_confirmed_by=instance.professional_confirmed_by, ready_at=instance.ready_at, voided_at=instance.voided_at, voided_by=instance.voided_by, void_reason=instance.void_reason, row_version=instance.row_version, created_by=instance.created_by, updated_by=instance.updated_by, created_at=instance.created_at, updated_at=instance.updated_at)
 
@@ -404,6 +405,16 @@ def _create_one(session: Session, context: AuthContext, payload: ConsentContextI
     clinical_date = clinical_date_or_local_default(payload.clinical_date, company, site)
     timezone_name = effective_timezone(company, site)
     signer_policy = signer_policy_from_library_version(session, version)
+    try:
+        assert_template_ready(
+            session,
+            template=template,
+            version=version,
+            signer_policy=signer_policy,
+            channel="COMMON",
+        )
+    except ConsentProductionReadinessError as exc:
+        raise ConsentInstanceError(str(exc), 409) from exc
     try:
         signer = resolve_signer_snapshot(session, company_id=company.id, patient=patient, payload_context=payload, policy=signer_policy, actor_type=payload.signer_actor_type, verified_by_user_id=context.user.id)
     except ValueError as exc:

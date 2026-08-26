@@ -14,6 +14,8 @@ from app.schemas.platform_schema import (
     PlatformCompanyListResponse,
     PlatformCompanyUserRoleUpdateRequest,
     PlatformCompanyUserRoleUpdateResponse,
+    PlatformCompanyDentistLimitUpdateRequest,
+    PlatformCompanyDentistLimitUpdateResponse,
 )
 from app.services.auth_service import AuthContext
 from app.services.platform_service import (
@@ -23,6 +25,7 @@ from app.services.platform_service import (
     get_platform_company,
     list_platform_companies,
     update_platform_company_user_roles,
+    update_platform_company_dentist_limit,
 )
 
 
@@ -99,6 +102,31 @@ def update_company_user_roles_endpoint(
             context,
             company_id,
             user_id,
+            payload,
+            get_request_metadata(request),
+        )
+    except PlatformError as exc:
+        raise handle(exc)
+
+
+@router.patch(
+    "/companies/{company_id}/dentist-limit",
+    response_model=PlatformCompanyDentistLimitUpdateResponse,
+)
+def update_company_dentist_limit_endpoint(
+    company_id: UUID,
+    payload: PlatformCompanyDentistLimitUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+) -> PlatformCompanyDentistLimitUpdateResponse:
+    try:
+        return update_platform_company_dentist_limit(
+            session,
+            context,
+            company_id,
             payload,
             get_request_metadata(request),
         )

@@ -65,6 +65,14 @@ export function publishConsentVersion(templateId: string, versionId: string) {
   return apiRequest<ConsentVersion>(`/api/consent-templates/${templateId}/versions/${versionId}/publish`, { method: "POST" });
 }
 
+export function reviewConsentVersionContent(templateId: string, versionId: string) {
+  return apiRequest<ConsentVersion>(`/api/consent-templates/${templateId}/versions/${versionId}/review-content`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmed: true }),
+  });
+}
+
 export function retireConsentVersion(templateId: string, versionId: string, reason: string) {
   return apiRequest<ConsentVersion>(`/api/consent-templates/${templateId}/versions/${versionId}/retire`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),

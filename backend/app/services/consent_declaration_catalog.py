@@ -1,13 +1,20 @@
-"""Provisional, jurisdiction-bound declaration sets for C019A.4.
+"""Jurisdiction-bound declaration catalog for the Dentia consent procedure.
 
-These texts are technical drafts pending legal review. The exact country and
-locale must come from the sealed consent instance; this module never falls
-back across jurisdictions.
+Local and test retain the historical technical drafts and test marking.
+Production resolves only immutable approved rows for the exact country,
+locale, actor and configured procedure version; there is no cross-country
+fallback.
 """
 from dataclasses import dataclass
 from datetime import date
 import hashlib
 import json
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.models.consent_template import ConsentDeclarationVersion
 
 
 TEST_DOCUMENT_NOTICE = "DOCUMENTO DE PRUEBA — NO VÁLIDO PARA USO CLÍNICO"
@@ -22,9 +29,14 @@ class ConsentDeclarationSet:
     legal_status: str
     effective_from: date | None
     declarations: tuple[tuple[str, str], ...]
+    procedure_version: str | None = None
+    content_sha256: str | None = None
+    test_document: bool = True
 
     @property
     def sha256(self) -> str:
+        if self.content_sha256:
+            return self.content_sha256
         payload = {
             "country_code": self.country_code,
             "locale": self.locale,
@@ -39,7 +51,7 @@ class ConsentDeclarationSet:
 
     @property
     def is_test_document(self) -> bool:
-        return self.legal_status == "DRAFT_LEGAL_REVIEW"
+        return self.test_document
 
 
 CO_DRAFT = ConsentDeclarationSet(
@@ -143,10 +155,56 @@ class ConsentDeclarationSetError(RuntimeError):
     pass
 
 
-def declaration_set_for(country_code: str, locale: str, *, actor_type: str = "PATIENT_SELF", app_env: str, acceptance_enabled: bool, on_date: date) -> ConsentDeclarationSet:
+def _approved_declaration_hash(row: ConsentDeclarationVersion) -> str:
+    payload = {
+        "code": row.code,
+        "country_code": row.country_code,
+        "locale": row.locale,
+        "actor_type": row.actor_type,
+        "version": row.version,
+        "procedure_version": row.procedure_version,
+        "declarations": sorted(row.declarations or [], key=lambda item: item.get("order", 0)),
+    }
+    return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def declaration_set_for(country_code: str, locale: str, *, actor_type: str = "PATIENT_SELF", app_env: str, acceptance_enabled: bool, on_date: date, session: Session | None = None) -> ConsentDeclarationSet:
     country = country_code.strip().upper()
     clean_locale = locale.strip()
     actor = (actor_type or "PATIENT_SELF").strip().upper()
+    if app_env.casefold() == "production":
+        if not acceptance_enabled or session is None:
+            raise ConsentDeclarationSetError("El catálogo productivo de declaraciones no está habilitado.")
+        row = session.scalar(
+            select(ConsentDeclarationVersion)
+            .where(
+                ConsentDeclarationVersion.country_code == country,
+                ConsentDeclarationVersion.locale == clean_locale,
+                ConsentDeclarationVersion.actor_type == actor,
+                ConsentDeclarationVersion.procedure_version == settings.consent_procedure_version,
+                ConsentDeclarationVersion.status == "APPROVED",
+                ConsentDeclarationVersion.effective_from.is_not(None),
+                ConsentDeclarationVersion.effective_from <= on_date,
+            )
+            .order_by(ConsentDeclarationVersion.effective_from.desc(), ConsentDeclarationVersion.created_at.desc())
+        )
+        if row is None:
+            raise ConsentDeclarationSetError("No existe un conjunto de declaraciones aprobado y vigente.")
+        if row.content_sha256 != _approved_declaration_hash(row):
+            raise ConsentDeclarationSetError("El conjunto de declaraciones no supera la verificación de integridad.")
+        ordered = sorted(row.declarations or [], key=lambda item: item.get("order", 0))
+        return ConsentDeclarationSet(
+            country_code=row.country_code,
+            locale=row.locale,
+            code=row.code,
+            version=row.version,
+            legal_status=row.status,
+            effective_from=row.effective_from,
+            declarations=tuple((item["code"], item["text"]) for item in ordered),
+            procedure_version=row.procedure_version,
+            content_sha256=row.content_sha256,
+            test_document=False,
+        )
     base_set = DECLARATION_SETS.get((country, clean_locale))
     declaration_set = base_set if actor == "PATIENT_SELF" else (DECLARATION_SETS.get((country, clean_locale, actor)) or base_set)
     if declaration_set is None:

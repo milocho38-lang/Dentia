@@ -13,6 +13,8 @@ export interface PlatformCompanyListItem {
   is_active: boolean;
   site_count: number;
   user_count: number;
+  active_dentist_count: number;
+  max_active_dentists: number;
   created_at: string;
   updated_at: string;
 }

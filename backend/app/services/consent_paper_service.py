@@ -21,12 +21,13 @@ from app.core.config import settings
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
 from app.models.consent_acceptance import ConsentPaperPacket, ConsentPaperPage
-from app.models.consent_template import ConsentAccessSession, ConsentInstance, ConsentOtpChallenge, ConsentPublicSession, ConsentTemplateVersion
+from app.models.consent_template import ConsentAccessSession, ConsentInstance, ConsentOtpChallenge, ConsentPublicSession, ConsentTemplate, ConsentTemplateVersion
 from app.models.site import Site
 from app.schemas.consent_instance_schema import ConsentPaperPacketResponse, ConsentPaperPageResponse, ConsentPaperVerificationRequest
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.consent_instance_service import _require_instance
-from app.services.consent_signer import RESPONSIBLE_ADULT, responsible_relationship_label
+from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
+from app.services.consent_signer import RESPONSIBLE_ADULT, responsible_relationship_label, signer_policy_from_library_version
 
 MAX_FILE_BYTES = 15 * 1024 * 1024
 MAX_TOTAL_BYTES = 50 * 1024 * 1024
@@ -192,7 +193,20 @@ def prepare_packet(session: Session, context: AuthContext, instance_id: UUID, me
         raise ConsentPaperError("No fue posible obtener la identidad institucional.", 409)
     packet_id = uuid4()
     template_version = session.get(ConsentTemplateVersion, instance.template_version_id)
-    test_document = settings.app_env.casefold() != "production" or not template_version or template_version.legal_review_status != "APPROVED" or template_version.clinical_review_status != "APPROVED"
+    template = session.get(ConsentTemplate, instance.template_id)
+    if template_version is None or template is None:
+        raise ConsentPaperError("La plantilla sellada ya no está disponible.", 409)
+    try:
+        assert_template_ready(
+            session,
+            template=template,
+            version=template_version,
+            signer_policy=signer_policy_from_library_version(session, template_version),
+            channel="PAPER",
+        )
+    except ConsentProductionReadinessError as exc:
+        raise ConsentPaperError(str(exc), 409) from exc
+    test_document = settings.app_env.casefold() != "production"
     first = _packet_pdf(instance, packet_id, company, site, test_document=test_document)
     try:
         with fitz.open(stream=first, filetype="pdf") as document: page_count = document.page_count

@@ -31,7 +31,7 @@ from app.models.agenda import Patient
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
 from app.models.consent_acceptance import ConsentAcceptance, ConsentAcceptanceDeclaration, ConsentCopyDelivery, ConsentEvidenceManifest, ConsentFinalDocument, ConsentSignatureArtifact
-from app.models.consent_template import ConsentAccessSession, ConsentClarificationRequest, ConsentInstance, ConsentOtpChallenge, ConsentPublicSession, ConsentResponsibleAdult
+from app.models.consent_template import ConsentAccessSession, ConsentClarificationRequest, ConsentInstance, ConsentOtpChallenge, ConsentPublicSession, ConsentResponsibleAdult, ConsentTemplate, ConsentTemplateVersion
 from app.models.site import Site
 from app.schemas.consent_access_schema import AcceptanceEvidenceResponse, AcceptanceRequirementsResponse, AcceptanceSubmitRequest, AcceptanceSubmitResponse, AcceptanceSummaryResponse
 from app.services.auth_service import AuthContext, RequestMetadata
@@ -41,6 +41,7 @@ from app.services.consent_acceptance_context import inspect_acceptance_context
 from app.services.consent_declaration_catalog import ConsentDeclarationSet, ConsentDeclarationSetError, TEST_DOCUMENT_NOTICE, declaration_set_for
 from app.services.consent_instance_service import _require_instance
 from app.services.consent_library_normalization import validate_patient_facing_content
+from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
 from app.services.email_service import EmailDelivery, EmailDeliveryError, get_email_provider
 from app.services.patient_service import calculate_age
 from app.services.consent_signer import (
@@ -60,7 +61,7 @@ class ConsentAcceptanceError(RuntimeError):
 def _now(): return datetime.now(timezone.utc)
 def _sha_bytes(value: bytes) -> str: return hashlib.sha256(value).hexdigest()
 def _canonical(value: dict) -> bytes: return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-def _enabled() -> bool: return settings.consent_acceptance_enabled and settings.app_env.casefold() != "production"
+def _enabled() -> bool: return settings.consent_acceptance_enabled
 
 
 def _failure_point(_name: str):
@@ -124,7 +125,7 @@ def _patient_for_instance(session: Session, instance: ConsentInstance) -> Patien
     return patient
 
 
-def _sealed_context(instance: ConsentInstance) -> tuple[dict, ConsentDeclarationSet, date]:
+def _sealed_context(session: Session, instance: ConsentInstance) -> tuple[dict, ConsentDeclarationSet, date]:
     compatibility = inspect_acceptance_context(instance)
     if not compatibility.compatible:
         raise ConsentAcceptanceError(compatibility.public_message, 409)
@@ -141,7 +142,7 @@ def _sealed_context(instance: ConsentInstance) -> tuple[dict, ConsentDeclaration
         raise ConsentAcceptanceError("La fecha de nacimiento sellada no es válida. Contacta a la clínica.", 422)
     signer = signer_snapshot_from_instance(instance)
     try:
-        declaration_set = declaration_set_for(country, locale, actor_type=signer.actor_type, app_env=settings.app_env, acceptance_enabled=settings.consent_acceptance_enabled, on_date=local_date)
+        declaration_set = declaration_set_for(country, locale, actor_type=signer.actor_type, app_env=settings.app_env, acceptance_enabled=settings.consent_acceptance_enabled, on_date=local_date, session=session)
     except ConsentDeclarationSetError as exc:
         raise ConsentAcceptanceError(str(exc), 409) from exc
     return patient, declaration_set, birth_date
@@ -394,7 +395,21 @@ def _validate_eligibility(session: Session, access, instance):
     if instance.completion_channel == "PAPER": raise ConsentAcceptanceError("Este consentimiento fue preparado para firma en papel.",409)
     if instance.status!="PENDING_SIGNATURE": raise ConsentAcceptanceError("El consentimiento no está pendiente de aceptación.",409)
     if instance.missing_variables: raise ConsentAcceptanceError("El documento tiene información pendiente.",409)
-    patient_snapshot, declaration_set, birth_date = _sealed_context(instance)
+    template = session.get(ConsentTemplate, instance.template_id)
+    version = session.get(ConsentTemplateVersion, instance.template_version_id)
+    if template is None or version is None:
+        raise ConsentAcceptanceError("La plantilla sellada ya no está disponible.", 409)
+    try:
+        assert_template_ready(
+            session,
+            template=template,
+            version=version,
+            signer_policy=getattr(instance, "signer_policy", "PATIENT_SELF"),
+            channel="ELECTRONIC",
+        )
+    except ConsentProductionReadinessError as exc:
+        raise ConsentAcceptanceError(str(exc), 409) from exc
+    patient_snapshot, declaration_set, birth_date = _sealed_context(session, instance)
     signer = signer_snapshot_from_instance(instance)
     age=calculate_age(birth_date,_now().astimezone(ZoneInfo(instance.timezone_name)).date())
     if age is not None and age < 18 and signer.actor_type != RESPONSIBLE_ADULT: raise ConsentAcceptanceError("Los pacientes menores de edad requieren firma de adulto responsable. Contacta a la clínica.",422)

@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, normalize_email
+from app.core.config import settings
 from app.core.security_catalog import PERMISSIONS, PLATFORM_PERMISSION_CODES, ROLES
 from app.models.agenda import Dentist, DentistSite
 from app.models.associations import RolePermission, UserRole, UserSite
@@ -26,6 +27,8 @@ from app.schemas.platform_schema import (
     PlatformCompanyDetail,
     PlatformCompanyUserRoleUpdateRequest,
     PlatformCompanyUserRoleUpdateResponse,
+    PlatformCompanyDentistLimitUpdateRequest,
+    PlatformCompanyDentistLimitUpdateResponse,
     PlatformDentistProfileSummary,
     PlatformCompanyListItem,
     PlatformCompanyListResponse,
@@ -37,6 +40,14 @@ from app.schemas.platform_schema import (
 from app.services.agenda_service import ensure_agenda_seed_data
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.organization_service import normalize_tax_id
+from app.services.tenant_dentist_quota import (
+    TenantDentistLimitError,
+    active_dentist_count,
+    deactivate_user_dentist_profile,
+    get_user_dentist_profile,
+    lock_company_and_require_dentist_slot,
+    roles_require_dentist_profile,
+)
 
 
 PLATFORM_COMPANY_LOCK_ID = 8_011_001
@@ -207,6 +218,8 @@ def _list_item(session: Session, company: Company) -> PlatformCompanyListItem:
         is_active=company.is_active,
         site_count=site_count,
         user_count=user_count,
+        active_dentist_count=active_dentist_count(session, company.id),
+        max_active_dentists=company.max_active_dentists,
         created_at=company.created_at,
         updated_at=company.updated_at,
     )
@@ -240,6 +253,7 @@ def _user_summary(session: Session, user: User) -> PlatformUserSummary:
         )
     )
     role_codes = [row.code for row in role_rows]
+    dentist_profile = _dentist_profile_summary(session, user)
     return PlatformUserSummary(
         id=user.id,
         name=user.name,
@@ -257,14 +271,12 @@ def _user_summary(session: Session, user: User) -> PlatformUserSummary:
             )
             for row in site_rows
         ],
-        dentist_profile=_dentist_profile_summary(session, user),
-        needs_dentist_profile=_has_clinical_role(role_codes)
-        and _dentist_profile_summary(session, user) is None,
+        dentist_profile=dentist_profile,
+        needs_dentist_profile=roles_require_dentist_profile(
+            session, {row.id for row in role_rows}
+        )
+        and dentist_profile is None,
     )
-
-
-def _has_clinical_role(role_codes: list[str] | set[str]) -> bool:
-    return bool({"DENTIST", "DENTIST_ADMIN"} & set(role_codes))
 
 
 def _dentist_profile_summary(
@@ -578,14 +590,13 @@ def _ensure_dentist_profile(
     target: User,
     site_ids: list[UUID],
     actor_id: UUID,
+    active: bool = True,
 ) -> tuple[Dentist, bool]:
-    dentist = session.scalar(
-        select(Dentist)
-        .where(
-            Dentist.company_id == target.company_id,
-            Dentist.user_id == target.id,
-        )
-        .with_for_update()
+    dentist = get_user_dentist_profile(
+        session,
+        company_id=target.company_id,
+        user_id=target.id,
+        lock=True,
     )
     created = False
     if dentist is None:
@@ -593,7 +604,8 @@ def _ensure_dentist_profile(
             company_id=target.company_id,
             user_id=target.id,
             name=target.name,
-            status="Activo",
+            status="Activo" if active else "Inactivo",
+            is_active=active,
             created_by=actor_id,
         )
         session.add(dentist)
@@ -601,8 +613,8 @@ def _ensure_dentist_profile(
         created = True
     else:
         dentist.name = target.name
-        dentist.status = "Activo"
-        dentist.is_active = True
+        dentist.status = "Activo" if active else "Inactivo"
+        dentist.is_active = active
     existing = {
         assignment.site_id: assignment
         for assignment in session.scalars(
@@ -651,8 +663,60 @@ def update_platform_company_user_roles(
         payload.default_site_id,
     )
     before_roles = _active_role_codes(session, target)
+    before_role_ids = set(
+        session.scalars(
+            select(Role.id)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .where(
+                UserRole.company_id == company.id,
+                UserRole.user_id == target.id,
+                UserRole.is_active.is_(True),
+                Role.is_active.is_(True),
+            )
+        )
+    )
     before_sites = _active_site_ids(session, target)
     before_status = target.status
+    had_dentist_capability = roles_require_dentist_profile(
+        session, before_role_ids
+    )
+    has_dentist_capability = roles_require_dentist_profile(
+        session, {role.id for role in roles}
+    )
+    dentist_before = get_user_dentist_profile(
+        session,
+        company_id=company.id,
+        user_id=target.id,
+        lock=True,
+    )
+    dentist_was_active = bool(
+        dentist_before
+        and dentist_before.is_active
+        and dentist_before.status == "Activo"
+    )
+    if (
+        payload.status == "Activo"
+        and has_dentist_capability
+        and dentist_before is None
+        and not payload.ensure_dentist_profile
+    ):
+        raise PlatformError(
+            "El usuario necesita crear o vincular su perfil de odontólogo para activar roles clínicos.",
+            409,
+        )
+    currently_consumes_dentist_seat = (
+        target.status == "Activo"
+        and target.is_active
+        and dentist_was_active
+    )
+    will_consume_dentist_seat = (
+        payload.status == "Activo" and has_dentist_capability
+    )
+    if will_consume_dentist_seat and not currently_consumes_dentist_seat:
+        try:
+            lock_company_and_require_dentist_slot(session, company.id)
+        except TenantDentistLimitError as exc:
+            raise PlatformError(str(exc), 409) from exc
     new_role_codes = {role.code for role in roles}
     if (
         target.status == "Activo"
@@ -697,15 +761,23 @@ def update_platform_company_user_roles(
     target.status = payload.status
     target.is_active = payload.status == "Activo"
     dentist_profile_created = False
-    dentist_id = None
-    if _has_clinical_role(new_role_codes) and payload.ensure_dentist_profile:
+    dentist = dentist_before
+    if has_dentist_capability and (
+        dentist_before is not None or payload.ensure_dentist_profile
+    ):
         dentist, dentist_profile_created = _ensure_dentist_profile(
             session,
             target=target,
             site_ids=payload.site_ids,
             actor_id=context.user.id,
+            active=target.status == "Activo" and target.is_active,
         )
-        dentist_id = dentist.id
+    elif not has_dentist_capability:
+        dentist = deactivate_user_dentist_profile(
+            session,
+            company_id=company.id,
+            user_id=target.id,
+        )
     _audit(
         session,
         context,
@@ -724,16 +796,83 @@ def update_platform_company_user_roles(
             "default_site_after": str(payload.default_site_id),
             "status_before": before_status,
             "status_after": target.status,
-            "dentist_profile_id": str(dentist_id) if dentist_id else None,
+            "had_dentist_capability": had_dentist_capability,
+            "has_dentist_capability": has_dentist_capability,
+            "dentist_profile_id": str(dentist.id) if dentist else None,
             "dentist_profile_created": dentist_profile_created,
+            "dentist_profile_active_before": dentist_was_active,
+            "dentist_profile_active_after": bool(
+                dentist
+                and dentist.is_active
+                and dentist.status == "Activo"
+            ),
         },
     )
+    if before_status != target.status:
+        _audit(
+            session,
+            context,
+            metadata,
+            company_id=company.id,
+            entity="user",
+            entity_id=target.id,
+            action=(
+                "USER_REACTIVATED"
+                if target.status == "Activo"
+                else "USER_DEACTIVATED"
+            ),
+            detail={
+                "status_before": before_status,
+                "status_after": target.status,
+            },
+        )
     session.commit()
     user = _user_summary(session, target)
     message = "Roles empresariales actualizados. El usuario debe cerrar sesión y volver a iniciar para actualizar sus permisos."
     if user.needs_dentist_profile:
         message += " El usuario tiene rol clínico, pero aún no tiene perfil de odontólogo vinculado."
     return PlatformCompanyUserRoleUpdateResponse(message=message, user=user)
+
+
+def update_platform_company_dentist_limit(
+    session: Session,
+    context: AuthContext,
+    company_id: UUID,
+    payload: PlatformCompanyDentistLimitUpdateRequest,
+    metadata: RequestMetadata,
+) -> PlatformCompanyDentistLimitUpdateResponse:
+    company = session.scalar(
+        select(Company).where(Company.id == company_id).with_for_update()
+    )
+    if company is None:
+        raise PlatformError("Empresa no encontrada.", 404)
+    seats_in_use = active_dentist_count(session, company.id)
+    if payload.max_active_dentists < seats_in_use:
+        raise PlatformError(
+            f"El límite no puede ser menor que los {seats_in_use} odontólogos activos.",
+            409,
+        )
+    previous = company.max_active_dentists
+    company.max_active_dentists = payload.max_active_dentists
+    _audit(
+        session,
+        context,
+        metadata,
+        company_id=company.id,
+        entity="company",
+        entity_id=company.id,
+        action="COMPANY_DENTIST_LIMIT_CHANGED",
+        detail={
+            "previous_max_active_dentists": previous,
+            "new_max_active_dentists": company.max_active_dentists,
+            "active_dentists": seats_in_use,
+        },
+    )
+    session.commit()
+    return PlatformCompanyDentistLimitUpdateResponse(
+        message="Límite de odontólogos actualizado.",
+        company=_detail(session, company),
+    )
 
 
 def create_platform_company(
@@ -768,6 +907,7 @@ def create_platform_company(
         country=payload.country,
         timezone=payload.timezone,
         status="Activa",
+        max_active_dentists=settings.default_tenant_max_active_dentists,
     )
     session.add(company)
     session.flush()

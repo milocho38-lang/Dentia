@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,7 @@ from app.models.treatment import ProcedureCatalogItem, TreatmentProcedure
 from app.services.consent_library_service import PACKAGE_PATH, ConsentLibraryError, _template_code, import_library_package, load_library_package
 from app.services.consent_library_normalization import NORMALIZED_CONTENT_FIELD, assess_electronic_readiness, assess_legacy_patient_content, classify_signer_context, normalize_patient_content_v2, sha256_text, validate_patient_facing_content
 from app.services.consent_signer import RESPONSIBLE_ADULT, resolve_signer_snapshot, signer_policy_from_library_version
+from app.services.consent_declaration_catalog import declaration_set_for
 
 SOURCE_HASH = "5389c42049ef4a6bcd90d765e7f4f2bbec8f8aad3114be955ba8ce6349259b7c"
 PACKAGE = PACKAGE_PATH
@@ -145,6 +147,143 @@ def _special_version(db_session, document_type: str) -> tuple[ConsentLibraryDocu
     ).first()
     assert row is not None
     return row[0], row[1]
+
+
+def _current_country_version(db_session, country_code: str) -> ConsentLibraryVersion:
+    version = db_session.scalar(
+        select(ConsentLibraryVersion)
+        .join(
+            ConsentLibraryDocument,
+            ConsentLibraryDocument.id == ConsentLibraryVersion.library_document_id,
+        )
+        .where(
+            ConsentLibraryDocument.document_type == "INFORMED_CONSENT",
+            ConsentLibraryDocument.signer_scope == "PATIENT_SELF",
+            ConsentLibraryVersion.country_code == country_code,
+        )
+        .order_by(ConsentLibraryVersion.version_number.desc())
+        .limit(1)
+    )
+    assert version is not None
+    return version
+
+
+def test_library_is_filtered_by_tenant_country_and_platform_can_review_globally(
+    api_client, db_session, security_world
+) -> None:
+    _import_library(db_session)
+    security_world.tenant_a.company.country = "Colombia"
+    security_world.tenant_b.company.country = "Chile"
+    db_session.commit()
+
+    colombia = api_client.get(
+        "/api/consent-library?country=CL",
+        token=security_world.tenant_a.admin.token,
+    )
+    assert colombia.status_code == 200, colombia.text
+    assert colombia.json()["items"]
+    assert {
+        version["country_code"]
+        for item in colombia.json()["items"]
+        for version in item["versions"]
+    } == {"CO"}
+
+    chile = api_client.get(
+        "/api/consent-library?country=CO",
+        token=security_world.tenant_b.admin.token,
+    )
+    assert chile.status_code == 200, chile.text
+    assert chile.json()["items"]
+    assert {
+        version["country_code"]
+        for item in chile.json()["items"]
+        for version in item["versions"]
+    } == {"CL"}
+
+    global_library = api_client.get(
+        "/api/consent-library", token=security_world.platform_admin.token
+    )
+    assert global_library.status_code == 200, global_library.text
+    assert {
+        version["country_code"]
+        for item in global_library.json()["items"]
+        for version in item["versions"]
+    } == {"CO", "CL"}
+
+
+def test_cross_country_exact_clone_and_custom_template_are_blocked(
+    api_client, db_session, security_world
+) -> None:
+    _import_library(db_session)
+    security_world.tenant_a.company.country = "Colombia"
+    security_world.tenant_b.company.country = "Chile"
+    db_session.commit()
+    chile_version = _current_country_version(db_session, "CL")
+    colombia_version = _current_country_version(db_session, "CO")
+
+    for endpoint in ("install", "clone"):
+        response = api_client.post(
+            f"/api/consent-library/versions/{chile_version.id}/{endpoint}",
+            token=security_world.tenant_a.admin.token,
+            json={"change_summary": "Intento incompatible de prueba."},
+        )
+        assert response.status_code == 409, response.text
+        assert "país configurado" in response.json()["detail"]
+
+        reverse = api_client.post(
+            f"/api/consent-library/versions/{colombia_version.id}/{endpoint}",
+            token=security_world.tenant_b.admin.token,
+            json={"change_summary": "Intento incompatible de prueba."},
+        )
+        assert reverse.status_code == 409, reverse.text
+
+    custom = api_client.post(
+        "/api/consent-templates",
+        token=security_world.tenant_a.admin.token,
+        json={
+            "code": "CUSTOM-FOREIGN-TEST",
+            "name": "Plantilla extranjera de prueba",
+            "description": None,
+            "document_kind": "PROCEDURE_CONSENT",
+            "country_code": "CL",
+            "language_code": "es-CL",
+            "initial_version": {
+                "title": "Plantilla extranjera",
+                "content": "# Plantilla extranjera\nPaciente: {{patient.full_name}}",
+                "change_summary": None,
+                "scope_type": "GENERAL",
+                "priority": 0,
+                "site_ids": [],
+                "procedure_ids": [],
+                "specialties": [],
+            },
+        },
+    )
+    assert custom.status_code == 409, custom.text
+
+
+def test_declaration_catalog_country_matches_tenant_country(db_session, security_world) -> None:
+    security_world.tenant_a.company.country = "Colombia"
+    security_world.tenant_b.company.country = "Chile"
+    db_session.commit()
+    co = declaration_set_for(
+        "CO",
+        "es-CO",
+        app_env="local",
+        acceptance_enabled=True,
+        on_date=date(2026, 8, 25),
+        session=db_session,
+    )
+    cl = declaration_set_for(
+        "CL",
+        "es-CL",
+        app_env="local",
+        acceptance_enabled=True,
+        on_date=date(2026, 8, 25),
+        session=db_session,
+    )
+    assert co.country_code == "CO"
+    assert cl.country_code == "CL"
 
 
 def test_consent_library_package_is_normalized_and_country_independent():
@@ -317,6 +456,8 @@ def test_norm5_oxido_v4_clone_allows_adult_patient_self_draft(api_client, db_ses
     assert tenant_version is not None
     assert tenant_version.source_library_version_id == library_version.id
     assert signer_policy_from_library_version(db_session, tenant_version) == "PATIENT_OR_RESPONSIBLE_ADULT"
+    reviewed = api_client.post(f"/api/consent-templates/{cloned.json()['template_id']}/versions/{tenant_version.id}/review-content", token=tenant.dentist_admin.token, json={"confirmed": True})
+    assert reviewed.status_code == 200, reviewed.text
     published = api_client.post(f"/api/consent-templates/{cloned.json()['template_id']}/versions/{tenant_version.id}/publish", token=tenant.dentist_admin.token)
     assert published.status_code == 200, published.text
     _, procedure = _procedure(db_session, tenant)
@@ -553,7 +694,7 @@ def test_import_v1_then_norm4_v2_preserves_history_and_api_returns_current(api_c
     assert document.signer_scope == "RESPONSIBLE_ADULT_REQUIRED"
 
     versions = list(db_session.scalars(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO").order_by(ConsentLibraryVersion.version_number)))
-    assert [version.version_number for version in versions] == [1, 3]
+    assert [version.version_number for version in versions] == [1, 4]
     assert versions[1].legal_review_status == "PENDING_EQUIVALENCE_REVIEW"
     assert "normalization_schema_version=LIB1_NORM_V2_CONTEXTUAL" in versions[1].transformation_notes
     assert "signer_compatibility=RESPONSIBLE_ADULT_REQUIRED" in versions[1].transformation_notes
@@ -565,7 +706,7 @@ def test_import_v1_then_norm4_v2_preserves_history_and_api_returns_current(api_c
     target = next(item for item in response.json()["items"] if item["code"] == "CONS_ODONTOPEDIATRIA")
     current_co = next(version for version in target["versions"] if version["country_code"] == "CO" and version["is_current"])
     history_co = [version for version in target["versions"] if version["country_code"] == "CO" and version["is_legacy"]]
-    assert current_co["version_number"] == 3
+    assert current_co["version_number"] == 4
     assert current_co["normalization_schema_version"] == "LIB1_NORM_V2_SIGNER1_FIX2"
     assert current_co["signer_compatibility"] == "RESPONSIBLE_ADULT_REQUIRED"
     assert history_co and history_co[0]["version_number"] == 1
@@ -580,7 +721,7 @@ def test_signer1_fix2_import_preserves_existing_normalized_version_and_adds_new_
     previous_source_hash = previous.source_text_sha256
 
     result = _import_library(db_session)
-    current = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 3))
+    current = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 4))
 
     assert result["versions_created"] == 34
     assert result["unchanged_versions"] == 36
@@ -590,6 +731,10 @@ def test_signer1_fix2_import_preserves_existing_normalized_version_and_adds_new_
     assert current is not None
     assert current.legal_review_status == "PENDING_EQUIVALENCE_REVIEW"
     assert "paciente o adulto responsable" in current.content.casefold()
+    assert current.normalized_content_sha256 == hashlib.sha256(current.content.encode()).hexdigest()
+    assert "production_readiness_change=legacy_supports_electronic_signature_corrected_true" in current.transformation_notes
+    assert "content_change=none" in current.transformation_notes
+    assert document.supports_electronic_signature is True
 
 
 def test_clone_rejects_legacy_v1_and_uses_exact_current_v2(api_client, db_session, security_world):
@@ -598,7 +743,7 @@ def test_clone_rejects_legacy_v1_and_uses_exact_current_v2(api_client, db_sessio
     document = db_session.scalar(select(ConsentLibraryDocument).where(ConsentLibraryDocument.code == "CONS_ODONTOPEDIATRIA"))
     assert document is not None
     v1 = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 1))
-    current = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 3))
+    current = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 4))
     assert v1 is not None and current is not None
     admin = security_world.tenant_a.admin
 
@@ -682,9 +827,6 @@ def test_library_listing_filters_review_and_no_private_install_leak(api_client, 
     assert source_for_platform.status_code == 200
     assert "source_text" in source_for_platform.json()
     assert "Texto del documento fuente" not in response.text
-    pending = api_client.post(f"/api/consent-library/versions/{version.id}/install", token=admin_a.token, json={})
-    assert pending.status_code == 409
-    _approve_version(api_client, security_world.platform_admin.token, version.id)
     installed = api_client.post(f"/api/consent-library/versions/{version.id}/install", token=admin_a.token, json={})
     assert installed.status_code == 200, installed.text
     list_a = api_client.get("/api/consent-library?country=CO", token=admin_a.token).json()
@@ -733,10 +875,6 @@ def test_install_official_is_idempotent_tenant_scoped_and_read_only(api_client, 
     _import_library(db_session)
     document, version = _published_adult_version(db_session)
     admin = security_world.tenant_a.dentist_admin
-    blocked = api_client.post(f"/api/consent-library/versions/{version.id}/install", token=admin.token, json={})
-    assert blocked.status_code == 409
-    _approve_version(api_client, security_world.platform_admin.token, version.id)
-    db_session.refresh(version)
     first = api_client.post(f"/api/consent-library/versions/{version.id}/install", token=admin.token, json={})
     assert first.status_code == 200, first.text
     second = api_client.post(f"/api/consent-library/versions/{version.id}/install", token=admin.token, json={})
@@ -746,14 +884,25 @@ def test_install_official_is_idempotent_tenant_scoped_and_read_only(api_client, 
     installed_version = db_session.get(ConsentTemplateVersion, first.json()["version_id"])
     assert template.company_id == security_world.tenant_a.company.id
     assert template.template_origin == "DENTIA_LIBRARY"
-    assert template.content_responsibility == "DENTIA"
+    assert template.content_responsibility == "CLINIC"
     assert template.source_library_document_id == document.id
-    assert installed_version.status == "PUBLISHED"
+    assert installed_version.status == "DRAFT"
     assert installed_version.content == version.content
-    assert installed_version.content_sha256 == version.normalized_content_sha256
-    assert installed_version.legal_review_status == "APPROVED"
-    assert installed_version.clinical_review_status == "APPROVED"
+    assert installed_version.content_sha256 is None
     assert db_session.scalar(select(func.count()).select_from(ConsentLibraryInstallation)) == 1
+    reviewed = api_client.post(
+        f"/api/consent-templates/{template.id}/versions/{installed_version.id}/review-content",
+        token=admin.token,
+        json={"confirmed": True},
+    )
+    assert reviewed.status_code == 200, reviewed.text
+    published = api_client.post(
+        f"/api/consent-templates/{template.id}/versions/{installed_version.id}/publish",
+        token=admin.token,
+    )
+    assert published.status_code == 200, published.text
+    assert published.json()["status"] == "PUBLISHED"
+    assert published.json()["clinic_content_review_confirmed"] is True
     draft_blocked = api_client.post(f"/api/consent-templates/{template.id}/versions/{installed_version.id}/create-draft", token=admin.token, json={"change_summary": "No debe editar oficial"})
     assert draft_blocked.status_code == 409
 
@@ -832,10 +981,10 @@ def test_clone_codes_include_library_version_and_allow_multiple_copies(api_clien
     assert v2_template.code == "DENTIA-CONS_ODONTOPEDIATRIA-CO-V2-COPIA"
     assert v2_template.template_origin == "CLONED_FROM_DENTIA"
     assert v2_tenant_version.source_library_version_id == v2.id
-    assert v2_tenant_version.content_sha256 == v2.normalized_content_sha256
+    assert v2_tenant_version.content_sha256 is None
 
     _import_library(db_session)
-    v3 = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 3))
+    v3 = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 4))
     assert v3 is not None
     assert v3.legal_review_status == "PENDING_EQUIVALENCE_REVIEW"
     assert v3.clinical_review_status == "PENDING_EQUIVALENCE_REVIEW"
@@ -858,9 +1007,9 @@ def test_clone_codes_include_library_version_and_allow_multiple_copies(api_clien
         db_session.get(ConsentTemplateVersion, third_v3_clone.json()["version_id"]),
     ]
     assert [template.code for template in v3_templates] == [
-        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V3-COPIA",
-        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V3-COPIA-2",
-        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V3-COPIA-3",
+        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V4-COPIA",
+        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V4-COPIA-2",
+        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V4-COPIA-3",
     ]
     assert len({template.id for template in [v2_template, *v3_templates]}) == 4
     assert all(version.source_library_version_id == v3.id for version in v3_versions)
@@ -871,7 +1020,7 @@ def test_clone_codes_include_library_version_and_allow_multiple_copies(api_clien
     fourth_v3_clone = api_client.post(f"/api/consent-library/versions/{v3.id}/clone", token=admin.token, json={})
     assert fourth_v3_clone.status_code == 200, fourth_v3_clone.text
     fourth_template = db_session.get(ConsentTemplate, fourth_v3_clone.json()["template_id"])
-    assert fourth_template.code == "DENTIA-CONS_ODONTOPEDIATRIA-CO-V3-COPIA-4"
+    assert fourth_template.code == "DENTIA-CONS_ODONTOPEDIATRIA-CO-V4-COPIA-4"
     assert db_session.scalar(select(func.count()).select_from(ConsentLibraryInstallation).where(ConsentLibraryInstallation.company_id == security_world.tenant_a.company.id, ConsentLibraryInstallation.library_version_id == v3.id, ConsentLibraryInstallation.installation_mode == "CLONE")) == 4
 
 
@@ -879,29 +1028,33 @@ def test_clone_codes_are_country_and_tenant_scoped(api_client, db_session, secur
     _import_library(db_session)
     document = db_session.scalar(select(ConsentLibraryDocument).where(ConsentLibraryDocument.code == "CONS_ODONTOPEDIATRIA"))
     assert document is not None
-    co_version = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 3))
-    cl_version = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CL", ConsentLibraryVersion.version_number == 3))
+    co_version = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 4))
+    cl_version = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CL", ConsentLibraryVersion.version_number == 4))
     assert co_version is not None and cl_version is not None
 
     tenant_a = security_world.tenant_a.dentist_admin
     tenant_b = security_world.tenant_b.dentist_admin
+    security_world.tenant_a.company.country = "Colombia"
+    security_world.tenant_b.company.country = "Chile"
+    db_session.commit()
     tenant_a_co = api_client.post(f"/api/consent-library/versions/{co_version.id}/clone", token=tenant_a.token, json={})
     tenant_a_cl = api_client.post(f"/api/consent-library/versions/{cl_version.id}/clone", token=tenant_a.token, json={})
     tenant_b_co = api_client.post(f"/api/consent-library/versions/{co_version.id}/clone", token=tenant_b.token, json={})
+    tenant_b_cl = api_client.post(f"/api/consent-library/versions/{cl_version.id}/clone", token=tenant_b.token, json={})
     assert tenant_a_co.status_code == 200, tenant_a_co.text
-    assert tenant_a_cl.status_code == 200, tenant_a_cl.text
-    assert tenant_b_co.status_code == 200, tenant_b_co.text
+    assert tenant_a_cl.status_code == 409, tenant_a_cl.text
+    assert tenant_b_co.status_code == 409, tenant_b_co.text
+    assert tenant_b_cl.status_code == 200, tenant_b_cl.text
 
-    assert db_session.get(ConsentTemplate, tenant_a_co.json()["template_id"]).code == "DENTIA-CONS_ODONTOPEDIATRIA-CO-V3-COPIA"
-    assert db_session.get(ConsentTemplate, tenant_a_cl.json()["template_id"]).code == "DENTIA-CONS_ODONTOPEDIATRIA-CL-V3-COPIA"
-    assert db_session.get(ConsentTemplate, tenant_b_co.json()["template_id"]).code == "DENTIA-CONS_ODONTOPEDIATRIA-CO-V3-COPIA"
+    assert db_session.get(ConsentTemplate, tenant_a_co.json()["template_id"]).code == "DENTIA-CONS_ODONTOPEDIATRIA-CO-V4-COPIA"
+    assert db_session.get(ConsentTemplate, tenant_b_cl.json()["template_id"]).code == "DENTIA-CONS_ODONTOPEDIATRIA-CL-V4-COPIA"
 
 
 def test_clone_concurrent_requests_generate_unique_codes_without_500(api_client, db_session, security_world):
     _import_library(db_session)
     document = db_session.scalar(select(ConsentLibraryDocument).where(ConsentLibraryDocument.code == "CONS_ODONTOPEDIATRIA"))
     assert document is not None
-    v3 = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 3))
+    v3 = db_session.scalar(select(ConsentLibraryVersion).where(ConsentLibraryVersion.library_document_id == document.id, ConsentLibraryVersion.country_code == "CO", ConsentLibraryVersion.version_number == 4))
     assert v3 is not None
     admin = security_world.tenant_a.dentist_admin
 
@@ -915,8 +1068,8 @@ def test_clone_concurrent_requests_generate_unique_codes_without_500(api_client,
     template_ids = [response.json()["template_id"] for response in responses]
     templates = [db_session.get(ConsentTemplate, template_id) for template_id in template_ids]
     assert sorted(template.code for template in templates) == [
-        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V3-COPIA",
-        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V3-COPIA-2",
+        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V4-COPIA",
+        "DENTIA-CONS_ODONTOPEDIATRIA-CO-V4-COPIA-2",
     ]
 
 

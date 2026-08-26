@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     auth_lockout_minutes: int = 15
     auth_ip_max_failed_attempts: int = 20
     auth_ip_window_minutes: int = 15
+    default_tenant_max_active_dentists: int = 1
     refresh_cookie_name: str = "dentia_refresh"
     refresh_cookie_secure: bool = False
     refresh_cookie_samesite: str = "lax"
@@ -44,6 +45,8 @@ class Settings(BaseSettings):
     consent_public_cookie_name: str = "dentia_consent_public"
     consent_public_cookie_secure: bool = False
     consent_acceptance_enabled: bool = False
+    consent_procedure_version: str = "DENTIA_CONSENT_PROCEDURE_V1"
+    consent_storage_persistent: bool = False
     consent_signature_required: bool = True
     consent_final_storage_dir: str = str(BACKEND_DIR / "storage" / "consents")
     consent_final_download_minutes: int = 30
@@ -66,6 +69,15 @@ class Settings(BaseSettings):
     def validate_jwt_secret(cls, value: str) -> str:
         if len(value.encode("utf-8")) < 32:
             raise ValueError("JWT_SECRET must contain at least 32 bytes.")
+        return value
+
+    @field_validator("default_tenant_max_active_dentists")
+    @classmethod
+    def validate_default_tenant_max_active_dentists(cls, value: int) -> int:
+        if value not in {1, 3, 5, 10}:
+            raise ValueError(
+                "DEFAULT_TENANT_MAX_ACTIVE_DENTISTS must be 1, 3, 5 or 10."
+            )
         return value
 
     @property
