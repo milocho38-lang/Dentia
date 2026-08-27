@@ -24,7 +24,7 @@ from app.models.consent_template import (
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.treatment import ProcedureCatalogItem, TreatmentProcedure
-from app.services.consent_library_service import PACKAGE_PATH, ConsentLibraryError, _template_code, import_library_package, load_library_package
+from app.services.consent_library_service import PACKAGE_PATH, ConsentLibraryError, _template_code, import_library_package, load_library_package, verify_source_pdf_hash
 from app.services.consent_library_normalization import NORMALIZED_CONTENT_FIELD, assess_electronic_readiness, assess_legacy_patient_content, classify_signer_context, normalize_patient_content_v2, sha256_text, validate_patient_facing_content
 from app.services.consent_signer import RESPONSIBLE_ADULT, resolve_signer_snapshot, signer_policy_from_library_version
 from app.services.consent_declaration_catalog import declaration_set_for
@@ -47,7 +47,7 @@ CHECKLIST = REPO_ROOT / "DOCS" / "product" / "C019A4-LIB1-Normalization-Equivale
 
 
 def _package_payload() -> dict:
-    return load_library_package(PACKAGE)
+    return load_library_package(PACKAGE, verify_source=False)
 
 
 def _import_library(db_session):
@@ -293,7 +293,6 @@ def test_consent_library_package_is_normalized_and_country_independent():
     assert payload["patient_facing_content_field"] == "normalized_content_markdown"
     assert payload["source_file_sha256"] == SOURCE_HASH
     assert payload["source_page_count"] == 39
-    assert payload["source_pdf_verification"]["checked"] is True
     assert len(payload["documents"]) == 35
     all_versions = [version for document in payload["documents"] for version in document["versions"]]
     assert len(all_versions) == 70
@@ -779,13 +778,42 @@ def test_same_version_number_with_changed_hash_is_conflict(db_session, tmp_path)
     assert db_session.scalar(select(func.count()).select_from(ConsentLibraryVersion)) == 70
 
 
+def test_source_pdf_hash_verification_uses_explicit_fixture(tmp_path):
+    source_pdf = tmp_path / "source.pdf"
+    source_pdf.write_bytes(b"deterministic consent source fixture")
+    expected_hash = hashlib.sha256(source_pdf.read_bytes()).hexdigest()
+
+    verification = verify_source_pdf_hash(expected_hash, source_pdf)
+
+    assert verification == {
+        "checked": True,
+        "path": str(source_pdf),
+        "sha256": expected_hash,
+    }
+
+
+def test_missing_source_pdf_is_reported_without_weakening_package_validation(tmp_path):
+    missing_source = tmp_path / "missing-source.pdf"
+
+    payload = load_library_package(PACKAGE, source_pdf_path=missing_source)
+
+    assert payload["source_pdf_verification"] == {
+        "checked": False,
+        "path": str(missing_source),
+        "reason": "source_pdf_not_available",
+    }
+    assert payload["source_file_sha256"] == SOURCE_HASH
+
+
 def test_hash_mismatch_is_rejected(tmp_path):
     payload = json.loads(PACKAGE.read_text(encoding="utf-8"))
     payload["source_file_sha256"] = "0" * 64
     altered = tmp_path / "altered.json"
     altered.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    source_pdf = tmp_path / "source.pdf"
+    source_pdf.write_bytes(b"deterministic consent source fixture")
     with pytest.raises(ConsentLibraryError):
-        load_library_package(altered)
+        load_library_package(altered, source_pdf_path=source_pdf)
 
 
 def test_partial_invalid_package_fails_without_creating_rows(db_session, tmp_path):
