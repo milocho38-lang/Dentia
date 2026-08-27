@@ -1,4 +1,4 @@
-import { apiRequest } from "@/services/apiClient";
+import { apiBlob, apiRequest } from "@/services/apiClient";
 import type {
   Allergy,
   AllergyInput,
@@ -28,6 +28,10 @@ export function getClinicalRecord(patientId: string) {
   return apiRequest<ClinicalRecordEnvelope>(
     `/api/patients/${patientId}/clinical-record`,
   );
+}
+
+export function downloadClinicalRecordPdf(patientId: string) {
+  return apiBlob(`/api/patients/${patientId}/clinical-record/pdf`);
 }
 
 export function createClinicalRecord(

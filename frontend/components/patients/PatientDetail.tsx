@@ -2132,6 +2132,7 @@ function CreatePatientPaymentDialog({
   const [dentistId, setDentistId] = useState("");
   const [reference, setReference] = useState("");
   const [observation, setObservation] = useState("");
+  const [showRemainingBalance, setShowRemainingBalance] = useState(false);
   const [procedureIds, setProcedureIds] = useState<string[]>([]);
   const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2146,6 +2147,12 @@ function CreatePatientPaymentDialog({
     setSiteId(treatment?.main_site_id ?? "");
     setDentistId(treatment?.responsible_dentist_id ?? "");
   }, [selectedTreatmentId, treatments]);
+
+  useEffect(() => {
+    if (!open) {
+      setShowRemainingBalance(false);
+    }
+  }, [open]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -2165,11 +2172,13 @@ function CreatePatientPaymentDialog({
         payment_method: method,
         reference: reference || null,
         observation: observation || null,
+        show_remaining_balance: showRemainingBalance,
       });
       setReceiptPayment(payment);
       setValue("");
       setReference("");
       setObservation("");
+      setShowRemainingBalance(false);
       await onCreated();
     } catch (paymentError) {
       setError(
@@ -2257,6 +2266,22 @@ function CreatePatientPaymentDialog({
               </div>
             )}
           </div>
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <input
+              type="checkbox"
+              checked={showRemainingBalance}
+              onChange={(event) => setShowRemainingBalance(event.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-bold text-slate-900">
+                Mostrar saldo pendiente después de este pago
+              </span>
+              <span className="mt-1 block text-xs text-slate-500">
+                Si lo activas, el comprobante incluirá el saldo resultante del paciente.
+              </span>
+            </span>
+          </label>
           <div className="flex justify-end gap-3">
             <button type="button" onClick={onClose} className="min-h-10 rounded-xl border border-slate-300 px-4 font-bold text-slate-700">Cancelar</button>
             <button disabled={saving} className="min-h-10 rounded-xl bg-dentia-primary px-4 font-bold text-white disabled:opacity-60">

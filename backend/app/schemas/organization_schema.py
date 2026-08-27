@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.services.document_style import validate_document_font
+
 
 COMPANY_TYPES = {"Profesional independiente", "Consultorio", "Clínica"}
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -114,6 +116,7 @@ class BrandingResponse(BaseModel):
     cancellation_policy: str | None
     thank_you_message: str | None
     payment_receipt_title: str
+    document_font_family: str
     primary_color: str
     secondary_color: str
     button_color: str
@@ -152,6 +155,7 @@ class BrandingUpdateRequest(BaseModel):
         min_length=3,
         max_length=120,
     )
+    document_font_family: str = "HELVETICA"
     primary_color: str = "#16a34a"
     secondary_color: str = "#0f766e"
     button_color: str = "#16a34a"
@@ -228,6 +232,11 @@ class BrandingUpdateRequest(BaseModel):
         if not HEX_COLOR_PATTERN.fullmatch(value):
             raise ValueError("Color institucional no válido.")
         return value
+
+    @field_validator("document_font_family")
+    @classmethod
+    def valid_document_font(cls, value: str) -> str:
+        return validate_document_font(value)
 
 
 class SiteResponse(BaseModel):

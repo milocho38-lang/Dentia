@@ -755,6 +755,7 @@ class PaymentCreateRequest(BaseModel):
     payment_method: str
     reference: str | None = Field(default=None, max_length=120)
     observation: str | None = None
+    show_remaining_balance: bool = False
 
     @field_validator("payment_method")
     @classmethod
@@ -803,6 +804,8 @@ class PaymentResponse(BaseModel):
     payment_method: str
     reference: str | None
     observation: str | None
+    show_remaining_balance: bool
+    remaining_balance_snapshot: Decimal | None
     status: str
     reversed_at: datetime | None
     reversal_reason: str | None

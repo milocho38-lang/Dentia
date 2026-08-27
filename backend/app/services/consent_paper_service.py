@@ -25,6 +25,7 @@ from app.models.consent_template import ConsentAccessSession, ConsentInstance, C
 from app.models.site import Site
 from app.schemas.consent_instance_schema import ConsentPaperPacketResponse, ConsentPaperPageResponse, ConsentPaperVerificationRequest
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.document_style import apply_reportlab_font
 from app.services.consent_instance_service import _require_instance
 from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
 from app.services.consent_signer import RESPONSIBLE_ADULT, responsible_relationship_label, signer_policy_from_library_version
@@ -110,6 +111,10 @@ def _packet_pdf(instance: ConsentInstance, packet_id: UUID, company: Company, si
     body = ParagraphStyle("paper-body", parent=styles["BodyText"], fontName="Helvetica", fontSize=9, leading=13, spaceAfter=4)
     heading = ParagraphStyle("paper-heading", parent=styles["Heading2"], textColor=colors.HexColor("#176B45"), fontSize=12, leading=15, spaceBefore=7, spaceAfter=5)
     title = ParagraphStyle("paper-title", parent=styles["Title"], textColor=colors.HexColor("#123047"), fontSize=17, leading=21, alignment=TA_CENTER)
+    document_font = apply_reportlab_font(
+        {"body": body, "heading": heading, "title": title},
+        company.document_font_family,
+    )
     doc = SimpleDocTemplate(buffer, pagesize=LETTER, rightMargin=17*mm, leftMargin=17*mm, topMargin=20*mm, bottomMargin=19*mm, title=instance.display_title, author="Dentia", invariant=1)
     story = [Paragraph(str(company.name), heading), Paragraph("CONSENTIMIENTO PARA FIRMA MANUSCRITA", title), Spacer(1, 4*mm)]
     patient_name = _snapshot(instance, "patient", "full_name")
@@ -121,7 +126,7 @@ def _packet_pdf(instance: ConsentInstance, packet_id: UUID, company: Company, si
         ["Identificador del packet", str(packet_id)],
     ]
     table = Table(details, colWidths=[42*mm, 123*mm])
-    table.setStyle(TableStyle([("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#CBD5E1")),("BACKGROUND",(0,0),(0,-1),colors.HexColor("#ECFDF5")),("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),("FONTNAME",(1,0),(1,-1),"Helvetica"),("FONTSIZE",(0,0),(-1,-1),8.5),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),5)]))
+    table.setStyle(TableStyle([("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#CBD5E1")),("BACKGROUND",(0,0),(0,-1),colors.HexColor("#ECFDF5")),("FONTNAME",(0,0),(0,-1),document_font.bold),("FONTNAME",(1,0),(1,-1),document_font.regular),("FONTSIZE",(0,0),(-1,-1),8.5),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),5)]))
     story += [table, Paragraph("Contenido clínico revisado", heading)]
     story += [Paragraph(line, body) for line in _plain_lines(instance.rendered_content_snapshot or "")]
     story += [Spacer(1, 5*mm), Paragraph("Firma manuscrita", heading)]
@@ -131,7 +136,7 @@ def _packet_pdf(instance: ConsentInstance, packet_id: UUID, company: Company, si
     else:
         signature_rows = [["Paciente que firma", instance.signer_full_name_snapshot or patient_name], ["Documento", f"{instance.signer_document_type_snapshot or ''} {instance.signer_document_number_snapshot or ''}".strip()], ["Firma", "\n\n\n"], ["Fecha", ""]]
     signatures = Table(signature_rows, colWidths=[50*mm,115*mm])
-    signatures.setStyle(TableStyle([("GRID",(0,0),(-1,-1),0.45,colors.HexColor("#64748B")),("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),9),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),7)]))
+    signatures.setStyle(TableStyle([("GRID",(0,0),(-1,-1),0.45,colors.HexColor("#64748B")),("FONTNAME",(0,0),(0,-1),document_font.bold),("FONTSIZE",(0,0),(-1,-1),9),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),7)]))
     story.append(signatures)
     if test_document:
         story.insert(0, Paragraph("DOCUMENTO DE PRUEBA — NO VÁLIDO PARA USO CLÍNICO", ParagraphStyle("warning", parent=body, textColor=colors.HexColor("#B91C1C"), fontName="Helvetica-Bold", alignment=TA_CENTER, fontSize=11)))
@@ -139,7 +144,7 @@ def _packet_pdf(instance: ConsentInstance, packet_id: UUID, company: Company, si
     def footer(canvas, document):
         canvas.saveState()
         canvas.setStrokeColor(colors.HexColor("#CBD5E1")); canvas.line(17*mm, 15*mm, 199*mm, 15*mm)
-        canvas.setFont("Helvetica", 7); canvas.setFillColor(colors.HexColor("#475569"))
+        canvas.setFont(document_font.regular, 7); canvas.setFillColor(colors.HexColor("#475569"))
         canvas.drawString(17*mm, 10*mm, f"Packet {packet_id}")
         suffix = f" de {total_pages}" if total_pages else ""
         canvas.drawRightString(199*mm, 10*mm, f"Página {document.page}{suffix} · Integridad: {instance.integrity_hash or 'pendiente'}")

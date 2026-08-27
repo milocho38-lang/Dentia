@@ -2264,6 +2264,7 @@ function PaymentForm({
   const [dentistId, setDentistId] = useState(treatment.responsible_dentist_id ?? "");
   const [reference, setReference] = useState("");
   const [observation, setObservation] = useState("");
+  const [showRemainingBalance, setShowRemainingBalance] = useState(false);
   const availableProcedures = procedures.filter((procedure) => procedure.status !== "Cancelado");
   const [procedureIds, setProcedureIds] = useState<string[]>(() => availableProcedures.map((procedure) => procedure.id));
   const [receiptPayment, setReceiptPayment] = useState<Payment | null>(null);
@@ -2302,10 +2303,12 @@ function PaymentForm({
       paid_at: new Date().toISOString(),
       reference: reference || null,
       observation: observation || null,
+      show_remaining_balance: showRemainingBalance,
     });
     setValue("");
     setReference("");
     setObservation("");
+    setShowRemainingBalance(false);
     setReceiptPayment(payment);
     await onDone();
   }
@@ -2436,6 +2439,22 @@ function PaymentForm({
             )}
           </div>
         </div>
+        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+          <input
+            type="checkbox"
+            checked={showRemainingBalance}
+            onChange={(event) => setShowRemainingBalance(event.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            <span className="block text-sm font-bold text-slate-900">
+              Mostrar saldo pendiente después de este pago
+            </span>
+            <span className="mt-1 block text-xs text-slate-500">
+              Si lo activas, el comprobante incluirá el saldo resultante del paciente.
+            </span>
+          </span>
+        </label>
         <div className="mt-4 flex justify-end">
           <button className="min-h-11 whitespace-nowrap rounded-xl bg-dentia-primary px-4 text-sm font-bold text-white hover:bg-green-700">
             Registrar pago

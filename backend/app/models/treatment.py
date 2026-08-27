@@ -558,6 +558,10 @@ class TreatmentPayment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "pagos_tratamiento"
     __table_args__ = (
         CheckConstraint("valor > 0", name="ck_pagos_tratamiento_valor_positivo"),
+        CheckConstraint(
+            "saldo_pendiente_snapshot IS NULL OR saldo_pendiente_snapshot >= 0",
+            name="ck_pagos_saldo_pendiente_snapshot_no_negativo",
+        ),
         Index("ix_pagos_empresa_fecha", "empresa_id", "fecha_pago"),
         Index("ix_pagos_empresa_tratamiento", "empresa_id", "tratamiento_id"),
         Index("ix_pagos_empresa_paciente", "empresa_id", "paciente_id"),
@@ -635,6 +639,12 @@ class TreatmentPayment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     receipt_number: Mapped[str] = mapped_column(
         "comprobante_numero", String(30), nullable=False
+    )
+    show_remaining_balance: Mapped[bool] = mapped_column(
+        "mostrar_saldo_pendiente", Boolean, nullable=False, default=False, server_default="false"
+    )
+    remaining_balance_snapshot: Mapped[Decimal | None] = mapped_column(
+        "saldo_pendiente_snapshot", Numeric(14, 2), nullable=True
     )
     status: Mapped[str] = mapped_column("estado", String(20), nullable=False)
     registered_by: Mapped[UUID | None] = mapped_column(

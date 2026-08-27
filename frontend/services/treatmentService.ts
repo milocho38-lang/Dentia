@@ -321,6 +321,7 @@ export function createPayment(
     payment_method: string;
     reference?: string | null;
     observation?: string | null;
+    show_remaining_balance?: boolean;
   },
 ) {
   return apiRequest<Payment>(`/api/treatments/${treatmentId}/payments`, {

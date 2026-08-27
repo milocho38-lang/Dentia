@@ -214,6 +214,8 @@ export interface Payment {
   payment_method: string;
   reference: string | null;
   observation: string | null;
+  show_remaining_balance: boolean;
+  remaining_balance_snapshot: string | null;
   status: string;
   reversed_at: string | null;
   reversal_reason: string | null;

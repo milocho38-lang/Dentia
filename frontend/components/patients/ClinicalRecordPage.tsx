@@ -12,6 +12,12 @@ import {
 import { Alert } from "@/components/shared/Alert";
 import { Spinner } from "@/components/shared/Spinner";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  hasLegacyMedicalHistoryQuestionnaire,
+  isCurrentPositiveMedicalHistory,
+  isLegacyMedicalHistoryItem,
+  medicalHistoryResponseLabel,
+} from "@/lib/medicalHistory";
 import { ApiError } from "@/services/apiClient";
 import {
   createAllergy,
@@ -19,6 +25,7 @@ import {
   createClinicalEvolution,
   createClinicalEvolutionAddendum,
   createMedication,
+  downloadClinicalRecordPdf,
   getAllergies,
   getClinicalRecord,
   getClinicalTimeline,
@@ -57,26 +64,6 @@ const DEFAULT_TERMINOLOGY = {
   open_record: "Abrir historia clínica",
   summary: "Resumen clínico",
 };
-
-const MEDICAL_TYPES = [
-  "hipertensión",
-  "enfermedad cardiovascular",
-  "diabetes",
-  "trastorno de coagulación",
-  "enfermedad respiratoria",
-  "enfermedad renal",
-  "enfermedad hepática",
-  "enfermedad neurológica",
-  "inmunosupresión",
-  "cáncer",
-  "hospitalización",
-  "cirugía",
-  "transfusión",
-  "prótesis o dispositivo",
-  "embarazo",
-  "lactancia",
-  "otro",
-];
 
 const INFORMANT_RELATION_OPTIONS = [
   { value: "MOTHER", label: "Madre", relationship: "Madre" },
@@ -316,13 +303,7 @@ export function ClinicalRecordPage({
   );
   const [terminology, setTerminology] = useState(DEFAULT_TERMINOLOGY);
   const [dentists, setDentists] = useState<DentistSiteManagement[]>([]);
-  const [medicalItems, setMedicalItems] = useState<MedicalHistoryItemInput[]>(
-    MEDICAL_TYPES.map((type) => ({
-      type,
-      present: "DESCONOCIDO",
-      status: "activo",
-    })),
-  );
+  const [medicalItems, setMedicalItems] = useState<MedicalHistoryItemInput[]>([]);
   const [allergies, setAllergies] = useState<Allergy[]>([]);
   const [medications, setMedications] = useState<Medication[]>([]);
   const [evolutions, setEvolutions] = useState<ClinicalEvolution[]>([]);
@@ -338,6 +319,21 @@ export function ClinicalRecordPage({
   const canEdit =
     hasPermission("clinical_records.update_draft") &&
     hasPermission("clinical_records.view_sensitive");
+
+  async function downloadHistory() {
+    setError(null);
+    try {
+      const blob = await downloadClinicalRecordPdf(patientId);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `historia-clinica-${patientId}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(errorMessage(downloadError, "No fue posible descargar la historia clínica."));
+    }
+  }
   const canCreate =
     hasPermission("clinical_records.create") &&
     hasPermission("clinical_records.view_sensitive");
@@ -418,25 +414,7 @@ export function ClinicalRecordPage({
             ? listTreatments(`?patient_id=${patientId}`)
             : Promise.resolve({ items: [], total: 0 }),
         ]);
-        const byType = new Map(
-          loadedMedical.items.map((item) => [item.type, item]),
-        );
-        setMedicalItems(
-          MEDICAL_TYPES.map((type) => {
-            const item = byType.get(type);
-            return item
-              ? {
-                  type: item.type,
-                  present: item.present,
-                  detail: item.detail,
-                  severity: item.severity,
-                  status: item.status,
-                  source: item.source,
-                  version: item.version,
-                }
-              : { type, present: "DESCONOCIDO", status: "activo" };
-          }),
-        );
+        setMedicalItems(loadedMedical.items.map((item) => ({ ...item })));
         setAllergies(loadedAllergies.items);
         setMedications(loadedMeds.items);
         setEvolutions(loadedEvolutions.items);
@@ -492,7 +470,7 @@ export function ClinicalRecordPage({
     (item) => item.critical_alert && item.status !== "descartada",
   );
   const activeMedications = medications.filter((item) => item.status === "activo");
-  const relevantMedical = medicalItems.filter((item) => item.present === "SI");
+  const relevantMedical = medicalItems.filter(isCurrentPositiveMedicalHistory);
   const ownDentist = dentists.find((item) => item.user_id === user?.id);
   const selectedEvolution =
     evolutions.find((item) => item.id === selectedEvolutionId) ?? null;
@@ -623,7 +601,7 @@ export function ClinicalRecordPage({
       const response = await updateMedicalHistory(patientId, {
         record_version: record.version,
         medical_history_state: form.medical_history_state,
-        items: medicalItems,
+        items: medicalItems.filter((item) => item.type.trim().length >= 2),
       });
       setMedicalItems(response.items.map((item) => ({ ...item })));
       await load();
@@ -789,10 +767,10 @@ export function ClinicalRecordPage({
                   {patient.full_name}
                 </h1>
                 <p className="mt-2 text-sm text-slate-500">
-                  Registro longitudinal clínico. Las evoluciones firmadas llegarán en
-                  C015C; esta fase cubre apertura, antecedentes, alergias y resumen.
+                  Registro longitudinal clínico con antecedentes, alertas y evoluciones firmadas.
                 </p>
               </div>
+              <div className="flex flex-col items-end gap-2">
               <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm">
                 <p className="font-bold text-slate-900">
                   {record ? "Abierta" : "Sin historia abierta"}
@@ -802,6 +780,12 @@ export function ClinicalRecordPage({
                     ? `Versión ${record.version} · ${formatDate(record.updated_at, true)}`
                     : terminology.open_record}
                 </p>
+              </div>
+              {record && (
+                <button type="button" onClick={downloadHistory} className="rounded-xl border border-green-700 px-4 py-2 text-sm font-bold text-green-800">
+                  Descargar historia clínica PDF
+                </button>
+              )}
               </div>
             </div>
           </header>
@@ -870,6 +854,13 @@ export function ClinicalRecordPage({
 
       {record && (
         <>
+          {embedded && (
+            <div className="flex justify-end">
+              <button type="button" onClick={downloadHistory} className="rounded-xl border border-green-700 px-4 py-2 text-sm font-bold text-green-800">
+                Descargar historia clínica PDF
+              </button>
+            </div>
+          )}
           <ClinicalAlerts
             criticalAllergies={criticalAllergies}
             activeMedications={activeMedications}
@@ -939,61 +930,37 @@ export function ClinicalRecordPage({
           </div>
         </Section>
 
-        <Section title="Motivo y situación actual">
-          <div className="grid gap-4 lg:grid-cols-2">
+        <Section title="Motivo y anamnesis">
+          <div className="grid gap-4">
             <TextArea
               label="Motivo de consulta"
               value={form.chief_complaint ?? ""}
               onChange={(value) => updateField("chief_complaint", value)}
             />
             <TextArea
-              label="Situación actual"
+              label="Anamnesis"
               value={form.current_situation ?? ""}
               onChange={(value) => updateField("current_situation", value)}
             />
-            <TextInput
-              label="Inicio de la situación"
-              value={form.situation_start ?? ""}
-              onChange={(value) => updateField("situation_start", value)}
-            />
-            <TextInput
-              label="Síntomas"
-              value={form.symptoms ?? ""}
-              onChange={(value) => updateField("symptoms", value)}
-            />
-            <TextArea
-              label="Evolución"
-              value={form.situation_evolution ?? ""}
-              onChange={(value) => updateField("situation_evolution", value)}
-            />
-            <TextArea
-              label="Tratamientos previos"
-              value={form.previous_treatments ?? ""}
-              onChange={(value) => updateField("previous_treatments", value)}
-            />
           </div>
+          {(form.situation_start || form.symptoms || form.situation_evolution || form.previous_treatments) && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-bold text-amber-900">Información histórica preservada</p>
+              {form.situation_start && <p className="mt-2 text-sm"><strong>Inicio:</strong> {form.situation_start}</p>}
+              {form.symptoms && <p className="mt-1 text-sm"><strong>Síntomas:</strong> {form.symptoms}</p>}
+              {form.situation_evolution && <p className="mt-1 text-sm"><strong>Evolución inicial:</strong> {form.situation_evolution}</p>}
+              {form.previous_treatments && <p className="mt-1 text-sm"><strong>Tratamientos previos:</strong> {form.previous_treatments}</p>}
+            </div>
+          )}
         </Section>
 
         <Section title="Hábitos">
-          <div className="grid gap-4 md:grid-cols-3">
-            <TextInput label="Tabaco" value={form.habits.tobacco ?? ""} onChange={(value) => updateHabit("tobacco", value)} />
-            <TextInput label="Alcohol" value={form.habits.alcohol ?? ""} onChange={(value) => updateHabit("alcohol", value)} />
-            <TextInput label="Bruxismo" value={form.habits.bruxism ?? ""} onChange={(value) => updateHabit("bruxism", value)} />
-            <TextInput label="Higiene oral" value={form.habits.oral_hygiene ?? ""} onChange={(value) => updateHabit("oral_hygiene", value)} />
-            <TextInput label="Frecuencia cepillado" value={form.habits.brushing_frequency ?? ""} onChange={(value) => updateHabit("brushing_frequency", value)} />
-            <TextInput label="Seda dental" value={form.habits.dental_floss ?? ""} onChange={(value) => updateHabit("dental_floss", value)} />
-          </div>
+          <TextArea label="Hábitos relevantes" value={form.habits.notes ?? ""} onChange={(value) => updateHabit("notes", value)} />
         </Section>
 
         <Section title="Antecedentes odontológicos">
-          <div className="grid gap-4 md:grid-cols-2">
-            <TextInput label="Última consulta" value={form.dental_history.last_visit ?? ""} onChange={(value) => updateDentalHistory("last_visit", value)} />
-            <TextInput label="Tratamientos previos" value={form.dental_history.previous_treatments ?? ""} onChange={(value) => updateDentalHistory("previous_treatments", value)} />
-            <TextInput label="Ortodoncia" value={form.dental_history.orthodontics ?? ""} onChange={(value) => updateDentalHistory("orthodontics", value)} />
-            <TextInput label="Implantes" value={form.dental_history.implants ?? ""} onChange={(value) => updateDentalHistory("implants", value)} />
-            <TextInput label="Cirugías" value={form.dental_history.surgeries ?? ""} onChange={(value) => updateDentalHistory("surgeries", value)} />
-            <TextInput label="Sensibilidad" value={form.dental_history.sensitivity ?? ""} onChange={(value) => updateDentalHistory("sensitivity", value)} />
-            <TextArea label="Observaciones odontológicas" value={form.dental_history.observations ?? ""} onChange={(value) => updateDentalHistory("observations", value)} />
+          <div className="grid gap-4">
+            <TextArea label="Antecedentes odontológicos relevantes" value={form.dental_history.summary ?? ""} onChange={(value) => updateDentalHistory("summary", value)} />
             <TextArea label="Observaciones generales" value={form.observations ?? ""} onChange={(value) => updateField("observations", value)} />
           </div>
         </Section>
@@ -2280,13 +2247,49 @@ function MedicalHistorySection({
   onItemsChange: (items: MedicalHistoryItemInput[]) => void;
   onSave: () => Promise<void>;
 }) {
-  function update(index: number, patch: Partial<MedicalHistoryItemInput>) {
+  const currentItems = items.filter(isCurrentPositiveMedicalHistory);
+  const inactivePositiveItems = items.filter(
+    (item) => item.present === "SI" && !isCurrentPositiveMedicalHistory(item),
+  );
+  const historicalItems = hasLegacyMedicalHistoryQuestionnaire(items)
+    ? items.filter(
+        (item) =>
+          isLegacyMedicalHistoryItem(item, items) && item.present !== "SI",
+      )
+    : [];
+
+  function update(target: MedicalHistoryItemInput, patch: Partial<MedicalHistoryItemInput>) {
     onItemsChange(
-      items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
+      items.map((item) =>
+        item === target ? { ...item, ...patch } : item,
       ),
     );
   }
+
+  function editableRow(item: MedicalHistoryItemInput, index: number) {
+    return (
+      <div
+        key={item.id ?? `new-${index}`}
+        className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_1.5fr_150px]"
+      >
+        <input value={item.type} onChange={(event) => update(item, { type: event.target.value })} placeholder="Antecedente médico" className="min-h-10 rounded-xl border border-slate-300 px-3" />
+        <input
+          value={item.detail ?? ""}
+          onChange={(event) => update(item, { detail: event.target.value })}
+          placeholder="Detalle / observación"
+          className="min-h-10 rounded-xl border border-slate-300 px-3"
+        />
+        <select value={item.status ?? "activo"} onChange={(event) => update(item, { status: event.target.value })} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3">
+          <option value="activo">Activo</option>
+          <option value="inactivo">Inactivo</option>
+        </select>
+        <div className="text-xs text-slate-500 md:col-span-3">
+          {item.created_at ? `Registrado ${new Date(item.created_at).toLocaleDateString()}${item.created_by_name ? ` por ${item.created_by_name}` : ""}` : "Nuevo antecedente"}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Section title="Antecedentes médicos">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -2311,33 +2314,34 @@ function MedicalHistorySection({
         )}
       </div>
       <div className="space-y-3">
-        {items.map((item, index) => (
-          <div
-            key={item.type}
-            className="grid gap-3 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_150px_1.5fr]"
-          >
-            <p className="font-bold capitalize text-slate-800">{item.type}</p>
-            <select
-              value={item.present}
-              onChange={(event) =>
-                update(index, {
-                  present: event.target.value as "SI" | "NO" | "DESCONOCIDO",
-                })
-              }
-              className="min-h-10 rounded-xl border border-slate-300 bg-white px-3"
-            >
-              <option value="DESCONOCIDO">Desconocido</option>
-              <option value="NO">No</option>
-              <option value="SI">Sí</option>
-            </select>
-            <input
-              value={item.detail ?? ""}
-              onChange={(event) => update(index, { detail: event.target.value })}
-              placeholder="Detalle / observación"
-              className="min-h-10 rounded-xl border border-slate-300 px-3"
-            />
+        {currentItems.length > 0
+          ? currentItems.map(editableRow)
+          : <p className="rounded-xl bg-green-50 p-3 text-sm text-green-800">Sin antecedentes médicos vigentes registrados.</p>}
+        {canEdit && (
+          <button type="button" onClick={() => onItemsChange([...items, { type: "", detail: "", present: "SI", status: "activo" }])} className="rounded-xl border border-green-700 px-4 py-2 text-sm font-bold text-green-800">
+            + Agregar antecedente médico
+          </button>
+        )}
+        {inactivePositiveItems.length > 0 && (
+          <div className="mt-5 space-y-3 border-t border-slate-200 pt-4">
+            <p className="text-sm font-black text-slate-700">Antecedentes médicos inactivos</p>
+            {inactivePositiveItems.map(editableRow)}
           </div>
-        ))}
+        )}
+        {historicalItems.length > 0 && (
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-black text-amber-950">Respuestas históricas de antecedentes médicos</p>
+            <p className="mt-1 text-xs text-amber-800">Información preservada del cuestionario anterior. Es de solo lectura.</p>
+            <dl className="mt-3 grid gap-x-5 gap-y-2 text-sm sm:grid-cols-2">
+              {historicalItems.map((item) => (
+                <div key={item.id ?? item.type} className="flex justify-between gap-3 border-b border-amber-200/70 pb-1">
+                  <dt className="capitalize text-slate-700">{item.type}</dt>
+                  <dd className="font-bold text-slate-900">{medicalHistoryResponseLabel(item)}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
       </div>
     </Section>
   );

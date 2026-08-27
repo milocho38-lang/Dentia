@@ -1,4 +1,4 @@
-"""Provisional C019A.4 acceptance flow. Not a legal-validity assertion."""
+"""Electronic consent acceptance flow with immutable technical evidence."""
 import base64
 import hashlib
 import json
@@ -44,12 +44,18 @@ from app.services.consent_library_normalization import validate_patient_facing_c
 from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
 from app.services.email_service import EmailDelivery, EmailDeliveryError, get_email_provider
 from app.services.patient_service import calculate_age
+from app.services.document_style import apply_reportlab_font, resolve_document_font
 from app.services.consent_signer import (
     PATIENT_SELF,
     RESPONSIBLE_ADULT,
     minor_participation_label,
     responsible_relationship_label,
     signer_snapshot_from_instance,
+)
+
+
+ELECTRONIC_TRACEABILITY_NOTICE = (
+    "Registro electrónico generado por Dentia con trazabilidad técnica de la aceptación."
 )
 
 
@@ -291,6 +297,7 @@ def _branding_snapshot(company: Company, site: Site) -> tuple[dict, bytes | None
             "secondary_color": _safe_pdf_color(company.secondary_color, "#0f766e"),
             "heading_color": _safe_pdf_color(company.heading_color, "#0f172a"),
             "pdf_heading_color": _visible_text_color(company.heading_color),
+            "document_font_family": company.document_font_family,
         },
         "site": {
             "name": site.name,
@@ -332,6 +339,7 @@ class _ConsentPdfCanvas(Canvas):
     def _draw_chrome(self, page_number: int, total_pages: int) -> None:
         branding = self._chrome["branding"]
         company = branding["company"]
+        document_font = resolve_document_font(company.get("document_font_family"))
         site = branding["site"]
         primary = colors.HexColor(company["primary_color"])
         muted = colors.HexColor("#64748b")
@@ -345,7 +353,7 @@ class _ConsentPdfCanvas(Canvas):
             self.setStrokeColor(colors.HexColor("#fca5a5"))
             self.roundRect(left, banner_y - 13, right - left, 18, 4, fill=1, stroke=1)
             self.setFillColor(colors.HexColor("#b91c1c"))
-            self.setFont("Helvetica-Bold", 7.5)
+            self.setFont(document_font.bold, 7.5)
             self.drawCentredString(width / 2, banner_y - 6.5, TEST_DOCUMENT_NOTICE)
         header_top = height - (1.12 * cm if is_test else 0.48 * cm)
         logo_bytes = self._chrome.get("logo_bytes")
@@ -357,13 +365,13 @@ class _ConsentPdfCanvas(Canvas):
                 logo_bytes = None
         institution_x = left + (31 * mm if logo_bytes else 0)
         institution_width = 72 * mm if logo_bytes else 100 * mm
-        institution_style = ParagraphStyle("PdfChromeInstitution", fontName="Helvetica-Bold", fontSize=9.2, leading=11, textColor=colors.HexColor(company["pdf_heading_color"]), alignment=TA_LEFT)
-        detail_style = ParagraphStyle("PdfChromeDetail", fontName="Helvetica", fontSize=6.8, leading=8.5, textColor=muted, alignment=TA_LEFT)
+        institution_style = ParagraphStyle("PdfChromeInstitution", fontName=document_font.bold, fontSize=9.2, leading=11, textColor=colors.HexColor(company["pdf_heading_color"]), alignment=TA_LEFT)
+        detail_style = ParagraphStyle("PdfChromeDetail", fontName=document_font.regular, fontSize=6.8, leading=8.5, textColor=muted, alignment=TA_LEFT)
         _draw_paragraph(self, company.get("name") or "Dentia", institution_style, institution_x, header_top, institution_width, 14)
         institution_detail = company.get("header_text") or " · ".join(part for part in [site.get("name"), site.get("city")] if part)
         _draw_paragraph(self, institution_detail, detail_style, institution_x, header_top - 14, institution_width, 20)
-        title_style = ParagraphStyle("PdfChromeTitle", fontName="Helvetica-Bold", fontSize=9.5, leading=11, textColor=colors.HexColor(company["pdf_heading_color"]), alignment=TA_RIGHT)
-        meta_style = ParagraphStyle("PdfChromeMeta", fontName="Helvetica", fontSize=6.8, leading=8.5, textColor=muted, alignment=TA_RIGHT)
+        title_style = ParagraphStyle("PdfChromeTitle", fontName=document_font.bold, fontSize=9.5, leading=11, textColor=colors.HexColor(company["pdf_heading_color"]), alignment=TA_RIGHT)
+        meta_style = ParagraphStyle("PdfChromeMeta", fontName=document_font.regular, fontSize=6.8, leading=8.5, textColor=muted, alignment=TA_RIGHT)
         right_width = 67 * mm
         _draw_paragraph(self, "CONSENTIMIENTO INFORMADO", title_style, right - right_width, header_top, right_width, 14)
         _draw_paragraph(self, f"{self._chrome['visible_number']} · Versión {self._chrome['template_version']}", meta_style, right - right_width, header_top - 14, right_width, 14)
@@ -373,9 +381,9 @@ class _ConsentPdfCanvas(Canvas):
         footer_y = 1.47 * cm
         self.setStrokeColor(colors.HexColor(company["secondary_color"])); self.setLineWidth(0.45); self.line(left, footer_y, right, footer_y)
         footer_contact = company.get("footer_text") or " · ".join(part for part in [site.get("address") or company.get("address"), site.get("phone") or company.get("phone"), company.get("email"), company.get("website")] if part)
-        footer_style = ParagraphStyle("PdfChromeFooter", fontName="Helvetica", fontSize=6.3, leading=7.5, textColor=muted, alignment=TA_LEFT)
+        footer_style = ParagraphStyle("PdfChromeFooter", fontName=document_font.regular, fontSize=6.3, leading=7.5, textColor=muted, alignment=TA_LEFT)
         _draw_paragraph(self, footer_contact, footer_style, left, footer_y - 3, right - left, 10)
-        self.setFont("Helvetica", 6.2); self.setFillColor(muted)
+        self.setFont(document_font.regular, 6.2); self.setFillColor(muted)
         verification = self._chrome["verification_id"]
         integrity = self._chrome["integrity_hash"]
         self.drawString(left, 0.54 * cm, f"Verificación {verification} · Integridad {integrity} · Generado {self._chrome['generated_at']}")
@@ -442,6 +450,10 @@ def _pdf(instance, acceptance, declarations, signature: bytes, branding: dict, l
     centered = ParagraphStyle("ConsentCentered", parent=small, alignment=TA_CENTER)
     heading = ParagraphStyle("ConsentHeading", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=10.8, leading=13, spaceBefore=7, spaceAfter=5, textColor=primary)
     title = ParagraphStyle("ConsentSpecificTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=15, leading=18, spaceAfter=8, alignment=TA_LEFT, textColor=heading_color)
+    apply_reportlab_font(
+        {"body": body, "small": small, "cell": cell, "cell_bold": cell_bold, "centered": centered, "heading": heading, "title": title},
+        company.get("document_font_family"),
+    )
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
@@ -532,7 +544,7 @@ def _pdf(instance, acceptance, declarations, signature: bytes, branding: dict, l
         Paragraph(escape(acceptance.typed_full_name), ParagraphStyle("SignatureName", parent=cell_bold, alignment=TA_CENTER)),
         Paragraph(escape(accepted_at), centered),
         Spacer(1, 5),
-        Paragraph("Registro electrónico generado por Dentia. Implementación técnica provisional pendiente de revisión jurídica. Este documento no constituye una afirmación de validez legal.", small),
+        Paragraph(ELECTRONIC_TRACEABILITY_NOTICE, small),
     ]
     story.append(KeepTogether(signature_block))
     chrome = {

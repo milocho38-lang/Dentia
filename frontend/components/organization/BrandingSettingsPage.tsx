@@ -39,6 +39,7 @@ const defaults: BrandingInput = {
   cancellation_policy: null,
   thank_you_message: null,
   payment_receipt_title: "COMPROBANTE DE PAGO",
+  document_font_family: "HELVETICA",
   primary_color: "#16a34a",
   secondary_color: "#0f766e",
   button_color: "#16a34a",
@@ -71,6 +72,7 @@ function toInput(branding: Branding): BrandingInput {
     cancellation_policy: branding.cancellation_policy,
     thank_you_message: branding.thank_you_message,
     payment_receipt_title: branding.payment_receipt_title,
+    document_font_family: branding.document_font_family,
     primary_color: branding.primary_color,
     secondary_color: branding.secondary_color,
     button_color: branding.button_color,
@@ -350,6 +352,35 @@ export function BrandingSettingsPage() {
           {textarea("header_text", "Texto de encabezado")}
           {textarea("footer_text", "Texto de pie de página")}
           {field("payment_receipt_title", "Nombre del comprobante de pago")}
+          <label>
+            <span className="mb-1 block text-sm font-bold text-slate-700">Tipografía de documentos</span>
+            <select
+              disabled={!canEdit}
+              value={data.document_font_family}
+              onChange={(event) => update("document_font_family", event.target.value)}
+              className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-50"
+            >
+              <option value="HELVETICA">Helvetica</option>
+              <option value="ARIAL_COMPATIBLE">Arial (compatible)</option>
+              <option value="TIMES_COMPATIBLE">Times New Roman (compatible)</option>
+              <option value="GEORGIA_COMPATIBLE">Georgia (compatible)</option>
+              <option value="VERDANA_COMPATIBLE">Verdana (compatible)</option>
+              <option value="TREBUCHET_COMPATIBLE">Trebuchet MS (compatible)</option>
+            </select>
+            <span
+              className="mt-2 block rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+              style={{ fontFamily: {
+                HELVETICA: "Helvetica, Arial, sans-serif",
+                ARIAL_COMPATIBLE: "Arial, Helvetica, sans-serif",
+                TIMES_COMPATIBLE: "'Times New Roman', Times, serif",
+                GEORGIA_COMPATIBLE: "Georgia, serif",
+                VERDANA_COMPATIBLE: "Verdana, Arial, sans-serif",
+                TREBUCHET_COMPATIBLE: "'Trebuchet MS', Arial, sans-serif",
+              }[data.document_font_family] }}
+            >
+              Vista previa: Historia clínica Dentia
+            </span>
+          </label>
           {textarea("legal_observations", "Observaciones legales", 4)}
           {textarea("cancellation_policy", "Política de cancelación", 4)}
           <div className="md:col-span-2">{textarea("thank_you_message", "Mensaje de agradecimiento")}</div>

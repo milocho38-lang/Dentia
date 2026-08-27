@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.core.auth_dependencies import (
@@ -36,6 +36,10 @@ from app.schemas.clinical_record_schema import (
     MedicationUpdateRequest,
 )
 from app.services.auth_service import AuthContext
+from app.services.clinical_history_export_service import (
+    ClinicalHistoryExportError,
+    export_clinical_history,
+)
 from app.services.clinical_record_service import (
     ClinicalRecordError,
     create_clinical_evolution,
@@ -67,6 +71,31 @@ evolution_router = APIRouter(prefix="/api/clinical-evolutions", tags=["Clinical 
 
 def handle_clinical_error(exc: ClinicalRecordError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
+
+
+@router.get("/{patient_id}/clinical-record/pdf")
+def export_clinical_record_pdf_endpoint(
+    patient_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("clinical_records.view_sensitive"))
+    ],
+) -> Response:
+    try:
+        exported = export_clinical_history(
+            session, context, patient_id, get_request_metadata(request)
+        )
+    except ClinicalHistoryExportError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    return Response(
+        content=exported.content,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{exported.filename}"',
+            "X-Content-SHA256": exported.sha256,
+        },
+    )
 
 
 @router.get("/{patient_id}/clinical-record", response_model=ClinicalRecordEnvelope)

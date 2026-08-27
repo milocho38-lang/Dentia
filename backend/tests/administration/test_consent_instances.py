@@ -747,6 +747,11 @@ def test_test_pdf_manifest_email_and_professional_semantics(api_client, db_sessi
     signed=api_client.post(f"/api/public/consents/{token}/acceptance",headers={"Cookie":cookie},json=payload);assert signed.status_code==200,signed.text
     final=api_client.get(signed.json()["download_url"]);assert final.status_code==200
     page_count=final.content.count(b"/Type /Page")-final.content.count(b"/Type /Pages");assert page_count>=2 and final.content.count(b"DOCUMENTO DE PRUEBA")>=page_count
+    with fitz.open(stream=final.content,filetype="pdf") as pdf_document:
+        final_text="\n".join(page.get_text() for page in pdf_document)
+    assert consent_acceptance_service.ELECTRONIC_TRACEABILITY_NOTICE in final_text
+    assert "pendiente de revisión jurídica" not in final_text
+    assert "no constituye una afirmación de validez legal" not in final_text
     assert b"# Documento de prueba" not in final.content and b"## Riesgos" not in final.content
     assert b"Profesional que confirm" in final.content and b"Firmado por el odont" not in final.content and b"Firma electr" not in final.content
     evidence=api_client.get(f"/api/consent-instances/{created['id']}/acceptance/evidence",token=security_world.tenant_a.dentist_admin.token).json()["manifest"]
@@ -950,6 +955,9 @@ def test_signer1_responsible_adult_acceptance_uses_human_labels_and_pdf_particip
     assert "AUNT_UNCLE" not in pdf_text
     assert "Participación del menor" in pdf_text
     assert "Informado y de acuerdo" in pdf_text
+    assert consent_acceptance_service.ELECTRONIC_TRACEABILITY_NOTICE in pdf_text
+    assert "pendiente de revisión jurídica" not in pdf_text
+    assert "no constituye una afirmación de validez legal" not in pdf_text
     assert acceptance.signer_relationship_type_snapshot == "AUNT_UNCLE"
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.models.company import Company
@@ -8,6 +8,10 @@ from app.models.site import Site
 
 
 FALLBACK_TIMEZONE = "America/Bogota"
+MONTHS_ES = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
 
 
 def valid_timezone_name(value: str | None) -> str:
@@ -50,3 +54,27 @@ def clinical_date_or_local_default(
     if explicit_date is not None:
         return explicit_date
     return local_clinical_date(company, site, now=now)
+
+
+def format_human_local_datetime(
+    value: datetime,
+    company: Company | None,
+    site: Site | None = None,
+) -> str:
+    return format_human_datetime_in_timezone(value, effective_timezone(company, site))
+
+
+def format_human_datetime_in_timezone(value: datetime, timezone_name: str | None) -> str:
+    timezone_name = valid_timezone_name(timezone_name)
+    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    local = aware.astimezone(ZoneInfo(timezone_name))
+    hour = local.hour % 12 or 12
+    suffix = "a. m." if local.hour < 12 else "p. m."
+    return f"{local.day} de {MONTHS_ES[local.month - 1]} de {local.year}, {hour}:{local.minute:02d} {suffix}"
+
+
+def format_human_date(value: date | datetime | None) -> str:
+    if value is None:
+        return "No registrado"
+    day = value.date() if isinstance(value, datetime) else value
+    return f"{day.day} de {MONTHS_ES[day.month - 1]} de {day.year}"

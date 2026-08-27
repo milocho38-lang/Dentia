@@ -24,6 +24,7 @@ from app.models.company import Company
 from app.models.odontogram import OdontogramEvent, OdontogramEventDetail
 from app.models.site import Site
 from app.models.treatment import Treatment, TreatmentProcedure
+from app.models.user import User
 from app.schemas.clinical_record_schema import (
     AllergyInput,
     AllergyListResponse,
@@ -58,6 +59,10 @@ from app.schemas.clinical_record_schema import (
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.patient_service import calculate_age, is_minor
 from app.services.site_access_service import is_authorized_site
+from app.utils.medical_history import (
+    is_legacy_medical_history_questionnaire,
+    is_legacy_medical_history_record,
+)
 
 
 class ClinicalRecordError(RuntimeError):
@@ -1558,7 +1563,10 @@ def list_clinical_timeline(
     )
 
 
-def _medical_response(item: ClinicalMedicalHistoryItem) -> MedicalHistoryItemResponse:
+def _medical_response(
+    item: ClinicalMedicalHistoryItem, session: Session | None = None
+) -> MedicalHistoryItemResponse:
+    creator = session.get(User, item.created_by) if session and item.created_by else None
     return MedicalHistoryItemResponse(
         id=item.id,
         type=item.type,
@@ -1570,6 +1578,8 @@ def _medical_response(item: ClinicalMedicalHistoryItem) -> MedicalHistoryItemRes
         version=item.version,
         created_at=item.created_at,
         updated_at=item.updated_at,
+        created_by=item.created_by,
+        created_by_name=creator.name if creator else None,
     )
 
 
@@ -1591,7 +1601,7 @@ def list_medical_history(
         )
     )
     return MedicalHistoryResponse(
-        items=[_medical_response(item) for item in items],
+        items=[_medical_response(item, session) for item in items],
         record_version=record.version,
         medical_history_state=record.medical_history_state,
     )
@@ -1612,18 +1622,24 @@ def replace_medical_history(
             "Esta historia fue modificada por otro usuario. Recarga la información antes de continuar.",
             409,
         )
-    existing = {
-        item.type: item
-        for item in session.scalars(
+    existing_items = list(session.scalars(
             select(ClinicalMedicalHistoryItem).where(
                 ClinicalMedicalHistoryItem.clinical_record_id == record.id,
             )
-        )
-    }
-    seen: set[str] = set()
+        ))
+    existing_by_id = {item.id: item for item in existing_items}
+    existing_by_type = {item.type: item for item in existing_items}
+    has_legacy_questionnaire = is_legacy_medical_history_questionnaire(existing_items)
     for input_item in payload.items:
-        seen.add(input_item.type)
-        item = existing.get(input_item.type)
+        item = existing_by_id.get(input_item.id) if input_item.id else existing_by_type.get(input_item.type)
+        if input_item.id and item is None:
+            raise ClinicalRecordError("Antecedente médico no encontrado en esta historia.", 404)
+        before_status = item.status if item else None
+        before_values = (
+            {"type": item.type, "detail": item.detail, "present": item.present}
+            if item
+            else None
+        )
         if item is None:
             item = ClinicalMedicalHistoryItem(
                 company_id=context.user.company_id,
@@ -1640,6 +1656,15 @@ def replace_medical_history(
                 409,
             )
         elif item is not None:
+            if (
+                has_legacy_questionnaire
+                and is_legacy_medical_history_record(item, existing_items)
+                and input_item.present != item.present
+            ):
+                raise ClinicalRecordError(
+                    "Las respuestas históricas del cuestionario médico son de solo lectura.",
+                    409,
+                )
             item.version += 1
         item.present = input_item.present
         item.detail = input_item.detail
@@ -1647,6 +1672,28 @@ def replace_medical_history(
         item.status = input_item.status
         item.source = input_item.source
         item.updated_by = context.user.id
+        action = "CLINICAL_MEDICAL_HISTORY_CREATED"
+        if before_status == "activo" and item.status == "inactivo":
+            action = "CLINICAL_MEDICAL_HISTORY_DEACTIVATED"
+        elif before_status == "inactivo" and item.status == "activo":
+            action = "CLINICAL_MEDICAL_HISTORY_REACTIVATED"
+        elif before_status is not None:
+            action = "CLINICAL_MEDICAL_HISTORY_UPDATED"
+        session.flush()
+        _audit(
+            session,
+            context,
+            metadata,
+            action=action,
+            entity="clinical_medical_history",
+            entity_id=item.id,
+            patient_id=patient_id,
+            detail={
+                "before": before_values,
+                "after": {"type": item.type, "detail": item.detail, "present": item.present},
+                "status": item.status,
+            },
+        )
     record.medical_history_state = payload.medical_history_state
     record.version += 1
     record.updated_by = context.user.id

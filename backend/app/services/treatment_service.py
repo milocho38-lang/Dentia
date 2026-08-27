@@ -86,6 +86,7 @@ from app.schemas.treatment_schema import (
     TreatmentUpdateRequest,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.document_style import apply_reportlab_font
 from app.services.site_access_service import authorized_site_ids
 
 
@@ -3078,6 +3079,7 @@ def generate_budget_pdf(
         ),
     }
 
+    document_font = apply_reportlab_font(styles, company.document_font_family)
     company_lines = [
         company.name,
         company.address,
@@ -3310,7 +3312,7 @@ def generate_budget_pdf(
     def on_page(canvas, document):
         if budget.status == "Borrador":
             canvas.saveState()
-            canvas.setFont("Helvetica-Bold", 62)
+            canvas.setFont(document_font.bold, 62)
             canvas.setFillColor(colors.Color(0.5, 0.5, 0.5, alpha=0.11))
             canvas.translate(letter[0] / 2, letter[1] / 2)
             canvas.rotate(35)
@@ -3320,7 +3322,7 @@ def generate_budget_pdf(
         canvas.setStrokeColor(secondary)
         canvas.setLineWidth(0.4)
         canvas.line(document.leftMargin, 1.02 * cm, letter[0] - document.rightMargin, 1.02 * cm)
-        canvas.setFont("Helvetica", 7)
+        canvas.setFont(document_font.regular, 7)
         canvas.setFillColor(colors.HexColor("#64748b"))
         canvas.drawString(document.leftMargin, 0.68 * cm, " · ".join(line for line in footer_lines if line)[:170])
         canvas.drawRightString(letter[0] - document.rightMargin, 0.68 * cm, f"Página {document.page}")
@@ -3666,6 +3668,8 @@ def create_payment(session: Session, context: AuthContext, treatment_id: UUID, p
         observation=payload.observation,
         receipt_sequence=receipt_sequence,
         receipt_number=f"CP-{receipt_sequence:06d}",
+        show_remaining_balance=payload.show_remaining_balance,
+        remaining_balance_snapshot=_money(summary.balance - payload.value),
         status=VALID_PAYMENT_STATUS,
         registered_by=context.user.id,
     )
@@ -3683,6 +3687,19 @@ def create_payment(session: Session, context: AuthContext, treatment_id: UUID, p
         )
     _event(session, context, treatment.id, "PAYMENT_REGISTERED", "Pago registrado.", {"payment_id": str(payment.id), "value": str(payment.value)})
     _audit(session, context, metadata, entity="payment", entity_id=payment.id, action="PAYMENT_REGISTERED", detail={"value": str(payment.value)})
+    _audit(
+        session,
+        context,
+        metadata,
+        entity="payment",
+        entity_id=payment.id,
+        action="PAYMENT_RECEIPT_GENERATED",
+        detail={
+            "payment_id": str(payment.id),
+            "show_remaining_balance": payment.show_remaining_balance,
+            "balance_snapshot_present": payment.remaining_balance_snapshot is not None,
+        },
+    )
     session.commit()
     return get_payment(session, context, payment.id)
 
@@ -3711,6 +3728,12 @@ def _payment_response(session: Session, payment: TreatmentPayment) -> PaymentRes
         payment_method=payment.payment_method,
         reference=payment.reference,
         observation=payment.observation,
+        show_remaining_balance=payment.show_remaining_balance,
+        remaining_balance_snapshot=(
+            _money(payment.remaining_balance_snapshot)
+            if payment.remaining_balance_snapshot is not None
+            else None
+        ),
         status=payment.status,
         reversed_at=payment.reversed_at,
         reversal_reason=payment.reversal_reason,
@@ -3902,6 +3925,7 @@ def generate_payment_receipt_pdf(
         ),
     }
 
+    document_font = apply_reportlab_font(styles, company.document_font_family)
     company_lines = [
         company.address,
         " · ".join(part for part in [company.city, company.country] if part),
@@ -4091,6 +4115,29 @@ def generate_payment_receipt_pdf(
     else:
         payment_rows.append(["Recibido por", receiver.name if receiver else "—", "", ""])
     story.append(_info_table(payment_rows, styles, primary, light_primary, doc.width))
+    if payment.show_remaining_balance and payment.remaining_balance_snapshot is not None:
+        story.append(Spacer(1, 8))
+        story.append(
+            Table(
+                [[
+                    _paragraph("Saldo pendiente después de este pago", styles["cell_bold"]),
+                    _paragraph(_money_text(payment.remaining_balance_snapshot), styles["receipt_number"]),
+                ]],
+                colWidths=[doc.width * 0.68, doc.width * 0.32],
+                style=TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), light_primary),
+                        ("BOX", (0, 0), (-1, -1), 0.7, table_header_background),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                        ("TOPPADDING", (0, 0), (-1, -1), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ]
+                ),
+            )
+        )
     if payment.observation:
         story.append(Spacer(1, 8))
         story.append(
@@ -4139,7 +4186,7 @@ def generate_payment_receipt_pdf(
         canvas.setStrokeColor(secondary)
         canvas.setLineWidth(0.4)
         canvas.line(document.leftMargin, 1.02 * cm, letter[0] - document.rightMargin, 1.02 * cm)
-        canvas.setFont("Helvetica", 7)
+        canvas.setFont(document_font.regular, 7)
         canvas.setFillColor(colors.HexColor("#64748b"))
         canvas.drawString(document.leftMargin, 0.68 * cm, " · ".join(line for line in footer_lines if line)[:170])
         canvas.drawRightString(letter[0] - document.rightMargin, 0.68 * cm, f"Página {document.page}")
@@ -4152,7 +4199,12 @@ def generate_payment_receipt_pdf(
         entity="payment",
         entity_id=payment.id,
         action="PAYMENT_RECEIPT_DOWNLOADED",
-        detail={"receipt_number": payment.receipt_number},
+        detail={
+            "receipt_number": payment.receipt_number,
+            "payment_id": str(payment.id),
+            "show_remaining_balance": payment.show_remaining_balance,
+            "balance_snapshot_present": payment.remaining_balance_snapshot is not None,
+        },
     )
     session.commit()
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)

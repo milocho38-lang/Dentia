@@ -10,7 +10,8 @@ for(const value of ["declarations","identity","signature","confirm","signed","ac
 assert.ok(portal.includes("checked={Boolean(accepted[item.code])}"));assert.equal(portal.includes("checked={true}"),false,"declarations must never be preselected");
 for(const value of ["canvas","touch-none","toDataURL(\"image/png\")","Limpiar firma","setPointerCapture"])assert.ok(canvas.includes(value),value);
 for(const forbidden of ["type=\"file\"","localStorage","sessionStorage","pressure","velocity"])assert.equal(`${portal}\n${canvas}`.includes(forbidden),false,forbidden);
-for(const value of ["Consentimiento aceptado","Descargar PDF","Reenviar copia","pendiente de revisión jurídica"])assert.ok(privatePanel.includes(value),value);
+for(const value of ["Consentimiento aceptado","Descargar PDF","Reenviar copia","Registro electrónico generado por Dentia con trazabilidad técnica de la aceptación."])assert.ok(privatePanel.includes(value),value);
+assert.equal(privatePanel.includes("pendiente de revisión jurídica"),false,"the private UI must not expose the obsolete provisional notice");
 for(const value of ["/acceptance","/final-document","/copy-deliveries/resend"])assert.ok(service.includes(value),value);
 for(const forbidden of ["validez legal garantizada","firma digital certificada","firma electrónica avanzada","irrefutable"])assert.equal(`${portal}\n${privatePanel}`.toLowerCase().includes(forbidden),false,forbidden);
 for(const value of ["data-testid=\"test-document-notice\"","showAcceptanceStage","document?.is_test_document","acceptance_compatible","acceptance_block_message","ConsentRestrictedMarkdown"])assert.ok(portal.includes(value),value);

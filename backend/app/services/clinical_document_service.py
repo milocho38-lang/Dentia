@@ -34,6 +34,7 @@ from app.schemas.clinical_document_schema import (
     ClinicalDocumentVoidRequest,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.document_style import apply_reportlab_font
 from app.services.site_access_service import authorized_site_ids
 from app.services.treatment_service import (
     BudgetPdfResult,
@@ -260,6 +261,7 @@ def _snapshot_company(company: Company, site: Site) -> dict:
             "secondary_color": company.secondary_color,
             "heading_color": company.heading_color,
             "footer_text": company.footer_text,
+            "document_font_family": company.document_font_family,
         },
         "site": {
             "name": site.name,
@@ -537,6 +539,7 @@ def _generate_pdf(document: ClinicalDocument, *, preview: bool = False) -> Budge
         "cell_bold": ParagraphStyle("ClinicalDocCellBold", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=8.5, leading=11, textColor=colors.HexColor("#0f172a")),
         "center": ParagraphStyle("ClinicalDocCenter", parent=base["Normal"], fontName="Helvetica", fontSize=8, leading=11, alignment=TA_CENTER, textColor=colors.HexColor("#64748b")),
     }
+    document_font = apply_reportlab_font(styles, company.get("document_font_family"))
     company_lines = [
         company.get("name"),
         company.get("address"),
@@ -602,7 +605,7 @@ def _generate_pdf(document: ClinicalDocument, *, preview: bool = False) -> Budge
         canvas.setStrokeColor(secondary)
         canvas.setLineWidth(0.4)
         canvas.line(document_canvas.leftMargin, 1.02 * cm, letter[0] - document_canvas.rightMargin, 1.02 * cm)
-        canvas.setFont("Helvetica", 7)
+        canvas.setFont(document_font.regular, 7)
         canvas.setFillColor(colors.HexColor("#64748b"))
         canvas.drawString(document_canvas.leftMargin, 0.68 * cm, " · ".join(line for line in footer_lines if line)[:170])
         canvas.drawRightString(letter[0] - document_canvas.rightMargin, 0.68 * cm, f"Página {document_canvas.page}")

@@ -237,6 +237,8 @@ def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: 
             return TestStatus.DB_BACKED, "backend/tests/storage/test_document_downloads.py", ""
         if path.startswith("/api/clinical-documents"):
             return TestStatus.DB_BACKED, "backend/tests/storage/test_document_downloads.py", ""
+        if path == "/api/patients/{patient_id}/clinical-record/pdf":
+            return TestStatus.DB_BACKED, "backend/tests/administration/test_clinical_history_improvements.py::test_clinical_history_pdf_is_tenant_scoped_and_audited", ""
         return TestStatus.PENDING, "", "Ruta de descarga sin prueba DB-backed asignada."
 
     if path.startswith(("/api/payments", "/api/finance", "/api/budgets")) or "/payments" in path or "/budget" in path:

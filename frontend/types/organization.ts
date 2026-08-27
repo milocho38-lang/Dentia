@@ -58,6 +58,7 @@ export interface Branding {
   cancellation_policy: string | null;
   thank_you_message: string | null;
   payment_receipt_title: string;
+  document_font_family: string;
   primary_color: string;
   secondary_color: string;
   button_color: string;

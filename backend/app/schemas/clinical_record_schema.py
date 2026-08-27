@@ -37,6 +37,7 @@ INITIAL_MEDICAL_HISTORY_TYPES = {
 
 
 class HabitsInput(BaseModel):
+    notes: str | None = Field(default=None, max_length=4000)
     tobacco: str | None = Field(default=None, max_length=300)
     alcohol: str | None = Field(default=None, max_length=300)
     substances: str | None = Field(default=None, max_length=300)
@@ -49,6 +50,7 @@ class HabitsInput(BaseModel):
 
 
 class DentalHistoryInput(BaseModel):
+    summary: str | None = Field(default=None, max_length=4000)
     last_visit: str | None = Field(default=None, max_length=200)
     previous_treatments: str | None = Field(default=None, max_length=1000)
     orthodontics: str | None = Field(default=None, max_length=500)
@@ -160,6 +162,7 @@ class ClinicalRecordEnvelope(BaseModel):
 
 
 class MedicalHistoryItemInput(BaseModel):
+    id: UUID | None = None
     type: str = Field(min_length=2, max_length=120)
     present: str = "DESCONOCIDO"
     detail: str | None = Field(default=None, max_length=3000)
@@ -187,6 +190,13 @@ class MedicalHistoryItemInput(BaseModel):
             raise ValueError("Valor de antecedente no válido.")
         return value
 
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        if value not in {"activo", "inactivo"}:
+            raise ValueError("Estado de antecedente no válido.")
+        return value
+
 
 class MedicalHistoryItemResponse(BaseModel):
     id: UUID
@@ -199,6 +209,8 @@ class MedicalHistoryItemResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+    created_by: UUID | None
+    created_by_name: str | None = None
 
 
 class MedicalHistoryUpsertRequest(BaseModel):

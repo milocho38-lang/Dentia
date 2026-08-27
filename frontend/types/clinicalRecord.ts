@@ -5,6 +5,7 @@ export interface ClinicalTerminology {
 }
 
 export interface HabitsInput {
+  notes?: string | null;
   tobacco?: string | null;
   alcohol?: string | null;
   substances?: string | null;
@@ -17,6 +18,7 @@ export interface HabitsInput {
 }
 
 export interface DentalHistoryInput {
+  summary?: string | null;
   last_visit?: string | null;
   previous_treatments?: string | null;
   orthodontics?: string | null;
@@ -84,9 +86,12 @@ export interface MedicalHistoryItem {
   version: number;
   created_at: string;
   updated_at: string;
+  created_by: string | null;
+  created_by_name: string | null;
 }
 
 export interface MedicalHistoryItemInput {
+  id?: string | null;
   type: string;
   present: "SI" | "NO" | "DESCONOCIDO";
   detail?: string | null;
@@ -94,6 +99,8 @@ export interface MedicalHistoryItemInput {
   status?: string;
   source?: string | null;
   version?: number | null;
+  created_at?: string | null;
+  created_by_name?: string | null;
 }
 
 export interface MedicalHistoryResponse {

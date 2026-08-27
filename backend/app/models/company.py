@@ -93,6 +93,9 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
         default="COMPROBANTE DE PAGO",
         server_default="COMPROBANTE DE PAGO",
     )
+    document_font_family: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="HELVETICA", server_default="HELVETICA"
+    )
     primary_color: Mapped[str] = mapped_column(
         "color_principal", String(20), nullable=False, default="#16a34a", server_default="#16a34a"
     )
