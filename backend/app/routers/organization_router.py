@@ -15,6 +15,7 @@ from app.schemas.organization_schema import (
     DentistSiteListResponse,
     DentistSiteManagementResponse,
     DentistSiteUpdateRequest,
+    DentistProfessionalProfileUpdateRequest,
     SiteActionRequest,
     SiteActionResponse,
     SiteCreateRequest,
@@ -29,18 +30,22 @@ from app.services.organization_service import (
     create_site,
     deactivate_site,
     delete_branding_asset,
+    delete_dentist_professional_signature,
     get_branding,
     get_branding_asset_path,
     get_company,
+    get_dentist_professional_signature_path,
     get_site,
     list_dentists_for_site_management,
     list_sites,
     reactivate_site,
     save_branding_asset,
+    save_dentist_professional_signature,
     site_impact,
     update_branding,
     update_company,
     update_dentist_sites,
+    update_dentist_professional_profile,
     update_site,
 )
 
@@ -327,6 +332,92 @@ def update_dentist_sites_endpoint(
             context,
             dentist_id,
             payload,
+            get_request_metadata(request),
+        )
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.get("/api/dentists/{dentist_id}/professional-signature")
+def get_dentist_professional_signature_endpoint(
+    dentist_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("sites.view"))],
+) -> FileResponse:
+    try:
+        path, filename = get_dentist_professional_signature_path(
+            session,
+            context,
+            dentist_id,
+        )
+        return FileResponse(path, filename=filename)
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.patch(
+    "/api/dentists/{dentist_id}/professional-profile",
+    response_model=DentistSiteManagementResponse,
+)
+def update_dentist_professional_profile_endpoint(
+    dentist_id: UUID,
+    payload: DentistProfessionalProfileUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("sites.manage"))],
+) -> DentistSiteManagementResponse:
+    try:
+        return update_dentist_professional_profile(
+            session,
+            context,
+            dentist_id,
+            payload,
+            get_request_metadata(request),
+        )
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.post(
+    "/api/dentists/{dentist_id}/professional-signature",
+    response_model=DentistSiteManagementResponse,
+)
+async def upload_dentist_professional_signature_endpoint(
+    dentist_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("sites.manage"))],
+    file: UploadFile = File(...),
+) -> DentistSiteManagementResponse:
+    try:
+        return save_dentist_professional_signature(
+            session,
+            context,
+            dentist_id,
+            filename=file.filename,
+            content_type=file.content_type,
+            content=await file.read(),
+            metadata=get_request_metadata(request),
+        )
+    except OrganizationError as exc:
+        raise handle(exc)
+
+
+@router.delete(
+    "/api/dentists/{dentist_id}/professional-signature",
+    response_model=DentistSiteManagementResponse,
+)
+def delete_dentist_professional_signature_endpoint(
+    dentist_id: UUID,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("sites.manage"))],
+) -> DentistSiteManagementResponse:
+    try:
+        return delete_dentist_professional_signature(
+            session,
+            context,
+            dentist_id,
             get_request_metadata(request),
         )
     except OrganizationError as exc:

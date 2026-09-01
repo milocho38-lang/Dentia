@@ -34,7 +34,13 @@ from app.schemas.clinical_document_schema import (
     ClinicalDocumentVoidRequest,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
-from app.services.document_style import apply_reportlab_font
+from app.services.document_style import (
+    apply_reportlab_font,
+    render_professional_identity_block,
+    require_complete_professional_identity,
+    resolve_professional_document_identity,
+)
+from app.utils.clinical_dates import format_human_date
 from app.services.site_access_service import authorized_site_ids
 from app.services.treatment_service import (
     BudgetPdfResult,
@@ -282,16 +288,8 @@ def _snapshot_patient(patient: Patient) -> dict:
     }
 
 
-def _snapshot_professional(company: Company, dentist: Dentist) -> dict:
-    return {
-        "name": dentist.name,
-        "specialty": company.professional_specialty,
-        "professional_license": company.professional_license,
-        "signature_path": company.signature_path,
-        "signature_filename": company.signature_filename,
-        "signature_source": "company_branding_professional_signature",
-        "signature_notice": "Firma gráfica configurada en Dentia; no equivale a firma digital certificada.",
-    }
+def _snapshot_professional(session: Session, company: Company, dentist: Dentist) -> dict:
+    return resolve_professional_document_identity(session, company, dentist).snapshot()
 
 
 def _snapshot_document(document: ClinicalDocument) -> dict:
@@ -573,7 +571,7 @@ def _generate_pdf(document: ClinicalDocument, *, preview: bool = False) -> Budge
     patient_document = " ".join(part for part in [patient.get("document_type"), patient.get("document")] if part)
     patient_rows = [
         [_paragraph("Paciente", styles["cell_bold"]), _paragraph(patient.get("name"), styles["cell"]), _paragraph("Documento", styles["cell_bold"]), _paragraph(patient_document or "—", styles["cell"])],
-        [_paragraph("Nacimiento", styles["cell_bold"]), _paragraph(patient.get("birth_date") or "—", styles["cell"]), _paragraph("Fecha", styles["cell_bold"]), _paragraph(_date_text(document.clinical_date), styles["cell"])],
+        [_paragraph("Nacimiento", styles["cell_bold"]), _paragraph(format_human_date(date.fromisoformat(patient["birth_date"])) if patient.get("birth_date") else "—", styles["cell"]), _paragraph("Fecha", styles["cell_bold"]), _paragraph(_date_text(document.clinical_date), styles["cell"])],
     ]
     story.append(_paragraph("Datos del paciente", styles["h2"]))
     story.append(Table(patient_rows, colWidths=[doc.width * 0.16, doc.width * 0.34, doc.width * 0.16, doc.width * 0.34], style=TableStyle([("BACKGROUND", (0, 0), (-1, -1), light_primary), ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6)])))
@@ -582,15 +580,17 @@ def _generate_pdf(document: ClinicalDocument, *, preview: bool = False) -> Budge
         story.extend([_paragraph("Destinatario", styles["h2"]), Paragraph(recipient, styles["body"])])
     if document.subject:
         story.extend([_paragraph("Asunto", styles["h2"]), _paragraph(document.subject, styles["body"])])
-    story.extend([_paragraph("Contenido", styles["h2"]), _paragraph(doc_snapshot.get("body"), styles["body"]), Spacer(1, 18), _paragraph("Atentamente,", styles["body"]), Spacer(1, 10)])
+    story.extend([_paragraph("Contenido", styles["h2"]), _paragraph(doc_snapshot.get("body"), styles["body"]), Spacer(1, 18)])
     signature = _image_if_exists(_branding_asset_path(professional.get("signature_path")), width=46 * mm, height=21 * mm)
-    if signature:
-        story.append(signature)
     story.extend([
-        Spacer(1, 4),
-        _paragraph(professional.get("name"), styles["cell_bold"]),
-        _paragraph(professional.get("specialty") or "", styles["small"]),
-        _paragraph(f"Registro profesional: {professional.get('professional_license')}" if professional.get("professional_license") else "", styles["small"]),
+        render_professional_identity_block(
+            professional,
+            styles=styles,
+            signature=signature,
+            width=min(doc.width, 88 * mm),
+            show_intro=True,
+            separator=False,
+        ),
         Spacer(1, 4),
         _paragraph("Documento generado y finalizado en Dentia. La firma gráfica no equivale a firma digital certificada.", styles["small"]),
     ])
@@ -632,7 +632,7 @@ def preview_document(session: Session, context: AuthContext, document_id: UUID) 
         raise ClinicalDocumentError("Documento incompleto.", 409)
     document.institution_snapshot = _snapshot_company(company, site)
     document.patient_snapshot = _snapshot_patient(patient)
-    document.professional_snapshot = _snapshot_professional(company, dentist)
+    document.professional_snapshot = _snapshot_professional(session, company, dentist)
     document.document_snapshot = _snapshot_document(document)
     pdf = _generate_pdf(document, preview=True)
     return ClinicalDocumentPreviewResponse(content_base64=base64.b64encode(pdf.content).decode("ascii"), filename=pdf.filename)
@@ -667,8 +667,11 @@ def finalize_document(
     dentist = _require_dentist(session, context, document.dentist_profile_id, site.id)
     if company is None:
         raise ClinicalDocumentError("Empresa no encontrada.", 500)
-    if not company.signature_path:
-        raise ClinicalDocumentError("No es posible finalizar el documento porque el profesional no tiene firma configurada.", 422)
+    identity = resolve_professional_document_identity(session, company, dentist)
+    try:
+        require_complete_professional_identity(identity)
+    except ValueError as exc:
+        raise ClinicalDocumentError(str(exc), 422) from exc
     session.execute(select(func.pg_advisory_xact_lock(func.hashtext(str(context.user.company_id) + ":clinical-documents"))))
     current_sequence = session.scalar(
         select(func.coalesce(func.max(ClinicalDocument.sequence), 0)).where(ClinicalDocument.company_id == context.user.company_id)
@@ -678,7 +681,7 @@ def finalize_document(
     document.document_number = f"DOC-{sequence:06d}"
     document.institution_snapshot = _snapshot_company(company, site)
     document.patient_snapshot = _snapshot_patient(patient)
-    document.professional_snapshot = _snapshot_professional(company, dentist)
+    document.professional_snapshot = identity.snapshot()
     document.document_snapshot = _snapshot_document(document)
     pdf = _generate_pdf(document)
     sha = hashlib.sha256(pdf.content).hexdigest()

@@ -28,6 +28,7 @@ from app.schemas.organization_schema import (
     DentistSiteManagementResponse,
     DentistSiteOptionResponse,
     DentistSiteUpdateRequest,
+    DentistProfessionalProfileUpdateRequest,
     SiteActionResponse,
     SiteCreateRequest,
     SiteImpactResponse,
@@ -575,11 +576,25 @@ def _dentist_site_response(
         )
     )
     company = session.get(Company, context.user.company_id)
+    if company is None:
+        raise OrganizationError("Empresa no encontrada.", 404)
+    user = session.scalar(
+        select(User).where(
+            User.id == dentist.user_id,
+            User.company_id == context.user.company_id,
+        )
+    ) if dentist.user_id else None
     return DentistSiteManagementResponse(
         id=dentist.id,
         name=dentist.name,
         status=dentist.status,
         user_id=dentist.user_id,
+        professional_email=user.email if user else None,
+        document_type=dentist.document_type,
+        document_number=dentist.document_number,
+        specialty=dentist.specialty,
+        professional_license=dentist.professional_license,
+        has_professional_signature=bool(dentist.signature_path),
         site_ids=sorted(assigned_ids, key=str),
         sites=[
             DentistSiteOptionResponse(
@@ -1111,6 +1126,159 @@ def update_dentist_sites(
         entity_id=dentist.id,
         action="DENTIST_SITES_UPDATED",
         detail={"before": before, "after": after},
+    )
+    session.commit()
+    return _dentist_site_response(session, context, dentist)
+
+
+def update_dentist_professional_profile(
+    session: Session,
+    context: AuthContext,
+    dentist_id: UUID,
+    payload: DentistProfessionalProfileUpdateRequest,
+    metadata: RequestMetadata,
+) -> DentistSiteManagementResponse:
+    dentist = session.scalar(
+        select(Dentist)
+        .where(
+            Dentist.id == dentist_id,
+            Dentist.company_id == context.user.company_id,
+            Dentist.is_active.is_(True),
+        )
+        .with_for_update()
+    )
+    if dentist is None:
+        raise OrganizationError("Odontólogo no encontrado.", 404)
+    fields = ("name", "document_type", "document_number", "specialty", "professional_license")
+    before = {field: getattr(dentist, field) for field in fields}
+    for field, value in payload.model_dump().items():
+        setattr(dentist, field, value)
+    after = {field: getattr(dentist, field) for field in fields}
+    changes = {
+        field: {"before": before[field], "after": after[field]}
+        for field in fields
+        if before[field] != after[field]
+    }
+    if changes:
+        _audit(
+            session,
+            context,
+            metadata,
+            entity="dentist",
+            entity_id=dentist.id,
+            action="DENTIST_PROFESSIONAL_IDENTITY_UPDATED",
+            # Identity document values deliberately stay out of technical audit logs.
+            detail={"changed_fields": sorted(changes)},
+        )
+    session.commit()
+    return _dentist_site_response(session, context, dentist)
+
+
+def get_dentist_professional_signature_path(
+    session: Session,
+    context: AuthContext,
+    dentist_id: UUID,
+) -> tuple[Path, str]:
+    dentist = session.scalar(
+        select(Dentist).where(
+            Dentist.id == dentist_id,
+            Dentist.company_id == context.user.company_id,
+            Dentist.is_active.is_(True),
+        )
+    )
+    if dentist is None:
+        raise OrganizationError("Odontólogo no encontrado.", 404)
+    path = _asset_path(dentist.signature_path)
+    if path is None or not path.exists() or not path.is_file():
+        raise OrganizationError("Firma profesional no encontrada.", 404)
+    return path, dentist.signature_filename or "firma-profesional"
+
+
+def save_dentist_professional_signature(
+    session: Session,
+    context: AuthContext,
+    dentist_id: UUID,
+    *,
+    filename: str | None,
+    content_type: str | None,
+    content: bytes,
+    metadata: RequestMetadata,
+) -> DentistSiteManagementResponse:
+    dentist = session.scalar(
+        select(Dentist)
+        .where(
+            Dentist.id == dentist_id,
+            Dentist.company_id == context.user.company_id,
+            Dentist.is_active.is_(True),
+        )
+        .with_for_update()
+    )
+    if dentist is None:
+        raise OrganizationError("Odontólogo no encontrado.", 404)
+    if content_type not in SIGNATURE_CONTENT_TYPES:
+        raise OrganizationError("Formato de firma no permitido.")
+    if not content:
+        raise OrganizationError("El archivo está vacío.")
+    if len(content) > MAX_BRANDING_FILE_SIZE:
+        raise OrganizationError("El archivo no puede superar 5 MB.")
+
+    extension = SIGNATURE_CONTENT_TYPES[content_type]
+    company_dir_name = str(context.user.company_id)
+    relative_dir = f"{company_dir_name}/dentists/{dentist.id}"
+    directory = _branding_root() / relative_dir
+    directory.mkdir(parents=True, exist_ok=True)
+    safe_name = f"professional_signature_{uuid4().hex}{extension}"
+    relative_path = f"{relative_dir}/{safe_name}"
+    path = _asset_path(relative_path)
+    if path is None:
+        raise OrganizationError("No fue posible preparar la firma.", 500)
+    path.write_bytes(content)
+
+    old_path = dentist.signature_path
+    dentist.signature_path = relative_path
+    dentist.signature_filename = filename or safe_name
+    _delete_asset(old_path)
+    _audit(
+        session,
+        context,
+        metadata,
+        entity="dentist",
+        entity_id=dentist.id,
+        action="DENTIST_PROFESSIONAL_SIGNATURE_UPDATED",
+        detail={"content_type": content_type},
+    )
+    session.commit()
+    return _dentist_site_response(session, context, dentist)
+
+
+def delete_dentist_professional_signature(
+    session: Session,
+    context: AuthContext,
+    dentist_id: UUID,
+    metadata: RequestMetadata,
+) -> DentistSiteManagementResponse:
+    dentist = session.scalar(
+        select(Dentist)
+        .where(
+            Dentist.id == dentist_id,
+            Dentist.company_id == context.user.company_id,
+            Dentist.is_active.is_(True),
+        )
+        .with_for_update()
+    )
+    if dentist is None:
+        raise OrganizationError("Odontólogo no encontrado.", 404)
+    old_path = dentist.signature_path
+    dentist.signature_path = None
+    dentist.signature_filename = None
+    _delete_asset(old_path)
+    _audit(
+        session,
+        context,
+        metadata,
+        entity="dentist",
+        entity_id=dentist.id,
+        action="DENTIST_PROFESSIONAL_SIGNATURE_DELETED",
     )
     session.commit()
     return _dentist_site_response(session, context, dentist)

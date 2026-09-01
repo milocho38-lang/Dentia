@@ -86,7 +86,11 @@ from app.schemas.treatment_schema import (
     TreatmentUpdateRequest,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
-from app.services.document_style import apply_reportlab_font
+from app.services.document_style import (
+    apply_reportlab_font,
+    render_professional_identity_block,
+    resolve_professional_document_identity,
+)
 from app.services.site_access_service import authorized_site_ids
 
 
@@ -2960,7 +2964,19 @@ def generate_budget_pdf(
     patient = session.get(Patient, budget.patient_id)
     if company is None or patient is None:
         raise TreatmentError("Presupuesto incompleto.", 500)
-    dentist = session.get(Dentist, treatment.responsible_dentist_id) if treatment.responsible_dentist_id else None
+    dentist = None
+    if treatment.responsible_dentist_id:
+        dentist = session.scalar(
+            select(Dentist).where(
+                Dentist.id == treatment.responsible_dentist_id,
+                Dentist.company_id == context.user.company_id,
+            )
+        )
+        if dentist is None:
+            raise TreatmentError(
+                "El odontólogo responsable no está disponible para este presupuesto.",
+                409,
+            )
     site = session.get(Site, treatment.main_site_id) if treatment.main_site_id else None
     details = session.scalars(
         select(BudgetDetail)
@@ -3088,18 +3104,36 @@ def generate_budget_pdf(
         company.email,
         company.website,
     ]
-    professional_lines = [
-        company.primary_dentist_name or (dentist.name if dentist else None),
-        company.professional_specialty,
-        f"Registro profesional: {company.professional_license}" if company.professional_license else None,
-    ]
+    professional_identity = (
+        resolve_professional_document_identity(session, company, dentist)
+        if dentist is not None
+        else None
+    )
+    professional_snapshot = professional_identity.snapshot() if professional_identity else None
+    professional_lines = (
+        [
+            professional_snapshot.get("full_name"),
+            professional_snapshot.get("specialty"),
+            f"Registro profesional: {professional_snapshot.get('professional_license')}"
+            if professional_snapshot.get("professional_license")
+            else None,
+        ]
+        if professional_snapshot
+        else []
+    )
     logo = _image_if_exists(_branding_asset_path(company.logo_path), width=43 * mm, height=24 * mm)
     header_left = logo or _paragraph(company.name, styles["h2"])
     header_right = [
         _paragraph(f"Presupuesto odontológico · V{budget.version}", styles["title"]),
         Paragraph("<br/>".join(escape(line) for line in company_lines if line), styles["subtitle"]),
-        Paragraph("<br/>".join(escape(line) for line in professional_lines if line), styles["subtitle"]),
     ]
+    if professional_lines:
+        header_right.append(
+            Paragraph(
+                "<br/>".join(escape(line) for line in professional_lines if line),
+                styles["subtitle"],
+            )
+        )
     story: list[Flowable] = []
     story.append(
         Table(
@@ -3153,7 +3187,7 @@ def generate_budget_pdf(
     story.append(_info_table(patient_data, styles, primary, light_primary, doc.width))
 
     treatment_data = [
-        ["Tratamiento", treatment.name, "Odontólogo", dentist.name if dentist else company.primary_dentist_name or "—"],
+        ["Tratamiento", treatment.name, "Odontólogo", dentist.name if dentist else "—"],
         ["Descripción", treatment.description or "—", "Sede", site.name if site else "—"],
     ]
     story.append(_paragraph("Información del tratamiento", styles["h2"]))
@@ -3274,32 +3308,22 @@ def generate_budget_pdf(
         story.append(Spacer(1, 10))
         story.extend(observation_items)
 
-    signature = _image_if_exists(_branding_asset_path(company.signature_path), width=48 * mm, height=22 * mm)
-    signature_block: list[Flowable] = []
-    if signature:
-        signature_block.append(signature)
-    signature_block.extend(
-        [
-            Spacer(1, 4),
-            _paragraph(company.primary_dentist_name or (dentist.name if dentist else company.name), styles["cell_bold"]),
-            _paragraph(company.professional_specialty or "", styles["small"]),
-            _paragraph(f"Registro profesional: {company.professional_license}" if company.professional_license else "", styles["small"]),
-        ]
-    )
-    story.append(Spacer(1, 16))
-    story.append(
-        Table(
-            [[signature_block]],
-            colWidths=[doc.width],
-            style=TableStyle(
-                [
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("LINEABOVE", (0, 0), (0, 0), 0.6, colors.HexColor("#cbd5e1")),
-                    ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ]
-            ),
+    if professional_snapshot:
+        signature = _image_if_exists(
+            _branding_asset_path(professional_snapshot.get("signature_path")),
+            width=48 * mm,
+            height=22 * mm,
         )
-    )
+        story.append(Spacer(1, 16))
+        story.append(
+            render_professional_identity_block(
+                professional_snapshot,
+                styles=styles,
+                signature=signature,
+                width=min(doc.width, 90 * mm),
+                separator=True,
+            )
+        )
 
     footer_lines = [
         company.footer_text,

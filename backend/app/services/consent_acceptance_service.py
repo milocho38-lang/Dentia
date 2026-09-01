@@ -44,7 +44,11 @@ from app.services.consent_library_normalization import validate_patient_facing_c
 from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
 from app.services.email_service import EmailDelivery, EmailDeliveryError, get_email_provider
 from app.services.patient_service import calculate_age
-from app.services.document_style import apply_reportlab_font, resolve_document_font
+from app.services.document_style import (
+    apply_reportlab_font,
+    professional_document_label,
+    resolve_document_font,
+)
 from app.services.consent_signer import (
     PATIENT_SELF,
     RESPONSIBLE_ADULT,
@@ -483,8 +487,17 @@ def _pdf(instance, acceptance, declarations, signature: bytes, branding: dict, l
     reviewed_at = _human_datetime(instance.professional_confirmed_at, instance.timezone_name, declaration_set.locale)
     professional_rows = [
         [Paragraph("Profesional que confirmó el contenido clínico", cell_bold), Paragraph(escape(professional.get("full_name") or "No disponible"), cell)],
-        [Paragraph("Fecha de revisión profesional", cell_bold), Paragraph(escape(reviewed_at), cell)],
     ]
+    if professional.get("specialty"):
+        professional_rows.append([Paragraph("Especialidad o rol clínico", cell_bold), Paragraph(escape(professional["specialty"]), cell)])
+    professional_document = " ".join(part for part in [professional_document_label(professional.get("document_type")), professional.get("document_number")] if part)
+    if professional_document:
+        professional_rows.append([Paragraph("Identificación profesional", cell_bold), Paragraph(escape(professional_document), cell)])
+    if professional.get("license_number"):
+        professional_rows.append([Paragraph("Registro profesional", cell_bold), Paragraph(escape(professional["license_number"]), cell)])
+    if professional.get("email"):
+        professional_rows.append([Paragraph("Correo profesional", cell_bold), Paragraph(escape(professional["email"]), cell)])
+    professional_rows.append([Paragraph("Fecha de revisión profesional", cell_bold), Paragraph(escape(reviewed_at), cell)])
     story.extend([
         Spacer(1, 7),
         Paragraph("Revisión profesional", heading),

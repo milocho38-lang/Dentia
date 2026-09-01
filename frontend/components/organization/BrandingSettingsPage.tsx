@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type React from "react";
 import { Alert } from "@/components/shared/Alert";
@@ -103,11 +104,8 @@ export function BrandingSettingsPage() {
   const [data, setData] = useState<BrandingInput>(defaults);
   const [socialText, setSocialText] = useState("");
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [signaturePreview, setSignaturePreview] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [deleteLogo, setDeleteLogo] = useState(false);
-  const [deleteSignature, setDeleteSignature] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,17 +129,10 @@ export function BrandingSettingsPage() {
       setBranding(loaded);
       setData(toInput(loaded));
       setSocialText(formatSocialMedia(loaded.social_media));
-      const [logo, signature] = await Promise.all([
-        loadAsset("logo", Boolean(loaded.logo_url)),
-        loadAsset("signature", Boolean(loaded.signature_url)),
-      ]);
+      const logo = await loadAsset("logo", Boolean(loaded.logo_url));
       setLogoPreview((current) => {
         if (current) URL.revokeObjectURL(current);
         return logo;
-      });
-      setSignaturePreview((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return signature;
       });
     } catch {
       setError("No fue posible cargar la personalización.");
@@ -154,7 +145,6 @@ export function BrandingSettingsPage() {
     load();
     return () => {
       if (logoPreview) URL.revokeObjectURL(logoPreview);
-      if (signaturePreview) URL.revokeObjectURL(signaturePreview);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
@@ -163,34 +153,22 @@ export function BrandingSettingsPage() {
     setData((current) => ({ ...current, [key]: value }));
   }
 
-  function previewFile(kind: "logo" | "signature", file: File | null) {
-    const setPreview = kind === "logo" ? setLogoPreview : setSignaturePreview;
-    const setFile = kind === "logo" ? setLogoFile : setSignatureFile;
-    const setDelete = kind === "logo" ? setDeleteLogo : setDeleteSignature;
-    setFile(file);
-    setDelete(false);
-    setPreview((current) => {
+  function previewLogo(file: File | null) {
+    setLogoFile(file);
+    setDeleteLogo(false);
+    setLogoPreview((current) => {
       if (current) URL.revokeObjectURL(current);
       return file ? URL.createObjectURL(file) : null;
     });
   }
 
-  function markDelete(kind: "logo" | "signature") {
-    if (kind === "logo") {
-      setLogoFile(null);
-      setDeleteLogo(true);
-      setLogoPreview((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return null;
-      });
-    } else {
-      setSignatureFile(null);
-      setDeleteSignature(true);
-      setSignaturePreview((current) => {
-        if (current) URL.revokeObjectURL(current);
-        return null;
-      });
-    }
+  function markLogoForDeletion() {
+    setLogoFile(null);
+    setDeleteLogo(true);
+    setLogoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
   }
 
   async function submit(event: FormEvent) {
@@ -204,16 +182,12 @@ export function BrandingSettingsPage() {
         social_media: parseSocialMedia(socialText),
       });
       if (deleteLogo && saved.logo_url) saved = await deleteBrandingAsset("logo");
-      if (deleteSignature && saved.signature_url) saved = await deleteBrandingAsset("signature");
       if (logoFile) saved = await uploadBrandingAsset("logo", logoFile);
-      if (signatureFile) saved = await uploadBrandingAsset("signature", signatureFile);
       setBranding(saved);
       setData(toInput(saved));
       setSocialText(formatSocialMedia(saved.social_media));
       setLogoFile(null);
-      setSignatureFile(null);
       setDeleteLogo(false);
-      setDeleteSignature(false);
       setSuccess("Personalización guardada.");
       await load();
     } catch (err) {
@@ -322,30 +296,21 @@ export function BrandingSettingsPage() {
           preview={logoPreview}
           filename={logoFile?.name ?? branding.logo_filename}
           canEdit={canEdit}
-          onChange={(file) => previewFile("logo", file)}
-          onDelete={() => markDelete("logo")}
+          onChange={previewLogo}
+          onDelete={markLogoForDeletion}
         />
-        <AssetCard
-          title="Firma digital"
-          description="PNG transparente preferiblemente. También JPG. Máximo 5 MB."
-          accept="image/png,image/jpeg"
-          preview={signaturePreview}
-          filename={signatureFile?.name ?? branding.signature_filename}
-          canEdit={canEdit}
-          onChange={(file) => previewFile("signature", file)}
-          onDelete={() => markDelete("signature")}
-        />
+        <Card title="Identidad de los profesionales">
+          <p className="text-sm leading-6 text-slate-600">
+            Los nombres, documentos, registros y firmas personales se administran por odontólogo. Los valores institucionales históricos se conservan, pero ya no son la fuente para documentos clínicos nuevos.
+          </p>
+          <Link
+            href="/configuracion/odontologos"
+            className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-green-700 px-4 text-sm font-black text-white"
+          >
+            Configurar odontólogos
+          </Link>
+        </Card>
       </div>
-
-      <Card title="Información profesional">
-        <div className="grid gap-4 md:grid-cols-2">
-          {field("primary_dentist_name", "Nombre del odontólogo principal")}
-          {field("professional_specialty", "Especialidad")}
-          {field("professional_license", "Registro profesional")}
-          {field("university", "Universidad")}
-          {field("experience_years", "Años de experiencia", "number")}
-        </div>
-      </Card>
 
       <Card title="Información para documentos">
         <div className="grid gap-4 md:grid-cols-2">

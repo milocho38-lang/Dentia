@@ -115,8 +115,22 @@ export interface DentistSiteManagement {
   name: string;
   status: string;
   user_id: string | null;
+  professional_email: string | null;
+  document_type: string | null;
+  document_number: string | null;
+  specialty: string | null;
+  professional_license: string | null;
+  has_professional_signature: boolean;
   site_ids: string[];
   sites: DentistSiteOption[];
+}
+
+export interface DentistProfessionalProfileInput {
+  name: string;
+  document_type: string | null;
+  document_number: string | null;
+  specialty: string | null;
+  professional_license: string | null;
 }
 
 export interface SiteImpact {

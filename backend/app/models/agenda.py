@@ -222,6 +222,20 @@ class Dentist(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
         index=True,
     )
     name: Mapped[str] = mapped_column("nombre", String(200), nullable=False)
+    document_type: Mapped[str | None] = mapped_column(
+        "tipo_documento", String(30), nullable=True
+    )
+    document_number: Mapped[str | None] = mapped_column(
+        "numero_documento", String(80), nullable=True
+    )
+    specialty: Mapped[str | None] = mapped_column(
+        "especialidad", String(150), nullable=True
+    )
+    professional_license: Mapped[str | None] = mapped_column(
+        "registro_profesional", String(100), nullable=True
+    )
+    signature_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    signature_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(
         "estado",
         String(20),

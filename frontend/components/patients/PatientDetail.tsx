@@ -1196,6 +1196,7 @@ function PatientDocumentsWorkspace({
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [prescriptionLoading, setPrescriptionLoading] = useState(false);
   const [prescriptionError, setPrescriptionError] = useState<string | null>(null);
+  const [prescriptionProfileActionId, setPrescriptionProfileActionId] = useState<string | null>(null);
   const [editingPrescription, setEditingPrescription] = useState<Prescription | null>(null);
   const [prescriptionFormOpen, setPrescriptionFormOpen] = useState(false);
   const [voidingPrescription, setVoidingPrescription] = useState<Prescription | null>(null);
@@ -1226,6 +1227,7 @@ function PatientDocumentsWorkspace({
     if (!canViewPrescriptions) return;
     setPrescriptionLoading(true);
     setPrescriptionError(null);
+    setPrescriptionProfileActionId(null);
     try {
       const response = await listPrescriptions(patientId);
       setPrescriptions(response.items);
@@ -1425,6 +1427,7 @@ function PatientDocumentsWorkspace({
       await loadPrescriptions();
     } catch (caught) {
       setPrescriptionError(caught instanceof Error ? caught.message : "No fue posible finalizar la receta.");
+      setPrescriptionProfileActionId(prescription.dentist_profile_id);
     }
   }
 
@@ -1563,7 +1566,19 @@ function PatientDocumentsWorkspace({
         <Alert tone="info">
           Dentia no sustituye recetarios oficiales ni sistemas regulatorios para medicamentos controlados. No calcula dosis ni recomienda medicamentos.
         </Alert>
-        {prescriptionError && <Alert tone="error">{prescriptionError}</Alert>}
+        {prescriptionError && (
+          <Alert tone="error">
+            <span>{prescriptionError}</span>
+            {prescriptionError.includes("Completa la identidad profesional") && (
+              <Link
+                href={`/configuracion/odontologos${prescriptionProfileActionId ? `#dentist-${prescriptionProfileActionId}` : ""}`}
+                className="ml-2 inline-flex font-black underline"
+              >
+                Completar perfil profesional
+              </Link>
+            )}
+          </Alert>
+        )}
         {prescriptionLoading ? (
           <LoadingLine label="Cargando recetas…" />
         ) : canViewPrescriptions ? (

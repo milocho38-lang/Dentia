@@ -333,6 +333,12 @@ class DentistSiteManagementResponse(BaseModel):
     name: str
     status: str
     user_id: UUID | None
+    professional_email: str | None
+    document_type: str | None
+    document_number: str | None
+    specialty: str | None
+    professional_license: str | None
+    has_professional_signature: bool
     site_ids: list[UUID]
     sites: list[DentistSiteOptionResponse]
 
@@ -343,3 +349,23 @@ class DentistSiteListResponse(BaseModel):
 
 class DentistSiteUpdateRequest(BaseModel):
     site_ids: list[UUID]
+
+
+class DentistProfessionalProfileUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    document_type: str | None = Field(default=None, max_length=30)
+    document_number: str | None = Field(default=None, max_length=80)
+    specialty: str | None = Field(default=None, max_length=150)
+    professional_license: str | None = Field(default=None, max_length=100)
+
+    @field_validator("document_type", "document_number", "specialty", "professional_license")
+    @classmethod
+    def strip_optional_profile_value(cls, value: str | None) -> str | None:
+        return value.strip() or None if value else None
+
+    @field_validator("name")
+    @classmethod
+    def strip_professional_name(cls, value: str) -> str:
+        return value.strip()

@@ -5,6 +5,7 @@ import type {
   Company,
   CompanyInput,
   DentistSiteManagement,
+  DentistProfessionalProfileInput,
   Site,
   SiteImpact,
   SiteInput,
@@ -117,4 +118,38 @@ export function updateDentistSites(id: string, siteIds: string[]) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ site_ids: siteIds }),
   });
+}
+
+export function updateDentistProfessionalProfile(
+  id: string,
+  profile: DentistProfessionalProfileInput,
+) {
+  return apiRequest<DentistSiteManagement>(
+    `/api/dentists/${id}/professional-profile`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    },
+  );
+}
+
+export function uploadDentistProfessionalSignature(id: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiRequest<DentistSiteManagement>(
+    `/api/dentists/${id}/professional-signature`,
+    { method: "POST", body: form },
+  );
+}
+
+export function fetchDentistProfessionalSignature(id: string) {
+  return apiBlob(`/api/dentists/${id}/professional-signature`);
+}
+
+export function deleteDentistProfessionalSignature(id: string) {
+  return apiRequest<DentistSiteManagement>(
+    `/api/dentists/${id}/professional-signature`,
+    { method: "DELETE" },
+  );
 }

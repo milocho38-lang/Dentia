@@ -47,10 +47,15 @@ from app.services.clinical_document_service import (
     _visible_accent,
 )
 from app.services.patient_service import calculate_age
-from app.services.document_style import apply_reportlab_font
+from app.services.document_style import (
+    apply_reportlab_font,
+    render_professional_identity_block,
+    require_complete_professional_identity,
+    resolve_professional_document_identity,
+)
 from app.services.site_access_service import authorized_site_ids
 from app.services.treatment_service import BudgetPdfResult
-from app.utils.clinical_dates import local_clinical_date
+from app.utils.clinical_dates import format_human_date, local_clinical_date
 
 
 class PrescriptionError(RuntimeError):
@@ -245,16 +250,8 @@ def _snapshot_patient(session: Session, patient: Patient, reference_date: date) 
     }
 
 
-def _snapshot_professional(company: Company, dentist: Dentist) -> dict:
-    return {
-        "name": dentist.name,
-        "specialty": company.professional_specialty,
-        "professional_license": company.professional_license,
-        "signature_path": company.signature_path,
-        "signature_filename": company.signature_filename,
-        "signature_source": "company_branding_professional_signature",
-        "signature_notice": "Firma gráfica configurada en Dentia; no equivale a firma digital certificada.",
-    }
+def _snapshot_professional(session: Session, company: Company, dentist: Dentist) -> dict:
+    return resolve_professional_document_identity(session, company, dentist).snapshot()
 
 
 def _clinical_alerts(session: Session, context: AuthContext, patient_id: UUID) -> dict:
@@ -565,7 +562,17 @@ def _generate_pdf(prescription: Prescription, items: list[PrescriptionItem], *, 
         story.append(Spacer(1, 8))
     patient_document = " ".join(part for part in [patient.get("document_type"), patient.get("document")] if part)
     patient_age = f"{patient.get('age')} años" if patient.get("age") is not None else None
-    patient_birth_age = " · ".join(str(part) for part in [patient.get("birth_date"), patient_age] if part)
+    birth_date_value = None
+    if patient.get("birth_date"):
+        try:
+            birth_date_value = date.fromisoformat(patient["birth_date"])
+        except (TypeError, ValueError):
+            birth_date_value = None
+    patient_birth_age = " · ".join(
+        str(part)
+        for part in [format_human_date(birth_date_value) if birth_date_value else None, patient_age]
+        if part
+    )
     patient_rows = [
         [_paragraph("Paciente", styles["cell_bold"]), _paragraph(patient.get("name"), styles["cell"]), _paragraph("Documento", styles["cell_bold"]), _paragraph(patient_document or "—", styles["cell"])],
         [_paragraph("Nacimiento / edad", styles["cell_bold"]), _paragraph(patient_birth_age, styles["cell"]), _paragraph("Fecha", styles["cell_bold"]), _paragraph(_date_text(prescription.clinical_date), styles["cell"])],
@@ -591,15 +598,17 @@ def _generate_pdf(prescription: Prescription, items: list[PrescriptionItem], *, 
         story.append(KeepTogether([_paragraph(title, styles["med"]), Table(rows, colWidths=[doc.width * 0.16, doc.width * 0.34, doc.width * 0.16, doc.width * 0.34], style=TableStyle(table_style)), Spacer(1, 8)]))
     if snapshot.get("general_instructions"):
         story.extend([_paragraph("Indicaciones generales", styles["h2"]), _paragraph(snapshot.get("general_instructions"), styles["body"])])
-    story.extend([Spacer(1, 16), _paragraph("Atentamente,", styles["body"]), Spacer(1, 8)])
+    story.append(Spacer(1, 16))
     signature = _image_if_exists(_branding_asset_path(professional.get("signature_path")), width=46 * mm, height=21 * mm)
-    if signature:
-        story.append(signature)
     story.extend([
-        Spacer(1, 4),
-        _paragraph(professional.get("name"), styles["cell_bold"]),
-        _paragraph(professional.get("specialty") or "", styles["small"]),
-        _paragraph(f"Registro profesional: {professional.get('professional_license')}" if professional.get("professional_license") else "", styles["small"]),
+        render_professional_identity_block(
+            professional,
+            styles=styles,
+            signature=signature,
+            width=min(doc.width, 88 * mm),
+            show_intro=True,
+            separator=False,
+        ),
         Spacer(1, 4),
         _paragraph("Documento generado y finalizado en Dentia. La firma gráfica no equivale a firma digital certificada. Dentia no sustituye recetarios oficiales exigidos para medicamentos sometidos a control especial.", styles["small"]),
     ])
@@ -637,7 +646,7 @@ def preview_prescription(session: Session, context: AuthContext, prescription_id
     items = _load_items(session, prescription.id)
     prescription.institution_snapshot = _snapshot_company(company, site)
     prescription.patient_snapshot = _snapshot_patient(session, patient, prescription.clinical_date)
-    prescription.professional_snapshot = _snapshot_professional(company, dentist)
+    prescription.professional_snapshot = _snapshot_professional(session, company, dentist)
     prescription.prescription_snapshot = _snapshot_prescription(prescription, items)
     prescription.clinical_alerts_snapshot = _clinical_alerts(session, context, patient.id)
     pdf = _generate_pdf(prescription, items, preview=True)
@@ -662,10 +671,11 @@ def finalize_prescription(session: Session, context: AuthContext, prescription_i
     dentist = _require_dentist(session, context, prescription.dentist_profile_id, site.id)
     if company is None:
         raise PrescriptionError("Empresa no encontrada.", 500)
-    if not company.signature_path:
-        raise PrescriptionError("El profesional seleccionado no tiene firma configurada.", 422)
-    if not company.professional_license:
-        raise PrescriptionError("El profesional seleccionado no tiene registro profesional configurado.", 422)
+    identity = resolve_professional_document_identity(session, company, dentist)
+    try:
+        require_complete_professional_identity(identity)
+    except ValueError as exc:
+        raise PrescriptionError(str(exc), 422) from exc
     prescription.allergies_reviewed = payload.allergies_reviewed
     session.execute(select(func.pg_advisory_xact_lock(func.hashtext(str(context.user.company_id) + ":prescriptions"))))
     current_sequence = session.scalar(select(func.coalesce(func.max(Prescription.sequence), 0)).where(Prescription.company_id == context.user.company_id))
@@ -674,7 +684,7 @@ def finalize_prescription(session: Session, context: AuthContext, prescription_i
     prescription.prescription_number = f"RX-{sequence:06d}"
     prescription.institution_snapshot = _snapshot_company(company, site)
     prescription.patient_snapshot = _snapshot_patient(session, patient, prescription.clinical_date)
-    prescription.professional_snapshot = _snapshot_professional(company, dentist)
+    prescription.professional_snapshot = identity.snapshot()
     prescription.prescription_snapshot = _snapshot_prescription(prescription, items)
     prescription.clinical_alerts_snapshot = _clinical_alerts(session, context, patient.id)
     pdf = _generate_pdf(prescription, items)

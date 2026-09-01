@@ -50,6 +50,7 @@ from app.services.consent_library_normalization import validate_patient_facing_c
 from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
 from app.services.consent_template_service import VARIABLE_CATALOG, find_applicable_published_templates, validate_content
 from app.services.patient_service import calculate_age
+from app.services.document_style import resolve_professional_document_identity
 from app.services.consent_acceptance_context import (
     ACCEPTANCE_CONTEXT_SCHEMA_VERSION,
     JURISDICTION_CODES,
@@ -245,18 +246,19 @@ def _procedure_rows(treatment_procedures: list[TreatmentProcedure], catalog_item
     return rows
 
 
-def _values(company, site, patient, user, dentist, treatment, procedures: list[dict], clinical_date, timezone_name, version_number: int, country_code: str, language_code: str) -> tuple[dict, dict]:
+def _values(session, company, site, patient, user, dentist, treatment, procedures: list[dict], clinical_date, timezone_name, version_number: int, country_code: str, language_code: str) -> tuple[dict, dict]:
     local_now = _now().astimezone(ZoneInfo(timezone_name))
     age = calculate_age(patient.birth_date, clinical_date)
     one = procedures[0] if len(procedures) == 1 else None
+    identity = resolve_professional_document_identity(session, company, dentist)
     values = {
         "patient.full_name": f"{patient.first_names} {patient.last_names}".strip(), "patient.document_type": patient.document_type,
         "patient.document_number": patient.document, "patient.birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
         "patient.age": str(age) if age is not None else None, "company.name": company.name, "company.tax_id": company.tax_id,
         "company.contact": company.email or company.phone, "site.name": site.name, "site.address": site.address, "site.city": site.city,
-        "site.country": company.country, "professional.name": user.name, "professional.full_name": user.name,
-        "professional.specialty": company.professional_specialty, "professional.registration": company.professional_license,
-        "professional.license_number": company.professional_license, "treatment.name": treatment.name if treatment else None,
+        "site.country": company.country, "professional.name": identity.full_name, "professional.full_name": identity.full_name,
+        "professional.specialty": identity.specialty, "professional.registration": identity.professional_license,
+        "professional.license_number": identity.professional_license, "treatment.name": treatment.name if treatment else None,
         "treatment.diagnosis": None, "treatment.description": treatment.description if treatment else None, "treatment.plan_number": None,
         "procedure.name": one["name"] if one else None, "procedure.code": one["code"] if one else None,
         "procedure.description": one["description"] if one else None, "procedures.list": "; ".join(item["name"] for item in procedures) or None,
@@ -271,7 +273,16 @@ def _values(company, site, patient, user, dentist, treatment, procedures: list[d
         "patient": {"id": str(patient.id), "full_name": values["patient.full_name"], "document_type": patient.document_type, "document_number": patient.document, "birth_date": values["patient.birth_date"], "age": age},
         "company": {"id": str(company.id), "name": company.name, "tax_id": company.tax_id},
         "site": {"id": str(site.id), "name": site.name, "address": site.address, "city": site.city, "country_code": country_code, "timezone": timezone_name},
-        "professional": {"user_id": str(user.id), "dentist_profile_id": str(dentist.id), "full_name": user.name, "specialty": company.professional_specialty, "license_number": company.professional_license},
+        "professional": {
+            "user_id": str(user.id),
+            "dentist_profile_id": str(dentist.id),
+            "full_name": identity.full_name,
+            "specialty": identity.specialty,
+            "document_type": identity.document_type,
+            "document_number": identity.document_number,
+            "license_number": identity.professional_license,
+            "email": identity.email,
+        },
         "treatment": {"id": str(treatment.id), "name": treatment.name, "description": treatment.description} if treatment else None,
         "procedures": procedure_snapshot,
         "template": {"country_code": country_code, "locale": language_code, "version_number": version_number},
@@ -369,7 +380,7 @@ def applicable_templates(session: Session, context: AuthContext, payload: Consen
     result = []
     for candidate in candidates:
         version = session.get(ConsentTemplateVersion, candidate.version_id)
-        values, _ = _values(company, site, patient, user, dentist, treatment, procedures, clinical_date_or_local_default(payload.clinical_date, company, site), effective_timezone(company, site), version.version_number, candidate.country_code, candidate.language_code)
+        values, _ = _values(session, company, site, patient, user, dentist, treatment, procedures, clinical_date_or_local_default(payload.clinical_date, company, site), effective_timezone(company, site), version.version_number, candidate.country_code, candidate.language_code)
         used = validate_content(version.content, require_registered=True).used_variables
         rendered, missing = _resolve_content(version.content, values)
         candidate_template = session.get(ConsentTemplate, candidate.template_id)
@@ -419,7 +430,7 @@ def _create_one(session: Session, context: AuthContext, payload: ConsentContextI
         signer = resolve_signer_snapshot(session, company_id=company.id, patient=patient, payload_context=payload, policy=signer_policy, actor_type=payload.signer_actor_type, verified_by_user_id=context.user.id)
     except ValueError as exc:
         raise ConsentInstanceError(str(exc), 422) from exc
-    values, context_snapshot = _values(company, site, patient, user, dentist, treatment, procedure_data, clinical_date, timezone_name, version.version_number, template.country_code, template.language_code)
+    values, context_snapshot = _values(session, company, site, patient, user, dentist, treatment, procedure_data, clinical_date, timezone_name, version.version_number, template.country_code, template.language_code)
     context_snapshot["signer"] = _signer_context_dict(signer)
     rendered, missing = _resolve_content(version.content, values)
     _ensure_patient_facing_snapshot(rendered, template.document_kind, signer_policy)
@@ -487,7 +498,7 @@ def update_instance(session: Session, context: AuthContext, instance_id: UUID, p
         signer = resolve_signer_snapshot(session, company_id=company.id, patient=patient, payload_context=payload, policy=signer_policy, actor_type=payload.signer_actor_type or instance.signer_actor_type, verified_by_user_id=context.user.id)
     except ValueError as exc:
         raise ConsentInstanceError(str(exc), 422) from exc
-    values, snapshot = _values(company, site, patient, user, dentist, treatment, procedure_data, clinical_date, timezone_name, version.version_number, instance.country_code, instance.language_code)
+    values, snapshot = _values(session, company, site, patient, user, dentist, treatment, procedure_data, clinical_date, timezone_name, version.version_number, instance.country_code, instance.language_code)
     snapshot["signer"] = _signer_context_dict(signer)
     rendered, missing = _resolve_content(instance.template_content_snapshot, values)
     _ensure_patient_facing_snapshot(rendered, instance.document_kind, signer_policy)

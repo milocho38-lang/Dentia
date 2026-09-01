@@ -25,7 +25,7 @@ from app.models.consent_template import ConsentAccessSession, ConsentInstance, C
 from app.models.site import Site
 from app.schemas.consent_instance_schema import ConsentPaperPacketResponse, ConsentPaperPageResponse, ConsentPaperVerificationRequest
 from app.services.auth_service import AuthContext, RequestMetadata
-from app.services.document_style import apply_reportlab_font
+from app.services.document_style import apply_reportlab_font, professional_document_label
 from app.services.consent_instance_service import _require_instance
 from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
 from app.services.consent_signer import RESPONSIBLE_ADULT, responsible_relationship_label, signer_policy_from_library_version
@@ -119,10 +119,15 @@ def _packet_pdf(instance: ConsentInstance, packet_id: UUID, company: Company, si
     story = [Paragraph(str(company.name), heading), Paragraph("CONSENTIMIENTO PARA FIRMA MANUSCRITA", title), Spacer(1, 4*mm)]
     patient_name = _snapshot(instance, "patient", "full_name")
     patient_document = " ".join(filter(None, [_snapshot(instance, "patient", "document_type", ""), _snapshot(instance, "patient", "document_number", "")])) or "No registrado"
+    professional = (instance.context_snapshot or {}).get("professional") or {}
+    professional_document = " ".join(filter(None, [professional_document_label(professional.get("document_type")), professional.get("document_number")]))
     details = [
         ["Consentimiento", instance.visible_number], ["Versión", str(instance.template_version_number)],
         ["Paciente", patient_name], ["Identificación", patient_document], ["Sede", site.name],
-        ["Profesional revisor", _snapshot(instance, "professional", "full_name")], ["Fecha de emisión", instance.clinical_date.isoformat()],
+        ["Profesional revisor", _snapshot(instance, "professional", "full_name")],
+        ["Identificación profesional", professional_document or "No registrada"],
+        ["Registro profesional", professional.get("license_number") or "No registrado"],
+        ["Fecha de emisión", instance.clinical_date.isoformat()],
         ["Identificador del packet", str(packet_id)],
     ]
     table = Table(details, colWidths=[42*mm, 123*mm])
