@@ -8,6 +8,19 @@ import {
   runRefreshWithCrossTabLock,
   runRefreshWithRaceRetry,
 } from "../services/refreshConcurrency.mjs";
+import {
+  AUTH_REDIRECT_ONLY_PATHS,
+  shouldBootstrapAuth,
+} from "../services/authBootstrap.mjs";
+
+assert.deepEqual(AUTH_REDIRECT_ONLY_PATHS, ["/"]);
+assert.equal(
+  shouldBootstrapAuth("/"),
+  false,
+  "the redirect-only root must not rotate a refresh token before navigation",
+);
+assert.equal(shouldBootstrapAuth("/dashboard"), true);
+assert.equal(shouldBootstrapAuth("/login"), true);
 
 function raceError() {
   return Object.assign(new Error("refresh race"), {
@@ -191,5 +204,12 @@ assert.match(
   /runRefreshWithCrossTabLock\(\(\) =>\s*runRefreshWithRaceRetry/,
   "the production refresh must hold the cross-tab lock across all race retries",
 );
+
+const authProviderSource = await readFile(
+  new URL("../providers/AuthProvider.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(authProviderSource, /shouldBootstrapAuth\(pathname\)/);
+assert.match(authProviderSource, /status !== "initializing"/);
 
 console.log("auth-refresh-concurrency-tests OK");

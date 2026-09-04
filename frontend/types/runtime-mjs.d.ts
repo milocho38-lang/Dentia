@@ -51,3 +51,9 @@ declare module "@/services/refreshConcurrency.mjs" {
     },
   ): Promise<T>;
 }
+
+declare module "@/services/authBootstrap.mjs" {
+  export const AUTH_REDIRECT_ONLY_PATHS: readonly string[];
+
+  export function shouldBootstrapAuth(pathname: string): boolean;
+}

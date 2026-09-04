@@ -7,11 +7,13 @@ import {
   useMemo,
   useState,
 } from "react";
+import { usePathname } from "next/navigation";
 import {
   clearClientSession,
   refreshSession,
   setSessionListener,
 } from "@/services/apiClient";
+import { shouldBootstrapAuth } from "@/services/authBootstrap.mjs";
 import * as authService from "@/services/authService";
 import type {
   AuthStatus,
@@ -41,6 +43,7 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("initializing");
   const [user, setUser] = useState<AuthUser | null>(null);
+  const pathname = usePathname();
 
   const applySession = useCallback((session: TokenResponse | null) => {
     if (session) {
@@ -54,14 +57,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setSessionListener(applySession);
-    refreshSession()
-      .then(applySession)
-      .catch(() => applySession(null));
 
     return () => {
       setSessionListener(null);
     };
   }, [applySession]);
+
+  useEffect(() => {
+    if (status !== "initializing" || !shouldBootstrapAuth(pathname)) {
+      return;
+    }
+
+    let active = true;
+    refreshSession()
+      .then((session) => {
+        if (active) {
+          applySession(session);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          applySession(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [applySession, pathname, status]);
 
   const login = useCallback(async (credentials: LoginCredentials) => {
     const session = await authService.login(credentials);
