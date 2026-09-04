@@ -51,8 +51,8 @@ def production_configuration_errors(*, channel: str) -> list[str]:
     if settings.app_debug:
         errors.append("APP_DEBUG debe estar desactivado")
     parsed = urlparse(settings.public_frontend_url)
-    if parsed.scheme != "https" or parsed.netloc.casefold() != "dentiapro.com":
-        errors.append("PUBLIC_FRONTEND_URL debe ser https://dentiapro.com")
+    if parsed.scheme != "https" or parsed.netloc.casefold() != "app.dentiapro.com":
+        errors.append("PUBLIC_FRONTEND_URL debe ser https://app.dentiapro.com")
     if not settings.consent_acceptance_enabled:
         errors.append("CONSENT_ACCEPTANCE_ENABLED debe estar habilitado")
     if not settings.consent_public_cookie_secure:

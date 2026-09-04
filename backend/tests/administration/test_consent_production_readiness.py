@@ -147,7 +147,7 @@ def test_production_gate_and_approved_declaration_catalog(api_client, db_session
 
     monkeypatch.setattr(settings, "app_env", "production")
     monkeypatch.setattr(settings, "app_debug", False)
-    monkeypatch.setattr(settings, "public_frontend_url", "https://dentiapro.com")
+    monkeypatch.setattr(settings, "public_frontend_url", "https://app.dentiapro.com")
     monkeypatch.setattr(settings, "consent_acceptance_enabled", True)
     monkeypatch.setattr(settings, "consent_public_cookie_secure", True)
     monkeypatch.setattr(settings, "consent_storage_persistent", True)
@@ -155,6 +155,10 @@ def test_production_gate_and_approved_declaration_catalog(api_client, db_session
     monkeypatch.setattr(settings, "smtp_host", "smtp.example.test")
     monkeypatch.setattr(settings, "smtp_from_email", "consents@example.test")
     assert_template_ready(db_session, template=template, version=version, signer_policy="PATIENT_SELF", channel="ELECTRONIC")
+    monkeypatch.setattr(settings, "public_frontend_url", "https://dentiapro.com")
+    with pytest.raises(ConsentProductionReadinessError, match="https://app.dentiapro.com"):
+        assert_template_ready(db_session, template=template, version=version, signer_policy="PATIENT_SELF", channel="ELECTRONIC")
+    monkeypatch.setattr(settings, "public_frontend_url", "https://app.dentiapro.com")
     for origin in ("CLONED_FROM_DENTIA", "DENTIA_LIBRARY"):
         template.template_origin = origin
         db_session.commit()

@@ -452,6 +452,7 @@ def test_general_and_specific_templates_are_combined_without_duplicates(api_clie
 
 def test_secure_access_otp_document_clarification_reissue_and_tenant_boundaries(api_client, db_session, security_world, monkeypatch):
     tenant = security_world.tenant_a
+    monkeypatch.setattr(settings, "public_frontend_url", "https://app.dentiapro.com")
     get_test_email_outbox().clear()
     _, procedure = _procedure(db_session, tenant)
     version = _template(api_client, tenant.dentist_admin, "ACCESS-PORTAL")
@@ -464,7 +465,7 @@ def test_secure_access_otp_document_clarification_reissue_and_tenant_boundaries(
     public_url = issued.json()["public_url"]
     public_path = issued.json()["public_path"]
     assert public_path.startswith("/consentimiento/")
-    assert public_url.endswith(public_path)
+    assert public_url == f"https://app.dentiapro.com{public_path}"
     token = public_url.rsplit("/", 1)[-1]
     assert public_path.rsplit("/", 1)[-1] == token
     assert len(token) >= 32

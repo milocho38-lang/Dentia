@@ -315,7 +315,7 @@ def _image_if_exists(path: Path | None, *, width: float, height: float) -> Image
 
 def _qr_image() -> Image:
     qr = qrcode.QRCode(box_size=5, border=1)
-    qr.add_data("https://dentiapro.com")
+    qr.add_data(settings.public_frontend_url.rstrip("/"))
     qr.make(fit=True)
     image = qr.make_image(fill_color="black", back_color="white")
     buffer = BytesIO()

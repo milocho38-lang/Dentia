@@ -192,8 +192,8 @@ if env["APP_ENV"].casefold() != "production":
     raise SystemExit("[dentia][ERROR] APP_ENV must be production.")
 if env["APP_DEBUG"].casefold() != "false":
     raise SystemExit("[dentia][ERROR] APP_DEBUG must be false.")
-if env["PUBLIC_FRONTEND_URL"].rstrip("/") != "https://dentiapro.com":
-    raise SystemExit("[dentia][ERROR] PUBLIC_FRONTEND_URL must be https://dentiapro.com.")
+if env["PUBLIC_FRONTEND_URL"].rstrip("/") != "https://app.dentiapro.com":
+    raise SystemExit("[dentia][ERROR] PUBLIC_FRONTEND_URL must be https://app.dentiapro.com.")
 for key in ("CONSENT_ACCEPTANCE_ENABLED", "CONSENT_PUBLIC_COOKIE_SECURE", "CONSENT_STORAGE_PERSISTENT"):
     if env[key].casefold() != "true":
         raise SystemExit(f"[dentia][ERROR] {key} must be true for clinical consent use.")

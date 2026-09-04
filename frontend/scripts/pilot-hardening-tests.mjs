@@ -50,7 +50,7 @@ function makeEnvContent(overrides = {}) {
     DENTIA_BACKEND_ENV_FILE: "",
     BRANDING_STORAGE_DIR: "/app/storage/branding",
     API_PROXY_TARGET: "http://dentia-backend:8000",
-    PUBLIC_FRONTEND_URL: "https://dentiapro.com",
+    PUBLIC_FRONTEND_URL: "https://app.dentiapro.com",
     CONSENT_ACCEPTANCE_ENABLED: "true",
     CONSENT_PUBLIC_COOKIE_SECURE: "true",
     CONSENT_FINAL_STORAGE_DIR: "/app/storage/consents",
@@ -219,6 +219,11 @@ try {
       "wrong-db.env",
       { DATABASE_URL: "postgresql+psycopg://dentia_config_user:FictionalStrongPassword2026NotSecret@dentia-db:5432/other_db" },
       /DATABASE_URL database does not match POSTGRES_DB/,
+    ],
+    [
+      "legacy-root-public-url.env",
+      { PUBLIC_FRONTEND_URL: "https://dentiapro.com" },
+      /PUBLIC_FRONTEND_URL must be https:\/\/app\.dentiapro\.com/,
     ],
   ];
 
