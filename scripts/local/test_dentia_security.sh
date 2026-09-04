@@ -189,6 +189,8 @@ fi
 if [ "$RUN_HARDENING" = true ]; then
   dentia_info "Running C018R.2 pilot hardening tests..."
   node frontend/scripts/pilot-hardening-tests.mjs
+  dentia_info "Running WEB-0.8 refresh concurrency tests..."
+  node frontend/scripts/auth-refresh-concurrency-tests.mjs
   PYTHONPATH="$DENTIA_REPO_ROOT/backend" \
     backend/.venv/bin/pytest \
       --confcutdir=backend/tests/operations \

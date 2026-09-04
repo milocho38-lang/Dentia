@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -17,6 +18,17 @@ DUMMY_PASSWORD_HASH = PASSWORD_HASH.hash("Dentia dummy password 2026")
 
 class AccessTokenError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class RefreshTokenClaims:
+    session_id: UUID
+    generation: int | None
+    is_legacy: bool
+
+
+REFRESH_TOKEN_VERSION = "v1"
+REFRESH_TOKEN_SIGNING_CONTEXT = b"dentia-refresh-token-v1\x00"
 
 
 def utc_now() -> datetime:
@@ -54,16 +66,60 @@ def hash_refresh_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def create_refresh_token(session_id: UUID) -> str:
+def _refresh_token_signature(payload: str) -> str:
+    return hmac.new(
+        settings.jwt_secret.encode("utf-8"),
+        REFRESH_TOKEN_SIGNING_CONTEXT + payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def create_refresh_token(session_id: UUID, generation: int = 0) -> str:
+    if generation < 0:
+        raise ValueError("Refresh token generation cannot be negative.")
     secret = secrets.token_urlsafe(48)
-    return f"{session_id}.{secret}"
+    payload = f"{REFRESH_TOKEN_VERSION}.{session_id}.{generation}.{secret}"
+    return f"{payload}.{_refresh_token_signature(payload)}"
+
+
+def parse_refresh_token(token: str) -> RefreshTokenClaims:
+    parts = token.split(".")
+    if len(parts) == 2:
+        session_id, secret = parts
+        if not session_id or not secret:
+            raise ValueError("Invalid refresh token.")
+        return RefreshTokenClaims(
+            session_id=UUID(session_id),
+            generation=None,
+            is_legacy=True,
+        )
+
+    if len(parts) != 5 or parts[0] != REFRESH_TOKEN_VERSION:
+        raise ValueError("Invalid refresh token.")
+    version, session_id, raw_generation, secret, signature = parts
+    if not secret or not signature or not raw_generation.isascii():
+        raise ValueError("Invalid refresh token.")
+    try:
+        generation = int(raw_generation)
+    except ValueError as exc:
+        raise ValueError("Invalid refresh token.") from exc
+    if generation < 0 or generation > 2**63 - 1:
+        raise ValueError("Invalid refresh token.")
+    payload = f"{version}.{session_id}.{generation}.{secret}"
+    if not hmac.compare_digest(
+        signature,
+        _refresh_token_signature(payload),
+    ):
+        raise ValueError("Invalid refresh token.")
+    return RefreshTokenClaims(
+        session_id=UUID(session_id),
+        generation=generation,
+        is_legacy=False,
+    )
 
 
 def get_refresh_session_id(token: str) -> UUID:
-    session_id, separator, secret = token.partition(".")
-    if not separator or not secret:
-        raise ValueError("Invalid refresh token.")
-    return UUID(session_id)
+    return parse_refresh_token(token).session_id
 
 
 def refresh_token_matches(token: str, stored_hash: str) -> bool:

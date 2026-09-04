@@ -21,6 +21,7 @@ from app.schemas.user_schema import ChangePasswordRequest
 from app.services.auth_service import (
     AuthContext,
     AuthenticationError,
+    RefreshRaceError,
     change_password,
     get_auth_sites,
     login,
@@ -106,6 +107,11 @@ def refresh_endpoint(
             session,
             refresh_token=refresh_token,
             metadata=get_request_metadata(request),
+        )
+    except RefreshRaceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": str(exc)},
         )
     except AuthenticationError as exc:
         clear_refresh_cookie(response)

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
+from app.core.config import Settings
 from tests.security_guard import (
     TestDatabaseTarget,
     UnsafeTestDatabaseError,
@@ -56,3 +58,28 @@ def test_accepts_test_compose_names() -> None:
         service="dentia-test-db",
         volume="dentia-test_dentia_test_db_data",
     )
+
+
+def _settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "app_env": "local",
+        "database_url": "postgresql+psycopg://dentia_test:pw@127.0.0.1:55432/dentia_test",
+        "jwt_secret": "FictionalJWTSecretForProductionGuardChecks2026",
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
+
+
+@pytest.mark.parametrize("value", [0, 6])
+def test_rejects_unsafe_refresh_race_grace(value: int) -> None:
+    with pytest.raises(
+        ValidationError,
+        match="REFRESH_TOKEN_RACE_GRACE_SECONDS must be between 1 and 5",
+    ):
+        _settings(refresh_token_race_grace_seconds=value)
+
+
+@pytest.mark.parametrize("value", [1, 2, 5])
+def test_accepts_bounded_refresh_race_grace(value: int) -> None:
+    configured = _settings(refresh_token_race_grace_seconds=value)
+    assert configured.refresh_token_race_grace_seconds == value

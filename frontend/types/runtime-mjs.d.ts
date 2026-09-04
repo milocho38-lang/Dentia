@@ -22,3 +22,18 @@ declare module "@/lib/publicConsentClient.mjs" {
 declare module "@/lib/secureClipboard.mjs" {
   export function copyTextSecurely(value: string): Promise<boolean>;
 }
+
+declare module "@/services/refreshConcurrency.mjs" {
+  export const REFRESH_RACE_ERROR_CODE: string;
+  export const REFRESH_RACE_RETRY_DELAYS_MS: readonly number[];
+
+  export function isRefreshRaceError(error: unknown): boolean;
+
+  export function runRefreshWithRaceRetry<T>(
+    operation: () => Promise<T>,
+    options?: {
+      delays?: readonly number[];
+      sleep?: (delayMs: number) => Promise<void>;
+    },
+  ): Promise<T>;
+}

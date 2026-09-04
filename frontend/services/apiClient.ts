@@ -1,4 +1,5 @@
 import type { TokenResponse } from "@/types/auth";
+import { runRefreshWithRaceRetry } from "@/services/refreshConcurrency.mjs";
 
 export class ApiError extends Error {
   constructor(
@@ -52,17 +53,19 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 async function directRefresh(): Promise<TokenResponse> {
-  const response = await fetch("/api/auth/refresh", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-    },
+  return runRefreshWithRaceRetry(async () => {
+    const response = await fetch("/api/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    const session = await parseResponse<TokenResponse>(response);
+    accessToken = session.access_token;
+    sessionListener?.(session);
+    return session;
   });
-  const session = await parseResponse<TokenResponse>(response);
-  accessToken = session.access_token;
-  sessionListener?.(session);
-  return session;
 }
 
 export function setSessionListener(listener: SessionListener | null): void {

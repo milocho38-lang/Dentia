@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     jwt_audience: str = "dentia-web"
     access_token_expire_minutes: int = 15
     refresh_token_expire_hours: int = 8
+    refresh_token_race_grace_seconds: int = 2
     session_idle_timeout_minutes: int = 60
     auth_max_failed_attempts: int = 5
     auth_lockout_minutes: int = 15
@@ -77,6 +78,15 @@ class Settings(BaseSettings):
         if value not in {1, 3, 5, 10}:
             raise ValueError(
                 "DEFAULT_TENANT_MAX_ACTIVE_DENTISTS must be 1, 3, 5 or 10."
+            )
+        return value
+
+    @field_validator("refresh_token_race_grace_seconds")
+    @classmethod
+    def validate_refresh_token_race_grace_seconds(cls, value: int) -> int:
+        if not 1 <= value <= 5:
+            raise ValueError(
+                "REFRESH_TOKEN_RACE_GRACE_SECONDS must be between 1 and 5."
             )
         return value
 

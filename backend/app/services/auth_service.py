@@ -10,10 +10,10 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     email_fingerprint,
-    get_refresh_session_id,
     hash_password,
     hash_refresh_token,
     normalize_email,
+    parse_refresh_token,
     refresh_token_matches,
     utc_now,
     verify_dummy_password,
@@ -44,12 +44,22 @@ from app.services.site_access_service import (
 
 
 GENERIC_LOGIN_ERROR = "Credenciales inválidas o acceso no disponible."
+REFRESH_RACE_ERROR_CODE = "REFRESH_RACE_RETRY"
 
 
 class AuthenticationError(RuntimeError):
     def __init__(self, message: str = GENERIC_LOGIN_ERROR, status_code: int = 401):
         super().__init__(message)
         self.status_code = status_code
+
+
+class RefreshRaceError(AuthenticationError):
+    def __init__(self) -> None:
+        super().__init__(
+            "La sesión se está actualizando en otra pestaña. Reintenta.",
+            409,
+        )
+        self.code = REFRESH_RACE_ERROR_CODE
 
 
 @dataclass(frozen=True)
@@ -343,7 +353,7 @@ def login(
         raise AuthenticationError()
 
     session_id = uuid4()
-    refresh_token = create_refresh_token(session_id)
+    refresh_token = create_refresh_token(session_id, generation=0)
     auth_session = AuthSession(
         id=session_id,
         company_id=user.company_id,
@@ -398,7 +408,7 @@ def refresh(
     metadata: RequestMetadata,
 ) -> tuple[TokenResponse, str, int]:
     try:
-        session_id = get_refresh_session_id(refresh_token)
+        token_claims = parse_refresh_token(refresh_token)
     except (ValueError, TypeError):
         _add_audit(
             session,
@@ -410,7 +420,11 @@ def refresh(
         session.commit()
         raise AuthenticationError()
 
-    auth_session = get_auth_session(session, session_id, lock=True)
+    auth_session = get_auth_session(
+        session,
+        token_claims.session_id,
+        lock=True,
+    )
     now = utc_now()
     if auth_session is None:
         _add_audit(
@@ -418,28 +432,8 @@ def refresh(
             action="ACCESS_DENIED",
             result="FAILURE",
             metadata=metadata,
-            session_id=session_id,
+            session_id=token_claims.session_id,
             detail={"reason": "UNKNOWN_SESSION"},
-        )
-        session.commit()
-        raise AuthenticationError()
-
-    if not refresh_token_matches(
-        refresh_token,
-        auth_session.refresh_token_hash,
-    ):
-        auth_session.revoked_at = now
-        auth_session.is_active = False
-        auth_session.revoke_reason = "REFRESH_TOKEN_REUSE"
-        _add_audit(
-            session,
-            action="ACCESS_DENIED",
-            result="FAILURE",
-            metadata=metadata,
-            company_id=auth_session.company_id,
-            user_id=auth_session.user_id,
-            session_id=auth_session.id,
-            detail={"reason": "REFRESH_TOKEN_REUSE"},
         )
         session.commit()
         raise AuthenticationError()
@@ -523,9 +517,112 @@ def refresh(
         session.commit()
         raise AuthenticationError()
 
-    new_refresh_token = create_refresh_token(auth_session.id)
+    token_matches_current = refresh_token_matches(
+        refresh_token,
+        auth_session.refresh_token_hash,
+    )
+    if token_claims.is_legacy:
+        reason = (
+            "REFRESH_TOKEN_FORMAT_UPGRADE"
+            if token_matches_current
+            else "INVALID_REFRESH_TOKEN"
+        )
+        if token_matches_current:
+            auth_session.revoked_at = now
+            auth_session.is_active = False
+            auth_session.revoke_reason = reason
+            _add_audit(
+                session,
+                action="SESSION_REVOKED",
+                result="SUCCESS",
+                metadata=metadata,
+                company_id=auth_session.company_id,
+                user_id=auth_session.user_id,
+                session_id=auth_session.id,
+                entity_id=auth_session.id,
+                detail={"reason": reason},
+            )
+        _add_audit(
+            session,
+            action="ACCESS_DENIED",
+            result="FAILURE",
+            metadata=metadata,
+            company_id=auth_session.company_id,
+            user_id=auth_session.user_id,
+            session_id=auth_session.id,
+            detail={"reason": reason},
+        )
+        session.commit()
+        raise AuthenticationError()
+
+    if token_matches_current:
+        if token_claims.generation != auth_session.rotation_counter:
+            replay_reason = "REFRESH_TOKEN_GENERATION_MISMATCH"
+        else:
+            replay_reason = None
+    else:
+        previous_generation = auth_session.rotation_counter - 1
+        grace_deadline = auth_session.last_seen_at + timedelta(
+            seconds=settings.refresh_token_race_grace_seconds
+        )
+        if (
+            token_claims.generation == previous_generation
+            and now < grace_deadline
+        ):
+            _add_audit(
+                session,
+                action="TOKEN_REFRESH_RACE_ACCEPTED",
+                result="SUCCESS",
+                metadata=metadata,
+                company_id=auth_session.company_id,
+                user_id=auth_session.user_id,
+                session_id=auth_session.id,
+                entity_id=auth_session.id,
+                detail={
+                    "generation": token_claims.generation,
+                    "current_generation": auth_session.rotation_counter,
+                    "grace_seconds": settings.refresh_token_race_grace_seconds,
+                },
+            )
+            session.commit()
+            raise RefreshRaceError()
+        replay_reason = "REFRESH_TOKEN_REUSE"
+
+    if replay_reason is not None:
+        auth_session.revoked_at = now
+        auth_session.is_active = False
+        auth_session.revoke_reason = replay_reason
+        _add_audit(
+            session,
+            action="ACCESS_DENIED",
+            result="FAILURE",
+            metadata=metadata,
+            company_id=auth_session.company_id,
+            user_id=auth_session.user_id,
+            session_id=auth_session.id,
+            detail={"reason": replay_reason},
+        )
+        _add_audit(
+            session,
+            action="SESSION_REVOKED",
+            result="SUCCESS",
+            metadata=metadata,
+            company_id=auth_session.company_id,
+            user_id=auth_session.user_id,
+            session_id=auth_session.id,
+            entity_id=auth_session.id,
+            detail={"reason": replay_reason},
+        )
+        session.commit()
+        raise AuthenticationError()
+
+    next_generation = auth_session.rotation_counter + 1
+    new_refresh_token = create_refresh_token(
+        auth_session.id,
+        generation=next_generation,
+    )
     auth_session.refresh_token_hash = hash_refresh_token(new_refresh_token)
-    auth_session.rotation_counter += 1
+    auth_session.rotation_counter = next_generation
     auth_session.last_seen_at = now
     auth_session.ip_address = metadata.ip_address
     auth_session.user_agent = metadata.user_agent
@@ -595,13 +692,25 @@ def change_password(
             400,
         )
 
+    current_auth_session = get_auth_session(
+        session,
+        context.auth_session.id,
+        lock=True,
+    )
+    if (
+        current_auth_session is None
+        or not current_auth_session.is_active
+        or current_auth_session.revoked_at is not None
+    ):
+        raise AuthenticationError()
+
     now = utc_now()
     other_sessions = list(
         session.scalars(
             select(AuthSession).where(
                 AuthSession.user_id == context.user.id,
                 AuthSession.company_id == context.user.company_id,
-                AuthSession.id != context.auth_session.id,
+                AuthSession.id != current_auth_session.id,
                 AuthSession.is_active.is_(True),
                 AuthSession.revoked_at.is_(None),
             )
@@ -618,14 +727,21 @@ def change_password(
     context.user.must_change_password = False
     context.user.auth_version += 1
 
-    new_refresh_token = create_refresh_token(context.auth_session.id)
-    context.auth_session.refresh_token_hash = hash_refresh_token(
+    # A password change is a security boundary, not a normal concurrent refresh.
+    # Skipping one generation prevents the prior cookie from entering the
+    # immediately-previous-generation race grace window.
+    next_generation = current_auth_session.rotation_counter + 2
+    new_refresh_token = create_refresh_token(
+        current_auth_session.id,
+        generation=next_generation,
+    )
+    current_auth_session.refresh_token_hash = hash_refresh_token(
         new_refresh_token
     )
-    context.auth_session.rotation_counter += 1
-    context.auth_session.last_seen_at = now
-    context.auth_session.ip_address = metadata.ip_address
-    context.auth_session.user_agent = metadata.user_agent
+    current_auth_session.rotation_counter = next_generation
+    current_auth_session.last_seen_at = now
+    current_auth_session.ip_address = metadata.ip_address
+    current_auth_session.user_agent = metadata.user_agent
 
     _add_audit(
         session,
@@ -634,7 +750,7 @@ def change_password(
         metadata=metadata,
         company_id=context.user.company_id,
         user_id=context.user.id,
-        session_id=context.auth_session.id,
+        session_id=current_auth_session.id,
         entity="user",
         entity_id=context.user.id,
         detail={"sessions_revoked": len(other_sessions)},
@@ -642,11 +758,11 @@ def change_password(
     response = _build_token_response(
         session,
         context.user,
-        context.auth_session,
+        current_auth_session,
     )
     remaining_seconds = max(
         0,
-        int((context.auth_session.expires_at - now).total_seconds()),
+        int((current_auth_session.expires_at - now).total_seconds()),
     )
     session.commit()
     return response, new_refresh_token, remaining_seconds
