@@ -44,6 +44,7 @@ from app.services.consent_instance_service import _sha
 import app.services.consent_instance_service as consent_instance_service
 from app.core.config import settings
 from app.core.logging import RedactConsentTokenFilter
+from app.utils.clinical_dates import local_clinical_date
 import logging
 import re
 from zoneinfo import ZoneInfo
@@ -712,7 +713,7 @@ def test_changed_email_after_otp_is_not_used_for_acceptance_or_delivery(api_clie
 @pytest.mark.parametrize("birth_mode",["seventeen","missing","future"])
 def test_invalid_or_missing_sealed_birth_date_blocks_acceptance(api_client, db_session, security_world, birth_mode):
     tenant=security_world.tenant_a;today=datetime.now(ZoneInfo("America/Bogota")).date()
-    tenant.patient.birth_date={"seventeen":today.replace(year=today.year-17),"missing":None,"future":today+timedelta(days=1)}[birth_mode];db_session.commit()
+    tenant.patient.birth_date={"seventeen":today.replace(year=today.year-17),"missing":None,"future":today+timedelta(days=30)}[birth_mode];db_session.commit()
     if birth_mode == "seventeen":
         _,procedure=_procedure(db_session,tenant)
         version=_template(api_client,tenant.dentist_admin,f"REVIEW-AGE-{birth_mode}",content="# Documento\n\nPaciente: {{ patient.full_name }}")
@@ -830,9 +831,11 @@ def test_pdf_human_dates_use_sealed_timezone_and_spanish_locale():
 
 
 def test_local_approved_set_still_generates_test_mark(api_client, db_session, security_world, monkeypatch):
-    approved=replace(consent_declaration_catalog.CO_DRAFT,code="CONSENT_PATIENT_SELF_CO_APPROVED_TEST",version="APPROVED_TEST_V1",legal_status="APPROVED",effective_from=date.today())
+    tenant=security_world.tenant_a
+    clinical_today=local_clinical_date(tenant.company,tenant.site_1)
+    approved=replace(consent_declaration_catalog.CO_DRAFT,code="CONSENT_PATIENT_SELF_CO_APPROVED_TEST",version="APPROVED_TEST_V1",legal_status="APPROVED",effective_from=clinical_today)
     monkeypatch.setitem(consent_declaration_catalog.DECLARATION_SETS,("CO","es-CO"),approved)
-    created,token,cookie,requirements,payload=_prepare_acceptance(api_client,db_session,security_world.tenant_a,"REVIEW-APPROVED-NO-MARK")
+    created,token,cookie,requirements,payload=_prepare_acceptance(api_client,db_session,tenant,"REVIEW-APPROVED-NO-MARK")
     document=api_client.get(f"/api/public/consents/{token}/document",headers={"Cookie":cookie}).json();assert document["is_test_document"] is True and document["test_notice"]==consent_declaration_catalog.TEST_DOCUMENT_NOTICE and document["legal_review_status"]=="APPROVED"
     assert requirements["test_document"] is True and requirements["declarations_legal_status"]=="APPROVED"
     signed=api_client.post(f"/api/public/consents/{token}/acceptance",headers={"Cookie":cookie},json=payload);assert signed.status_code==200,signed.text
