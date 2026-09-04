@@ -42,7 +42,7 @@ from app.services.consent_declaration_catalog import ConsentDeclarationSet, Cons
 from app.services.consent_instance_service import _require_instance
 from app.services.consent_library_normalization import validate_patient_facing_content
 from app.services.consent_production_readiness import ConsentProductionReadinessError, assert_template_ready
-from app.services.email_service import EmailDelivery, EmailDeliveryError, get_email_provider
+from app.services.email_service import EmailDelivery, EmailDeliveryError, get_email_provider, use_email_company
 from app.services.patient_service import calculate_age
 from app.services.document_style import (
     apply_reportlab_font,
@@ -625,7 +625,8 @@ def _delivery(session: Session, acceptance, final, recipient_email: str, pdf: by
     now=_now(); delivery=ConsentCopyDelivery(company_id=acceptance.company_id,consent_instance_id=acceptance.consent_instance_id,acceptance_id=acceptance.id,final_document_id=final.id,status="PENDING",recipient_masked=acceptance.recipient_masked_snapshot,attempted_at=now,requested_by=requested_by); session.add(delivery); session.flush()
     test_prefix="[PRUEBA] " if acceptance.test_document else ""; test_notice=f"\n\n{TEST_DOCUMENT_NOTICE}" if acceptance.test_document else ""
     try:
-        get_email_provider().send(EmailDelivery(recipient=recipient_email,subject=f"{test_prefix}Copia de consentimiento registrado",body=f"Adjuntamos la copia del documento registrado. Consérvela y contacte directamente a la clínica si requiere soporte.{test_notice}",attachments=((final.filename,"application/pdf",pdf),)))
+        with use_email_company(acceptance.company_id):
+            get_email_provider().send(EmailDelivery(recipient=recipient_email,subject=f"{test_prefix}Copia de consentimiento registrado",body=f"Adjuntamos la copia del documento registrado. Consérvela y contacte directamente a la clínica si requiere soporte.{test_notice}",attachments=((final.filename,"application/pdf",pdf),)))
         delivery.status="SENT"; delivery.delivered_at=_now()
     except EmailDeliveryError: delivery.status="FAILED"; delivery.error_code="DELIVERY_FAILED"
     return delivery

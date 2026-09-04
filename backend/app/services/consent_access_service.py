@@ -19,7 +19,7 @@ from app.services.consent_production_readiness import ConsentProductionReadiness
 from app.services.consent_instance_service import ConsentInstanceError, _require_instance, _verify_seal
 from app.services.consent_declaration_catalog import ConsentDeclarationSetError, DECLARATION_SETS, TEST_DOCUMENT_NOTICE, declaration_set_for
 from app.services.consent_acceptance_context import inspect_acceptance_context
-from app.services.email_service import EmailDeliveryError, build_consent_otp_email, get_email_provider
+from app.services.email_service import EmailDeliveryError, build_consent_otp_email, get_email_provider, use_email_company
 from app.services.consent_signer import RESPONSIBLE_ADULT, signer_snapshot_from_instance
 
 
@@ -166,7 +166,8 @@ def request_otp(session: Session, token: str, metadata: RequestMetadata):
     challenge=ConsentOtpChallenge(company_id=access.company_id,access_session_id=access.id,otp_hash=_otp_hash(otp),status="PENDING",recipient_masked=access.recipient_masked,recipient_hash=recipient_hash,request_ip_hash=ip_hash,issued_at=now,expires_at=now+timedelta(minutes=settings.consent_otp_expire_minutes),max_attempts=settings.consent_otp_max_attempts,resend_count=resend,last_sent_at=now)
     session.add(challenge); session.flush()
     try:
-        get_email_provider().send(build_consent_otp_email(email,otp,settings.consent_otp_expire_minutes))
+        with use_email_company(access.company_id):
+            get_email_provider().send(build_consent_otp_email(email,otp,settings.consent_otp_expire_minutes))
     except EmailDeliveryError:
         challenge.status="DELIVERY_FAILED"; _audit(session,access,"CONSENT_OTP_DELIVERY_FAILED",metadata,result="FAILURE"); session.commit(); raise ConsentAccessError("No fue posible enviar el código. Intenta nuevamente más tarde.",503)
     access.status="OTP_PENDING"; access.last_activity_at=now; access.row_version+=1; _audit(session,access,"CONSENT_OTP_REQUESTED",metadata); _audit(session,access,"CONSENT_OTP_DELIVERY_SUCCEEDED",metadata); session.commit()
