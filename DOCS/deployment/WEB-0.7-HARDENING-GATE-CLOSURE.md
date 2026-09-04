@@ -290,3 +290,7 @@ Al migrar a `app.dentiapro.com`, la cookie host-only de `dentiapro.com` no se en
 La corrección diseñada para este hallazgo se documenta en `WEB-0.8-REFRESH-TOKEN-CONCURRENCY.md`. Incluye generaciones firmadas, bloqueo transaccional, una ventana fija de dos segundos para la generación inmediatamente anterior y reintentos frontend acotados.
 
 Las pruebas locales preservan la revocación ante replay verdadero. El gate de este documento no cambia todavía: continúa en `AUTH_CYCLE_FAIL` y `DO_NOT_AUTHORIZE_WEB_1A` hasta desplegar WEB-0.8 y completar la validación manual productiva en múltiples pestañas.
+
+## 11. Seguimiento WEB-0.9
+
+La prueba productiva de WEB-0.8 y su causa raíz final se documentan en `WEB-0.9-AUTH-PERSISTENCE-ROOT-CAUSE.md`. WEB-0.7 mantiene `DO_NOT_AUTHORIZE_WEB_1A` hasta completar el despliegue autorizado y la repetición manual del ciclo multitab.

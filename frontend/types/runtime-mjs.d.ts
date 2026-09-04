@@ -24,10 +24,24 @@ declare module "@/lib/secureClipboard.mjs" {
 }
 
 declare module "@/services/refreshConcurrency.mjs" {
+  export const REFRESH_CROSS_TAB_LOCK_NAME: string;
   export const REFRESH_RACE_ERROR_CODE: string;
   export const REFRESH_RACE_RETRY_DELAYS_MS: readonly number[];
 
   export function isRefreshRaceError(error: unknown): boolean;
+
+  export function runRefreshWithCrossTabLock<T>(
+    operation: () => Promise<T>,
+    options?: {
+      lockManager?: {
+        request<Result>(
+          name: string,
+          options: { mode: "exclusive" },
+          callback: () => Promise<Result>,
+        ): Promise<Result>;
+      } | null;
+    },
+  ): Promise<T>;
 
   export function runRefreshWithRaceRetry<T>(
     operation: () => Promise<T>,

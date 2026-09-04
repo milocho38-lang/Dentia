@@ -85,7 +85,12 @@ def test_normal_refresh_rotates_generation_and_preserves_absolute_expiry(
     login_response, token_0 = _login(api_client, security_world)
     claims_0 = parse_refresh_token(token_0)
     assert claims_0.generation == 0
-    assert "max-age=28800" in login_response.headers["set-cookie"].casefold()
+    set_cookie = login_response.headers["set-cookie"].casefold()
+    assert "max-age=28800" in set_cookie
+    assert "httponly" in set_cookie
+    assert "samesite=lax" in set_cookie
+    assert "path=/api/auth" in set_cookie
+    assert "domain=" not in set_cookie
     original_expiry = _session(db_session, token_0).expires_at
 
     response = _refresh(api_client, token_0)
@@ -246,6 +251,28 @@ def test_grace_does_not_revive_idle_or_absolutely_expired_session(
     db_session.commit()
     assert _refresh(api_client, expired_token_0).status_code == 401
     assert _session(db_session, expired_token_1).revoke_reason == "SESSION_EXPIRED"
+
+
+def test_session_remains_valid_after_seventy_five_seconds_of_inactivity(
+    api_client,
+    db_session,
+    security_world,
+) -> None:
+    _, token_0 = _login(api_client, security_world)
+    response_1 = _refresh(api_client, token_0)
+    assert response_1.status_code == 200, response_1.text
+    token_1 = _response_refresh_token(response_1)
+    auth_session = _session(db_session, token_1)
+    auth_session.last_seen_at = utc_now() - timedelta(seconds=75)
+    db_session.commit()
+
+    response_2 = _refresh(api_client, token_1)
+    assert response_2.status_code == 200, response_2.text
+    token_2 = _response_refresh_token(response_2)
+    auth_session = _session(db_session, token_2)
+    assert auth_session.is_active is True
+    assert auth_session.revoked_at is None
+    assert auth_session.rotation_counter == 2
 
 
 def test_invalid_signature_does_not_revoke_valid_session(

@@ -174,3 +174,9 @@ Hasta esa validación:
 - **AUTH:** pendiente de validación productiva;
 - **SECURITY:** `REPLAY_PROTECTION_PRESERVED` en pruebas locales;
 - **WEB-1A:** `DO_NOT_AUTHORIZE_WEB_1A`.
+
+## 11. Seguimiento WEB-0.9
+
+La validación posterior al despliegue reveló una segunda carrera: varias pestañas podían conservar requests ya despachados con la generación anterior y agotar el retry antes de observar el `Set-Cookie` ganador. La evidencia anonimizada, causa raíz y coordinación frontend resultante se documentan en `WEB-0.9-AUTH-PERSISTENCE-ROOT-CAUSE.md`.
+
+WEB-0.8 conserva íntegramente sus controles backend. El gate productivo sigue pendiente hasta desplegar WEB-0.9 con autorización separada y repetir la prueba manual.
