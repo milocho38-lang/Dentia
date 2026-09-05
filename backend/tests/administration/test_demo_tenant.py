@@ -156,6 +156,7 @@ def test_aurora_create_update_and_reset_are_idempotent(
     actor = require_platform_actor(db_session, security_world.platform_admin.user.id)
     orchestrator = DemoTenantOrchestrator(db_session)
     anchor = date(2026, 8, 3)
+    planned_counts = orchestrator.plan("create", None, apply=False).counts
     created = orchestrator.create(
         actor,
         admin_email="valentina.aurora@example.test",
@@ -164,6 +165,7 @@ def test_aurora_create_update_and_reset_are_idempotent(
         anchor=anchor,
     )
     assert created.found and created.name == DEMO_COMPANY_NAME
+    assert created.counts == planned_counts
     assert created.counts["users"] == 3
     assert created.counts["patients"] == 14
     assert created.counts["followups"] == 17

@@ -1502,7 +1502,7 @@ class DemoTenantOrchestrator:
             "appointments": 37,
             "followups": 17,
             "treatments": 6,
-            "procedures": 10,
+            "procedures": 9,
             "budgets": 6,
             "payments": 2,
             "consents": 4,
