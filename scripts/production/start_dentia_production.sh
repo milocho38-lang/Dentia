@@ -16,4 +16,5 @@ dentia_compose ps
 docker exec "$DENTIA_DB_CONTAINER" pg_isready -U "$DENTIA_DB_USER" >/dev/null || dentia_fail "Database is not ready."
 dentia_wait_http "$DENTIA_PRODUCTION_BACKEND_HEALTH_URL" 20 2 || dentia_fail "Backend healthcheck failed."
 dentia_wait_http "$DENTIA_PRODUCTION_FRONTEND_URL" 20 2 || dentia_fail "Frontend check failed."
+dentia_wait_http "$DENTIA_PRODUCTION_WEBSITE_URL" 20 2 || dentia_fail "Website check failed."
 dentia_info "Production start OK."

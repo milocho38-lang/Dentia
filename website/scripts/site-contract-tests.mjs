@@ -95,5 +95,15 @@ assert.match(read("app/robots.ts"), /siteIsIndexable/);
 assert.match(read("app/sitemap.ts"), /\/producto/);
 assert.match(read("app/globals.css"), /prefers-reduced-motion/);
 
+const nextConfig = read("next.config.ts");
+assert.match(nextConfig, /source: "\/consentimiento\/:path\*"/);
+assert.match(nextConfig, /destination: `\$\{appUrl\}\/consentimiento\/:path\*`/);
+for (const route of ["/login", "/dashboard", "/pacientes/:path*", "/agenda/:path*"]) {
+  assert.ok(nextConfig.includes(`\"${route}\"`), `Missing legacy application redirect ${route}`);
+}
+for (const header of ["Content-Security-Policy", "X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy", "Permissions-Policy"]) {
+  assert.ok(nextConfig.includes(header), `Missing security header ${header}`);
+}
+
 console.log("site-contract-tests OK");
 console.log(`official-screenshots ${expectedAssets.length}/11`);

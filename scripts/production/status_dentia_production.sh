@@ -34,10 +34,10 @@ dentia_info "Docker Compose services"
 dentia_compose ps
 
 printf '\nContainers resource usage:\n'
-docker stats --no-stream "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_BACKEND_CONTAINER" "$DENTIA_DB_CONTAINER" 2>/dev/null || true
+docker stats --no-stream "$DENTIA_WEBSITE_CONTAINER" "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_BACKEND_CONTAINER" "$DENTIA_DB_CONTAINER" 2>/dev/null || true
 
 printf '\nRestart count:\n'
-docker inspect --format '{{.Name}} RestartCount={{.RestartCount}} State={{.State.Status}}' "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_BACKEND_CONTAINER" "$DENTIA_DB_CONTAINER" 2>/dev/null || true
+docker inspect --format '{{.Name}} RestartCount={{.RestartCount}} State={{.State.Status}}' "$DENTIA_WEBSITE_CONTAINER" "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_BACKEND_CONTAINER" "$DENTIA_DB_CONTAINER" 2>/dev/null || true
 
 printf '\nGit:\n'
 git log -1 --oneline || true
@@ -81,6 +81,7 @@ fi
 printf '\nHTTP:\n'
 curl -fsS --max-time 8 "$DENTIA_PRODUCTION_BACKEND_HEALTH_URL" >/dev/null && echo "backend OK $DENTIA_PRODUCTION_BACKEND_HEALTH_URL" || echo "backend FAIL $DENTIA_PRODUCTION_BACKEND_HEALTH_URL"
 curl -fsS --max-time 8 "$DENTIA_PRODUCTION_FRONTEND_URL" >/dev/null && echo "frontend OK $DENTIA_PRODUCTION_FRONTEND_URL" || echo "frontend FAIL $DENTIA_PRODUCTION_FRONTEND_URL"
+curl -fsS --max-time 8 "$DENTIA_PRODUCTION_WEBSITE_URL" >/dev/null && echo "website OK $DENTIA_PRODUCTION_WEBSITE_URL" || echo "website FAIL $DENTIA_PRODUCTION_WEBSITE_URL"
 if [ -n "${DENTIA_DOMAIN_URL:-}" ]; then
   curl -fsS --max-time 8 "$DENTIA_DOMAIN_URL" >/dev/null && echo "domain OK $DENTIA_DOMAIN_URL" || echo "domain FAIL $DENTIA_DOMAIN_URL"
 fi

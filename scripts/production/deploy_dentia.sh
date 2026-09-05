@@ -15,7 +15,7 @@ during deploy; run prepare_dentia_persistent_storage.sh first if needed.
 
 Safe order:
   preflight -> backup + verify -> git pull -> build -> one-off Alembic
-  -> recreate backend/frontend -> healthchecks.
+  -> recreate backend/frontend/website -> healthchecks.
 EOF
 }
 
@@ -93,7 +93,7 @@ dentia_compose run --rm --no-deps "$DENTIA_BACKEND_SERVICE" alembic -c alembic.i
 dentia_info "Verifying Alembic head with the newly built backend image..."
 dentia_compose run --rm --no-deps "$DENTIA_BACKEND_SERVICE" alembic -c alembic.ini current
 
-dentia_info "Recreating backend and frontend only..."
+dentia_info "Recreating backend, frontend and public website..."
 dentia_compose up -d --no-deps "$DENTIA_BACKEND_SERVICE"
 if ! dentia_wait_http "$DENTIA_PRODUCTION_BACKEND_HEALTH_URL" 30 2; then
   dentia_warn "Backend healthcheck failed after backend recreate. Recent backend logs:"
@@ -101,6 +101,7 @@ if ! dentia_wait_http "$DENTIA_PRODUCTION_BACKEND_HEALTH_URL" 30 2; then
   dentia_fail "Deploy failed after backend recreate."
 fi
 dentia_compose up -d --no-deps "$DENTIA_FRONTEND_SERVICE"
+dentia_compose up -d --no-deps "$DENTIA_WEBSITE_SERVICE"
 
 dentia_info "Validating containers..."
 dentia_compose ps
@@ -109,6 +110,12 @@ if ! dentia_wait_http "$DENTIA_PRODUCTION_FRONTEND_URL" 30 2; then
   dentia_warn "Frontend check failed. Recent frontend logs:"
   docker logs --tail 120 "$DENTIA_FRONTEND_CONTAINER" || true
   dentia_fail "Deploy failed after containers started."
+fi
+
+if ! dentia_wait_http "$DENTIA_PRODUCTION_WEBSITE_URL" 30 2; then
+  dentia_warn "Website check failed. Recent website logs:"
+  docker logs --tail 120 "$DENTIA_WEBSITE_CONTAINER" || true
+  dentia_fail "Deploy failed after website recreate."
 fi
 
 if [ -n "${DENTIA_DOMAIN_URL:-}" ]; then

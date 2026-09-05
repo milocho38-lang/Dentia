@@ -104,6 +104,9 @@ required = {
     "BRANDING_STORAGE_DIR",
     "API_PROXY_TARGET",
     "PUBLIC_FRONTEND_URL",
+    "NEXT_PUBLIC_SITE_URL",
+    "NEXT_PUBLIC_APP_URL",
+    "NEXT_PUBLIC_SITE_INDEXABLE",
     "CONSENT_ACCEPTANCE_ENABLED",
     "CONSENT_PUBLIC_COOKIE_SECURE",
     "CONSENT_FINAL_STORAGE_DIR",
@@ -194,6 +197,12 @@ if env["APP_DEBUG"].casefold() != "false":
     raise SystemExit("[dentia][ERROR] APP_DEBUG must be false.")
 if env["PUBLIC_FRONTEND_URL"].rstrip("/") != "https://app.dentiapro.com":
     raise SystemExit("[dentia][ERROR] PUBLIC_FRONTEND_URL must be https://app.dentiapro.com.")
+if env["NEXT_PUBLIC_SITE_URL"].rstrip("/") != "https://dentiapro.com":
+    raise SystemExit("[dentia][ERROR] NEXT_PUBLIC_SITE_URL must be https://dentiapro.com.")
+if env["NEXT_PUBLIC_APP_URL"].rstrip("/") != "https://app.dentiapro.com":
+    raise SystemExit("[dentia][ERROR] NEXT_PUBLIC_APP_URL must be https://app.dentiapro.com.")
+if env["NEXT_PUBLIC_SITE_INDEXABLE"].casefold() != "true":
+    raise SystemExit("[dentia][ERROR] NEXT_PUBLIC_SITE_INDEXABLE must be true for the public website.")
 for key in ("CONSENT_ACCEPTANCE_ENABLED", "CONSENT_PUBLIC_COOKIE_SECURE", "CONSENT_STORAGE_PERSISTENT"):
     if env[key].casefold() != "true":
         raise SystemExit(f"[dentia][ERROR] {key} must be true for clinical consent use.")

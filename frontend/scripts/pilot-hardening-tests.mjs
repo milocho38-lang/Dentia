@@ -51,6 +51,9 @@ function makeEnvContent(overrides = {}) {
     BRANDING_STORAGE_DIR: "/app/storage/branding",
     API_PROXY_TARGET: "http://dentia-backend:8000",
     PUBLIC_FRONTEND_URL: "https://app.dentiapro.com",
+    NEXT_PUBLIC_SITE_URL: "https://dentiapro.com",
+    NEXT_PUBLIC_APP_URL: "https://app.dentiapro.com",
+    NEXT_PUBLIC_SITE_INDEXABLE: "true",
     CONSENT_ACCEPTANCE_ENABLED: "true",
     CONSENT_PUBLIC_COOKIE_SECURE: "true",
     CONSENT_FINAL_STORAGE_DIR: "/app/storage/consents",
@@ -63,9 +66,11 @@ function makeEnvContent(overrides = {}) {
     SMTP_FROM_EMAIL: "consents@dentia.invalid",
     DENTIA_BACKEND_BIND: "8001",
     DENTIA_FRONTEND_BIND: "3001",
+    DENTIA_WEBSITE_BIND: "3010",
     DENTIA_DB_CONTAINER: "dentia-db",
     DENTIA_BACKEND_CONTAINER: "dentia-backend",
     DENTIA_FRONTEND_CONTAINER: "dentia-frontend",
+    DENTIA_WEBSITE_CONTAINER: "dentia-website",
   };
   Object.assign(values, overrides);
   return Object.entries(values)
@@ -124,6 +129,7 @@ const gitPullIndex = indexOfOrThrow(deploy, "git pull --ff-only", "deploy fast-f
 const migrationVerifyIndex = indexOfOrThrow(deploy, "Verifying Alembic head", "deploy verifies Alembic after migration");
 const backendHealthIndex = indexOfOrThrow(deploy, "Backend healthcheck failed after backend recreate", "deploy checks backend health");
 const frontendHealthIndex = indexOfOrThrow(deploy, "Frontend check failed", "deploy checks frontend health");
+const websiteHealthIndex = indexOfOrThrow(deploy, "Website check failed", "deploy checks public website health");
 
 assert.ok(validateIndex < backupIndex, "config validation happens before backup");
 assert.ok(backupIndex < verifyBackupIndex, "backup happens before verification");
@@ -134,6 +140,7 @@ assert.ok(migrationIndex < migrationVerifyIndex, "migration happens before Alemb
 assert.ok(migrationVerifyIndex < recreateIndex, "Alembic verification happens before recreate");
 assert.ok(recreateIndex < backendHealthIndex, "backend healthcheck happens after recreate");
 assert.ok(backendHealthIndex < frontendHealthIndex, "frontend healthcheck happens after backend validation");
+assert.ok(frontendHealthIndex < websiteHealthIndex, "website healthcheck happens after frontend validation");
 assert.doesNotMatch(deploy, /docker exec "\$DENTIA_BACKEND_CONTAINER" alembic/, "deploy no longer migrates inside already recreated backend");
 assert.doesNotMatch(deploy, /dentia_compose up -d\s*(?:\n|$)/, "deploy does not perform full compose recreate");
 assert.doesNotMatch(deploy, /up -d[^\n]*\$DENTIA_DB_SERVICE|up -d[^\n]*dentia-db/, "deploy does not deliberately recreate the DB service");
@@ -147,6 +154,9 @@ assert.match(validator, /Refusing to validate an example env file/, "validator r
 assert.match(validator, /JWT_SECRET is shorter than 32 characters/, "validator checks JWT length");
 assert.match(validator, /DATABASE_URL database does not match POSTGRES_DB/, "validator checks database URL coherence");
 assert.match(validator, /config --quiet/, "validator resolves compose without starting services");
+assert.match(validator, /NEXT_PUBLIC_SITE_URL must be https:\/\/dentiapro\.com/, "validator enforces the public website canonical URL");
+assert.match(validator, /NEXT_PUBLIC_APP_URL must be https:\/\/app\.dentiapro\.com/, "validator enforces the private application URL");
+assert.match(validator, /NEXT_PUBLIC_SITE_INDEXABLE must be true/, "validator enforces production indexing");
 
 assert.match(localStart, /--help/, "local start supports help");
 assert.match(localStop, /dentia_pid_matches/, "local stop validates PID command");
@@ -224,6 +234,21 @@ try {
       "legacy-root-public-url.env",
       { PUBLIC_FRONTEND_URL: "https://dentiapro.com" },
       /PUBLIC_FRONTEND_URL must be https:\/\/app\.dentiapro\.com/,
+    ],
+    [
+      "wrong-site-url.env",
+      { NEXT_PUBLIC_SITE_URL: "https://app.dentiapro.com" },
+      /NEXT_PUBLIC_SITE_URL must be https:\/\/dentiapro\.com/,
+    ],
+    [
+      "wrong-app-url.env",
+      { NEXT_PUBLIC_APP_URL: "https://dentiapro.com" },
+      /NEXT_PUBLIC_APP_URL must be https:\/\/app\.dentiapro\.com/,
+    ],
+    [
+      "indexing-disabled.env",
+      { NEXT_PUBLIC_SITE_INDEXABLE: "false" },
+      /NEXT_PUBLIC_SITE_INDEXABLE must be true/,
     ],
   ];
 

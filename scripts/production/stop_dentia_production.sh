@@ -12,5 +12,5 @@ printf 'This will stop Dentia containers only. It will NOT delete volumes. Type 
 read -r confirmation
 [ "$confirmation" = "STOP-DENTIA" ] || dentia_fail "Cancelled."
 
-docker stop "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_BACKEND_CONTAINER" "$DENTIA_DB_CONTAINER" >/dev/null
+docker stop "$DENTIA_WEBSITE_CONTAINER" "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_BACKEND_CONTAINER" "$DENTIA_DB_CONTAINER" >/dev/null
 dentia_info "Dentia containers stopped. Volumes were not removed."

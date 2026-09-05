@@ -65,6 +65,29 @@ services:
     networks:
       - dentia-network
 
+  dentia-website:
+    build:
+      context: ./website
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://dentiapro.com}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.dentiapro.com}
+        NEXT_PUBLIC_SITE_INDEXABLE: ${NEXT_PUBLIC_SITE_INDEXABLE:-false}
+    container_name: ${DENTIA_WEBSITE_CONTAINER:-dentia-website}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3010
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${DENTIA_WEBSITE_BIND:-3010}:3010"
+    networks:
+      - dentia-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3010/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+
 volumes:
   dentia_db_data:
 
