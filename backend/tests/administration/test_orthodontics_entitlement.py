@@ -51,7 +51,9 @@ def test_authorized_rbac_matrix_has_no_redundant_module_access() -> None:
     assert "orthodontics.assignment.manage" not in platform
     assert {"orthodontics.entitlement.view", "orthodontics.assignment.view", "orthodontics.assignment.manage"} <= administrator
     assert {"orthodontics.entitlement.view", "orthodontics.assignment.view", "orthodontics.assignment.manage"} <= dentist_admin
-    assert not {permission for permission in dentist if permission.startswith("orthodontics.")}
+    assert {permission for permission in dentist if permission.startswith("orthodontics.")} == {
+        "orthodontics.catalog.view"
+    }
     assert not {permission for permission in secretary if permission.startswith("orthodontics.")}
     assert all("orthodontics.module.access" not in role.permission_codes for role in ROLES)
 

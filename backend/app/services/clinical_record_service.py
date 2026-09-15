@@ -895,7 +895,7 @@ def _canonical_evolution_payload(
         }
         for item in _evolution_procedures(session, evolution.id)
     ]
-    return {
+    payload = {
         "id": str(evolution.id),
         "company_id": str(evolution.company_id),
         "patient_id": str(evolution.patient_id),
@@ -928,6 +928,14 @@ def _canonical_evolution_payload(
         "version": evolution.version,
         "procedures": sorted(procedures, key=lambda item: item["procedure_id"]),
     }
+    # Optional clinical extensions contribute to the canonical signature without
+    # making the generic evolution model depend on their implementation details.
+    from app.services.orthodontic_evolution_service import orthodontic_signature_fragment
+
+    orthodontic_fragment = orthodontic_signature_fragment(session, evolution.id)
+    if orthodontic_fragment is not None:
+        payload["orthodontics"] = orthodontic_fragment
+    return payload
 
 
 def _content_hash(payload: dict) -> str:
@@ -1050,6 +1058,8 @@ def create_clinical_evolution(
     patient_id: UUID,
     payload: ClinicalEvolutionCreateRequest,
     metadata: RequestMetadata,
+    *,
+    commit: bool = True,
 ) -> ClinicalEvolutionResponse:
     _require_permission(context, "clinical_evolutions.create")
     _require_permission(context, "clinical_records.view_sensitive")
@@ -1113,8 +1123,11 @@ def create_clinical_evolution(
         patient_id=patient_id,
         detail={"version": evolution.version, "status": evolution.status},
     )
-    session.commit()
-    session.refresh(evolution)
+    if commit:
+        session.commit()
+        session.refresh(evolution)
+    else:
+        session.flush()
     return _evolution_response(session, evolution)
 
 
@@ -1148,11 +1161,25 @@ def update_clinical_evolution_draft(
     evolution_id: UUID,
     payload: ClinicalEvolutionDraftUpdateRequest,
     metadata: RequestMetadata,
+    *,
+    commit: bool = True,
+    allow_orthodontic_extension: bool = False,
 ) -> ClinicalEvolutionResponse:
     _require_permission(context, "clinical_evolutions.update_draft")
     _require_permission(context, "clinical_records.view_sensitive")
     evolution = _get_evolution(session, context, evolution_id, lock=True)
     _ensure_evolution_access(context, evolution)
+    if not allow_orthodontic_extension:
+        from app.models.orthodontics import OrthodonticEvolution
+
+        if session.scalar(
+            select(OrthodonticEvolution.id).where(
+                OrthodonticEvolution.clinical_evolution_id == evolution.id
+            )
+        ) is not None:
+            raise ClinicalRecordError(
+                "Edita esta evolución desde el módulo de Ortodoncia.", 409
+            )
     if evolution.status != "DRAFT":
         raise ClinicalRecordError("Una evolución firmada no puede editarse.", 409)
     if evolution.version != payload.version:
@@ -1176,8 +1203,11 @@ def update_clinical_evolution_draft(
         patient_id=evolution.patient_id,
         detail={"version": evolution.version, "status": evolution.status},
     )
-    session.commit()
-    session.refresh(evolution)
+    if commit:
+        session.commit()
+        session.refresh(evolution)
+    else:
+        session.flush()
     return _evolution_response(session, evolution)
 
 
@@ -1360,11 +1390,25 @@ def sign_clinical_evolution(
     evolution_id: UUID,
     payload: ClinicalEvolutionSignRequest,
     metadata: RequestMetadata,
+    *,
+    commit: bool = True,
+    allow_orthodontic_extension: bool = False,
 ) -> ClinicalEvolutionResponse:
     _require_permission(context, "clinical_evolutions.sign")
     _require_permission(context, "clinical_records.view_sensitive")
     evolution = _get_evolution(session, context, evolution_id, lock=True)
     _ensure_evolution_access(context, evolution)
+    if not allow_orthodontic_extension:
+        from app.models.orthodontics import OrthodonticEvolution
+
+        if session.scalar(
+            select(OrthodonticEvolution.id).where(
+                OrthodonticEvolution.clinical_evolution_id == evolution.id
+            )
+        ) is not None:
+            raise ClinicalRecordError(
+                "Firma esta evolución desde el módulo de Ortodoncia.", 409
+            )
     if evolution.status != "DRAFT":
         raise ClinicalRecordError("La evolución ya está firmada o cerrada.", 409)
     if evolution.version != payload.version:
@@ -1374,6 +1418,9 @@ def sign_clinical_evolution(
         )
     if not payload.confirm_complete:
         raise ClinicalRecordError("Debes confirmar que el registro está completo.", 422)
+    from app.services.orthodontic_evolution_service import prepare_orthodontic_extension_for_sign
+
+    prepare_orthodontic_extension_for_sign(session, context, evolution)
     _validate_evolution_ready_to_sign(evolution)
     confirmed_odontogram_event_ids = _confirm_reviewed_odontogram_events_for_evolution(
         session,
@@ -1389,6 +1436,13 @@ def sign_clinical_evolution(
     evolution.content_hash = _content_hash(_canonical_evolution_payload(session, evolution))
     record = session.get(ClinicalRecord, evolution.clinical_record_id)
     if record is not None:
+        from app.models.orthodontics import OrthodonticEvolution
+
+        is_orthodontic = session.scalar(
+            select(OrthodonticEvolution.id).where(
+                OrthodonticEvolution.clinical_evolution_id == evolution.id
+            )
+        ) is not None
         _add_timeline_event(
             session,
             context,
@@ -1396,12 +1450,19 @@ def sign_clinical_evolution(
             event_type="CLINICAL_EVOLUTION_SIGNED",
             entity_type="clinical_evolution",
             entity_id=evolution.id,
-            title="Evolución clínica firmada",
+            title=(
+                "Evolución de Ortodoncia firmada"
+                if is_orthodontic
+                else "Evolución clínica firmada"
+            ),
             summary=_evolution_summary(evolution),
             clinical_date=evolution.attended_at,
             site_id=evolution.site_id,
             dentist_id=evolution.dentist_id,
-            metadata={"hash": evolution.content_hash},
+            metadata={
+                "hash": evolution.content_hash,
+                **({"clinical_module": "ORTHODONTICS"} if is_orthodontic else {}),
+            },
         )
     _audit(
         session,
@@ -1420,8 +1481,11 @@ def sign_clinical_evolution(
             ],
         },
     )
-    session.commit()
-    session.refresh(evolution)
+    if commit:
+        session.commit()
+        session.refresh(evolution)
+    else:
+        session.flush()
     return _evolution_response(session, evolution)
 
 
@@ -1450,6 +1514,15 @@ def create_evolution_addendum(
     _ensure_evolution_access(context, evolution)
     if evolution.status != "SIGNED":
         raise ClinicalRecordError("Solo se pueden agregar adendas a evoluciones firmadas.", 409)
+    from app.services.orthodontic_evolution_service import (
+        require_orthodontic_addendum_access,
+    )
+    from app.services.orthodontics_entitlement_service import OrthodonticsError
+
+    try:
+        require_orthodontic_addendum_access(session, context, evolution.id)
+    except OrthodonticsError as exc:
+        raise ClinicalRecordError(str(exc), exc.status_code) from exc
     site = _require_site_for_action(session, context, payload.site_id or evolution.site_id)
     dentist = _require_dentist_for_action(session, context, payload.dentist_id or evolution.dentist_id)
     _ensure_dentist_site(session, dentist, site.id)

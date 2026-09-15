@@ -153,6 +153,8 @@ PERMISSIONS = (
     PermissionDefinition("orthodontics.entitlement.manage", "Administrar habilitación de Ortodoncia", "orthodontics", "Habilitar, deshabilitar y ajustar los cupos comerciales de Ortodoncia."),
     PermissionDefinition("orthodontics.assignment.view", "Ver asignaciones de Ortodoncia", "orthodontics", "Consultar odontólogos y cupos asignados al módulo de Ortodoncia."),
     PermissionDefinition("orthodontics.assignment.manage", "Administrar asignaciones de Ortodoncia", "orthodontics", "Asignar y retirar cupos de Ortodoncia a odontólogos de la empresa."),
+    PermissionDefinition("orthodontics.catalog.view", "Ver catálogos de Ortodoncia", "orthodontics", "Consultar opciones clínicas base y propias de la empresa."),
+    PermissionDefinition("orthodontics.catalog.manage", "Administrar catálogos de Ortodoncia", "orthodontics", "Crear y retirar opciones clínicas propias de la empresa."),
     PermissionDefinition("platform.companies.view", "Ver empresas de plataforma", "platform", "Consultar empresas administradas por la plataforma."),
     PermissionDefinition("platform.companies.manage", "Administrar empresas de plataforma", "platform", "Crear, activar e inactivar empresas desde plataforma."),
 )
@@ -356,6 +358,7 @@ DENTIST_PERMISSIONS = frozenset(
         "consent.acceptance.view_evidence",
         "consent.final_document.read",
         "consent.final_document.download",
+        "orthodontics.catalog.view",
     }
 )
 
@@ -431,6 +434,7 @@ DENTIST_ADMIN_PERMISSIONS = SECRETARY_PERMISSIONS | DENTIST_PERMISSIONS | frozen
         "orthodontics.entitlement.view",
         "orthodontics.assignment.view",
         "orthodontics.assignment.manage",
+        "orthodontics.catalog.manage",
     }
 )
 

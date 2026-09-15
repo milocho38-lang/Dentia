@@ -13,8 +13,10 @@ export interface OrthodonticCase {
   row_version: number; created_at: string; updated_at: string;
 }
 export interface OrthodonticSummary {
-  case: OrthodonticCase; last_visit: null; what_was_done: null;
-  next_session_instructions: null; next_clinical_control: null; active_alerts: unknown[];
+  case: OrthodonticCase; last_visit: string | null; last_visit_professional: string | null;
+  what_was_done: string | null; next_session_instructions: string | null;
+  next_clinical_control: string | null; suggested_next_control_date: string | null;
+  active_alerts: string[];
   next_appointment: null | { id: string; starts_at: string; ends_at: string; site_id: string; dentist_id: string; reason: string; status: string };
 }
 export interface OrthodonticPatientWorkspace {

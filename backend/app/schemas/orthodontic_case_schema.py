@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,11 +74,13 @@ class OrthodonticCaseResponse(BaseModel):
 
 class OrthodonticSummaryResponse(BaseModel):
     case: OrthodonticCaseResponse
-    last_visit: None = None
-    what_was_done: None = None
-    next_session_instructions: None = None
-    next_clinical_control: None = None
-    active_alerts: list[dict[str, object]] = Field(default_factory=list)
+    last_visit: datetime | None = None
+    last_visit_professional: str | None = None
+    what_was_done: str | None = None
+    next_session_instructions: str | None = None
+    next_clinical_control: str | None = None
+    suggested_next_control_date: date | None = None
+    active_alerts: list[str] = Field(default_factory=list)
     next_appointment: OrthodonticNextAppointment | None = None
 
 

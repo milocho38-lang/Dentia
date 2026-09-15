@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session, aliased
 
 from app.models.agenda import Appointment, Dentist, DentistSite, Patient
 from app.models.audit_event import AuditEvent
-from app.models.clinical_record import ClinicalRecord, ClinicalTimelineEvent
+from app.models.clinical_record import ClinicalEvolution, ClinicalRecord, ClinicalTimelineEvent
 from app.models.company import Company
 from app.models.orthodontics import (
     OrthodonticCase,
+    OrthodonticEvolution,
     OrthodonticsDentistAssignment,
 )
 from app.models.user import User
@@ -230,8 +231,37 @@ def _next_appointment(
 
 
 def _summary(session: Session, case: OrthodonticCase) -> OrthodonticSummaryResponse:
+    latest = session.execute(
+        select(OrthodonticEvolution, ClinicalEvolution, Dentist.name)
+        .join(
+            ClinicalEvolution,
+            ClinicalEvolution.id == OrthodonticEvolution.clinical_evolution_id,
+        )
+        .join(Dentist, Dentist.id == ClinicalEvolution.dentist_id)
+        .where(
+            OrthodonticEvolution.company_id == case.company_id,
+            OrthodonticEvolution.orthodontic_case_id == case.id,
+            ClinicalEvolution.status == "SIGNED",
+        )
+        .order_by(ClinicalEvolution.attended_at.desc(), OrthodonticEvolution.id.desc())
+        .limit(1)
+    ).first()
+    orthodontic = latest[0] if latest else None
+    clinical = latest[1] if latest else None
+    professional_name = latest[2] if latest else None
     return OrthodonticSummaryResponse(
         case=_case_response(session, case),
+        last_visit=clinical.attended_at if clinical else None,
+        last_visit_professional=professional_name,
+        what_was_done=clinical.performed_procedure if clinical else None,
+        next_session_instructions=(orthodontic.next_session_instructions if orthodontic else None),
+        next_clinical_control=(orthodontic.next_control_label if orthodontic else None),
+        suggested_next_control_date=(orthodontic.suggested_next_control_date if orthodontic else None),
+        active_alerts=(
+            [orthodontic.alert_text]
+            if orthodontic and orthodontic.alert_active and orthodontic.alert_text
+            else []
+        ),
         next_appointment=_next_appointment(session, case),
     )
 

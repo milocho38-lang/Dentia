@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     text,
     true,
 )
@@ -183,6 +185,11 @@ class OrthodonticCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "status IN ('DRAFT', 'ACTIVE', 'SUSPENDED', 'COMPLETED')",
             name="orthodontic_case_status",
         ),
+        UniqueConstraint(
+            "id",
+            "empresa_id",
+            name="uq_orthodontic_cases_id_company",
+        ),
         CheckConstraint(
             "row_version >= 1",
             name="orthodontic_case_row_version_positive",
@@ -286,3 +293,187 @@ class OrthodonticCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("usuarios.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+
+class OrthodonticCatalogOption(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "orthodontic_catalog_options"
+    __table_args__ = (
+        CheckConstraint(
+            "catalog_type IN ('ARCH_MATERIAL', 'ARCH_SIZE', 'CONTROL_INTERVAL')",
+            name="orthodontic_catalog_option_type",
+        ),
+        CheckConstraint(
+            "scope IN ('DENTIA_BASE', 'TENANT')",
+            name="orthodontic_catalog_option_scope",
+        ),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'RETIRED')",
+            name="orthodontic_catalog_option_status",
+        ),
+        CheckConstraint(
+            "(scope = 'DENTIA_BASE' AND empresa_id IS NULL) OR "
+            "(scope = 'TENANT' AND empresa_id IS NOT NULL)",
+            name="orthodontic_catalog_option_scope_company",
+        ),
+        CheckConstraint(
+            "(catalog_type = 'CONTROL_INTERVAL' AND interval_value IS NOT NULL "
+            "AND interval_unit IN ('WEEK', 'MONTH')) OR "
+            "(catalog_type <> 'CONTROL_INTERVAL' AND interval_value IS NULL "
+            "AND interval_unit IS NULL)",
+            name="orthodontic_catalog_option_interval",
+        ),
+        Index(
+            "uq_orthodontic_catalog_base_code",
+            "catalog_type",
+            "code",
+            unique=True,
+            postgresql_where=text("scope = 'DENTIA_BASE'"),
+        ),
+        Index(
+            "uq_orthodontic_catalog_tenant_code",
+            "empresa_id",
+            "catalog_type",
+            "code",
+            unique=True,
+            postgresql_where=text("scope = 'TENANT'"),
+        ),
+        Index(
+            "ix_orthodontic_catalog_visible",
+            "empresa_id",
+            "catalog_type",
+            "status",
+        ),
+    )
+
+    company_id: Mapped[UUID | None] = mapped_column(
+        "empresa_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("empresas.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    catalog_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    scope: Mapped[str] = mapped_column(String(20), nullable=False)
+    code: Mapped[str] = mapped_column(String(80), nullable=False)
+    label: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ACTIVE", server_default="ACTIVE"
+    )
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    interval_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    interval_unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retired_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class OrthodonticEvolution(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "orthodontic_evolutions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["orthodontic_case_id", "empresa_id"],
+            ["orthodontic_cases.id", "orthodontic_cases.empresa_id"],
+            name="fk_orthodontic_evolution_case_company",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "clinical_evolution_id",
+            name="uq_orthodontic_evolution_clinical_evolution",
+        ),
+        CheckConstraint("row_version >= 1", name="orthodontic_evolution_row_version_positive"),
+        CheckConstraint(
+            "next_control_unit IS NULL OR next_control_unit IN ('WEEK', 'MONTH')",
+            name="orthodontic_evolution_control_unit",
+        ),
+        Index(
+            "ix_orthodontic_evolutions_case_created",
+            "empresa_id",
+            "orthodontic_case_id",
+            "created_at",
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column("empresa_id", PGUUID(as_uuid=True), nullable=False)
+    orthodontic_case_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    clinical_evolution_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("evoluciones_clinicas.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    schema_version: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ORT3_V1", server_default="ORT3_V1"
+    )
+    row_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    upper_material_option_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orthodontic_catalog_options.id", ondelete="RESTRICT")
+    )
+    upper_material_code: Mapped[str | None] = mapped_column(String(80))
+    upper_material_label: Mapped[str | None] = mapped_column(String(160))
+    upper_size_option_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orthodontic_catalog_options.id", ondelete="RESTRICT")
+    )
+    upper_size_code: Mapped[str | None] = mapped_column(String(80))
+    upper_size_label: Mapped[str | None] = mapped_column(String(160))
+    lower_material_option_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orthodontic_catalog_options.id", ondelete="RESTRICT")
+    )
+    lower_material_code: Mapped[str | None] = mapped_column(String(80))
+    lower_material_label: Mapped[str | None] = mapped_column(String(160))
+    lower_size_option_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orthodontic_catalog_options.id", ondelete="RESTRICT")
+    )
+    lower_size_code: Mapped[str | None] = mapped_column(String(80))
+    lower_size_label: Mapped[str | None] = mapped_column(String(160))
+    upper_aligner_note: Mapped[str | None] = mapped_column(String(500))
+    lower_aligner_note: Mapped[str | None] = mapped_column(String(500))
+    elastic_type: Mapped[str | None] = mapped_column(String(500))
+    elastic_configuration: Mapped[str | None] = mapped_column(String(1000))
+    next_session_instructions: Mapped[str | None] = mapped_column(Text)
+    next_control_option_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orthodontic_catalog_options.id", ondelete="RESTRICT")
+    )
+    next_control_code: Mapped[str | None] = mapped_column(String(80))
+    next_control_label: Mapped[str | None] = mapped_column(String(160))
+    next_control_value: Mapped[int | None] = mapped_column(Integer)
+    next_control_unit: Mapped[str | None] = mapped_column(String(20))
+    suggested_next_control_date: Mapped[date | None] = mapped_column(Date)
+    alert_text: Mapped[str | None] = mapped_column(String(2000))
+    alert_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    orthodontic_payload_hash: Mapped[str | None] = mapped_column(String(128))
+
+
+class OrthodonticEvolutionMiniScrew(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "orthodontic_evolution_mini_screws"
+    __table_args__ = (
+        CheckConstraint(
+            "screw_type IN ('SELF_TAPPING', 'SELF_DRILLING')",
+            name="orthodontic_mini_screw_type",
+        ),
+        CheckConstraint(
+            "location IN ('INTERRADICULAR', 'PALATAL', 'RETROMOLAR', 'INFRAZYGOMATIC_OR_ANTERIOR_ALVEOLAR')",
+            name="orthodontic_mini_screw_location",
+        ),
+        CheckConstraint(
+            "material IN ('TITANIUM', 'STEEL')",
+            name="orthodontic_mini_screw_material",
+        ),
+        Index("ix_orthodontic_mini_screws_evolution", "orthodontic_evolution_id", "sort_order"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        "empresa_id", PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False
+    )
+    orthodontic_evolution_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orthodontic_evolutions.id", ondelete="RESTRICT"), nullable=False
+    )
+    screw_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    location: Mapped[str] = mapped_column(String(60), nullable=False)
+    material: Mapped[str] = mapped_column(String(30), nullable=False)
+    measurement: Mapped[str] = mapped_column(String(160), nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(1000))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
