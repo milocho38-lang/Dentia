@@ -51,6 +51,9 @@ from app.schemas.user_schema import (
 )
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.site_access_service import authorized_sites
+from app.services.orthodontics_entitlement_service import (
+    revoke_assignment_for_inactive_dentist,
+)
 from app.services.tenant_dentist_quota import (
     TenantDentistLimitError,
     deactivate_user_dentist_profile,
@@ -736,17 +739,37 @@ def change_status(
                 actor_id=context.user.id,
             )
         else:
-            deactivate_user_dentist_profile(
+            dentist = deactivate_user_dentist_profile(
                 session,
                 company_id=target.company_id,
                 user_id=target.id,
             )
+            if dentist:
+                revoke_assignment_for_inactive_dentist(
+                    session,
+                    company_id=target.company_id,
+                    dentist_id=dentist.id,
+                    actor_user_id=context.user.id,
+                    auth_session_id=context.auth_session.id,
+                    metadata=metadata,
+                    reason="USER_WITHOUT_DENTIST_CAPABILITY",
+                )
     else:
-        deactivate_user_dentist_profile(
+        dentist = deactivate_user_dentist_profile(
             session,
             company_id=target.company_id,
             user_id=target.id,
         )
+        if dentist:
+            revoke_assignment_for_inactive_dentist(
+                session,
+                company_id=target.company_id,
+                dentist_id=dentist.id,
+                actor_user_id=context.user.id,
+                auth_session_id=context.auth_session.id,
+                metadata=metadata,
+                reason=f"USER_{new_status.upper()}",
+            )
     target.status = new_status
     target.is_active = new_status != "Inactivo"
     revoked = 0
@@ -909,6 +932,16 @@ def assign_roles(
             company_id=target.company_id,
             user_id=target.id,
         )
+        if dentist_after:
+            revoke_assignment_for_inactive_dentist(
+                session,
+                company_id=target.company_id,
+                dentist_id=dentist_after.id,
+                actor_user_id=context.user.id,
+                auth_session_id=context.auth_session.id,
+                metadata=metadata,
+                reason="DENTIST_CAPABILITY_REMOVED",
+            )
     revoked = _invalidate_access(
         session,
         target=target,

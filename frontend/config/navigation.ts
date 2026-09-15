@@ -96,4 +96,10 @@ export const navigationItems: NavigationItem[] = [
     permission: "users.view",
     section: "Configuración",
   },
+  {
+    label: "Ortodoncia",
+    href: "/configuracion/ortodoncia",
+    permission: "orthodontics.assignment.view",
+    section: "Configuración",
+  },
 ];

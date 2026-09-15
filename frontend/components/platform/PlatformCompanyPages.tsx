@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert } from "@/components/shared/Alert";
 import { Spinner } from "@/components/shared/Spinner";
+import { PlatformOrthodonticsEntitlementCard } from "@/components/orthodontics/PlatformOrthodonticsEntitlementCard";
 import {
   createPlatformCompany,
   deactivatePlatformCompany,
@@ -432,6 +433,7 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
           {savingLimit ? "Guardando…" : "Actualizar límite"}
         </button>
       </form>
+      <PlatformOrthodonticsEntitlementCard companyId={company.id} />
       <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
         <h2 className="font-black">Datos empresa</h2>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2">

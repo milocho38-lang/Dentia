@@ -205,6 +205,11 @@ class Dentist(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
             "usuario_id",
             name="uq_odontologos_empresa_usuario",
         ),
+        UniqueConstraint(
+            "id",
+            "empresa_id",
+            name="uq_odontologos_id_empresa",
+        ),
     )
 
     company_id: Mapped[UUID] = mapped_column(

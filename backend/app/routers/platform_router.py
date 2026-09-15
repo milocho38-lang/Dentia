@@ -17,6 +17,10 @@ from app.schemas.platform_schema import (
     PlatformCompanyDentistLimitUpdateRequest,
     PlatformCompanyDentistLimitUpdateResponse,
 )
+from app.schemas.orthodontics_schema import (
+    OrthodonticsEntitlementResponse,
+    OrthodonticsEntitlementUpdateRequest,
+)
 from app.services.auth_service import AuthContext
 from app.services.platform_service import (
     PlatformError,
@@ -27,6 +31,11 @@ from app.services.platform_service import (
     update_platform_company_user_roles,
     update_platform_company_dentist_limit,
 )
+from app.services.orthodontics_entitlement_service import (
+    OrthodonticsError,
+    get_platform_entitlement,
+    update_platform_entitlement,
+)
 
 
 router = APIRouter(prefix="/api/platform", tags=["Platform"])
@@ -34,6 +43,61 @@ router = APIRouter(prefix="/api/platform", tags=["Platform"])
 
 def handle(exc: PlatformError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=str(exc))
+
+
+def handle_orthodontics(exc: OrthodonticsError) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={"code": exc.code, "message": str(exc)},
+    )
+
+
+@router.get(
+    "/companies/{company_id}/orthodontics-entitlement",
+    response_model=OrthodonticsEntitlementResponse,
+)
+def company_orthodontics_entitlement_endpoint(
+    company_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
+    _platform_context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.view"))
+    ],
+    _orthodontics_context: Annotated[
+        AuthContext, Depends(require_permission("orthodontics.entitlement.view"))
+    ],
+) -> OrthodonticsEntitlementResponse:
+    try:
+        return get_platform_entitlement(session, company_id)
+    except OrthodonticsError as exc:
+        raise handle_orthodontics(exc)
+
+
+@router.put(
+    "/companies/{company_id}/orthodontics-entitlement",
+    response_model=OrthodonticsEntitlementResponse,
+)
+def update_company_orthodontics_entitlement_endpoint(
+    company_id: UUID,
+    payload: OrthodonticsEntitlementUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+    _orthodontics_context: Annotated[
+        AuthContext, Depends(require_permission("orthodontics.entitlement.manage"))
+    ],
+) -> OrthodonticsEntitlementResponse:
+    try:
+        return update_platform_entitlement(
+            session,
+            context,
+            company_id,
+            payload,
+            get_request_metadata(request),
+        )
+    except OrthodonticsError as exc:
+        raise handle_orthodontics(exc)
 
 
 @router.get("/companies", response_model=PlatformCompanyListResponse)

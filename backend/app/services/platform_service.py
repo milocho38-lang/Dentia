@@ -40,6 +40,9 @@ from app.schemas.platform_schema import (
 from app.services.agenda_service import ensure_agenda_seed_data
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.organization_service import normalize_tax_id
+from app.services.orthodontics_entitlement_service import (
+    revoke_assignment_for_inactive_dentist,
+)
 from app.services.tenant_dentist_quota import (
     TenantDentistLimitError,
     active_dentist_count,
@@ -777,6 +780,22 @@ def update_platform_company_user_roles(
             session,
             company_id=company.id,
             user_id=target.id,
+        )
+    if dentist and not (
+        has_dentist_capability
+        and target.status == "Activo"
+        and target.is_active
+        and dentist.status == "Activo"
+        and dentist.is_active
+    ):
+        revoke_assignment_for_inactive_dentist(
+            session,
+            company_id=company.id,
+            dentist_id=dentist.id,
+            actor_user_id=context.user.id,
+            auth_session_id=context.auth_session.id,
+            metadata=metadata,
+            reason="PLATFORM_USER_DENTIST_ACCESS_REMOVED",
         )
     _audit(
         session,

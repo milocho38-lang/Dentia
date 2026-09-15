@@ -1,0 +1,8 @@
+import { apiRequest } from "@/services/apiClient";
+import type { OrthodonticsAssignmentAction, OrthodonticsAssignmentList, OrthodonticsEntitlement } from "@/types/orthodontics";
+
+export const getOrthodonticsAssignments = () => apiRequest<OrthodonticsAssignmentList>("/api/orthodontics/assignments");
+export const assignOrthodonticsDentist = (dentistId: string) => apiRequest<OrthodonticsAssignmentAction>("/api/orthodontics/assignments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dentist_id: dentistId }) });
+export const revokeOrthodonticsAssignment = (assignmentId: string) => apiRequest<OrthodonticsAssignmentAction>(`/api/orthodontics/assignments/${assignmentId}/revoke`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: "Retirado desde Configuración" }) });
+export const getPlatformOrthodonticsEntitlement = (companyId: string) => apiRequest<OrthodonticsEntitlement>(`/api/platform/companies/${companyId}/orthodontics-entitlement`);
+export const updatePlatformOrthodonticsEntitlement = (companyId: string, enabled: boolean, seatLimit: number) => apiRequest<OrthodonticsEntitlement>(`/api/platform/companies/${companyId}/orthodontics-entitlement`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled, seat_limit: seatLimit }) });

@@ -62,6 +62,10 @@ from app.models.odontogram import (
     OdontogramEvent,
     OdontogramEventDetail,
 )
+from app.models.orthodontics import (
+    OrthodonticsDentistAssignment,
+    OrthodonticsEntitlement,
+)
 from app.models.permission import Permission
 from app.models.role import Role
 from app.models.site import Site
@@ -129,6 +133,8 @@ __all__ = [
     "OdontogramCatalogItem",
     "OdontogramEvent",
     "OdontogramEventDetail",
+    "OrthodonticsDentistAssignment",
+    "OrthodonticsEntitlement",
     "Permission",
     "Prescription",
     "PrescriptionItem",

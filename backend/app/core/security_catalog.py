@@ -149,6 +149,10 @@ PERMISSIONS = (
     PermissionDefinition("reports.clinical_aggregate", "Ver agregados clínicos", "reports", "Consultar métricas clínicas agregadas sin contenido sensible individual."),
     PermissionDefinition("reports.cross_site", "Ver reportes multisede", "reports", "Consultar reportes de todas las sedes autorizadas."),
     PermissionDefinition("reports.own_scope", "Ver reportes propios", "reports", "Consultar reportes limitados al alcance propio del usuario."),
+    PermissionDefinition("orthodontics.entitlement.view", "Ver habilitación de Ortodoncia", "orthodontics", "Consultar la habilitación y los cupos de Ortodoncia de una empresa."),
+    PermissionDefinition("orthodontics.entitlement.manage", "Administrar habilitación de Ortodoncia", "orthodontics", "Habilitar, deshabilitar y ajustar los cupos comerciales de Ortodoncia."),
+    PermissionDefinition("orthodontics.assignment.view", "Ver asignaciones de Ortodoncia", "orthodontics", "Consultar odontólogos y cupos asignados al módulo de Ortodoncia."),
+    PermissionDefinition("orthodontics.assignment.manage", "Administrar asignaciones de Ortodoncia", "orthodontics", "Asignar y retirar cupos de Ortodoncia a odontólogos de la empresa."),
     PermissionDefinition("platform.companies.view", "Ver empresas de plataforma", "platform", "Consultar empresas administradas por la plataforma."),
     PermissionDefinition("platform.companies.manage", "Administrar empresas de plataforma", "platform", "Crear, activar e inactivar empresas desde plataforma."),
 )
@@ -159,6 +163,7 @@ PLATFORM_PERMISSION_CODES = frozenset(
         "platform.companies.view",
         "platform.companies.manage",
         "consent.library.manage",
+        "orthodontics.entitlement.manage",
     }
 )
 CLINICAL_SENSITIVE_PERMISSION_CODES = frozenset(
@@ -225,7 +230,9 @@ DENTIST_IDENTITY_PERMISSION_CODES = frozenset(
 CLINIC_ADMIN_PERMISSION_CODES = (
     ALL_PERMISSION_CODES - PLATFORM_PERMISSION_CODES - CLINICAL_SENSITIVE_PERMISSION_CODES
 )
-PLATFORM_ADMIN_PERMISSIONS = PLATFORM_PERMISSION_CODES | frozenset({"consent.library.read"})
+PLATFORM_ADMIN_PERMISSIONS = PLATFORM_PERMISSION_CODES | frozenset(
+    {"consent.library.read", "orthodontics.entitlement.view"}
+)
 
 SECRETARY_PERMISSIONS = frozenset(
     {
@@ -421,6 +428,9 @@ DENTIST_ADMIN_PERMISSIONS = SECRETARY_PERMISSIONS | DENTIST_PERMISSIONS | frozen
         "consent.paper.record_signed",
         "consent.paper.upload",
         "consent.paper.finalize",
+        "orthodontics.entitlement.view",
+        "orthodontics.assignment.view",
+        "orthodontics.assignment.manage",
     }
 )
 
