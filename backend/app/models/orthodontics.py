@@ -17,6 +17,7 @@ from sqlalchemy import (
     text,
     true,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -292,6 +293,142 @@ class OrthodonticCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         PGUUID(as_uuid=True),
         ForeignKey("usuarios.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+
+class OrthodonticClinicalRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "orthodontic_clinical_records"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["orthodontic_case_id", "empresa_id"],
+            ["orthodontic_cases.id", "orthodontic_cases.empresa_id"],
+            name="fk_orthodontic_record_case_company",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "orthodontic_case_id",
+            name="uq_orthodontic_record_case",
+        ),
+        UniqueConstraint(
+            "id",
+            "empresa_id",
+            name="uq_orthodontic_records_id_company",
+        ),
+        Index(
+            "ix_orthodontic_records_patient",
+            "empresa_id",
+            "paciente_id",
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        "empresa_id", PGUUID(as_uuid=True), nullable=False
+    )
+    patient_id: Mapped[UUID] = mapped_column(
+        "paciente_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("pacientes.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    orthodontic_case_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), nullable=False
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+
+class OrthodonticClinicalRecordVersion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "orthodontic_clinical_record_versions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["record_id", "empresa_id"],
+            ["orthodontic_clinical_records.id", "orthodontic_clinical_records.empresa_id"],
+            name="fk_orthodontic_record_version_record_company",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "record_id",
+            "version_number",
+            name="uq_orthodontic_record_version_number",
+        ),
+        CheckConstraint(
+            "status IN ('DRAFT', 'FINALIZED')",
+            name="orthodontic_record_version_status",
+        ),
+        CheckConstraint(
+            "version_number >= 1 AND row_version >= 1",
+            name="orthodontic_record_version_positive_versions",
+        ),
+        CheckConstraint(
+            "(status = 'DRAFT' AND finalized_at IS NULL "
+            "AND finalized_by_user_id IS NULL AND content_hash IS NULL "
+            "AND content_snapshot IS NULL) OR "
+            "(status = 'FINALIZED' AND finalized_at IS NOT NULL "
+            "AND finalized_by_user_id IS NOT NULL AND content_hash IS NOT NULL "
+            "AND content_snapshot IS NOT NULL)",
+            name="orthodontic_record_version_finalization_state",
+        ),
+        Index(
+            "uq_orthodontic_record_single_draft",
+            "record_id",
+            unique=True,
+            postgresql_where=text("status = 'DRAFT'"),
+        ),
+        Index(
+            "ix_orthodontic_record_versions_history",
+            "empresa_id",
+            "record_id",
+            "version_number",
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        "empresa_id", PGUUID(as_uuid=True), nullable=False
+    )
+    record_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="DRAFT", server_default="DRAFT"
+    )
+    schema_version: Mapped[str] = mapped_column(String(60), nullable=False)
+    row_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    content: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    schema_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    content_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    based_on_version_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("orthodontic_clinical_record_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    clinical_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    timezone_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    updated_by_user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    finalized_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    finalized_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

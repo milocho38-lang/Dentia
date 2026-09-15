@@ -64,6 +64,8 @@ from app.models.odontogram import (
 )
 from app.models.orthodontics import (
     OrthodonticCase,
+    OrthodonticClinicalRecord,
+    OrthodonticClinicalRecordVersion,
     OrthodonticCatalogOption,
     OrthodonticEvolution,
     OrthodonticEvolutionMiniScrew,
@@ -139,6 +141,8 @@ __all__ = [
     "OdontogramEventDetail",
     "OrthodonticsDentistAssignment",
     "OrthodonticCase",
+    "OrthodonticClinicalRecord",
+    "OrthodonticClinicalRecordVersion",
     "OrthodonticCatalogOption",
     "OrthodonticEvolution",
     "OrthodonticEvolutionMiniScrew",

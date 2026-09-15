@@ -30,8 +30,10 @@ from app.schemas.orthodontic_case_schema import (
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.orthodontics_entitlement_service import (
     OrthodonticsError,
+    orthodontics_historical_read_allowed,
     require_assigned_orthodontist,
     require_orthodontics_clinical_access,
+    resolve_orthodontics_access,
 )
 
 
@@ -306,7 +308,6 @@ def get_patient_orthodontics(
     context: AuthContext,
     patient_id: UUID,
 ) -> OrthodonticPatientWorkspaceResponse:
-    access = require_orthodontics_clinical_access(session, context)
     _patient(session, context, patient_id)
     cases = list(
         session.scalars(
@@ -320,6 +321,16 @@ def get_patient_orthodontics(
     )
     active = next((item for item in cases if item.status in OPEN_STATUSES), None)
     historical = [item for item in cases if item.status not in OPEN_STATUSES]
+    try:
+        access = require_orthodontics_clinical_access(session, context)
+    except OrthodonticsError:
+        history_site_ids = {item.primary_site_id for item in cases}
+        if not history_site_ids or not any(
+            orthodontics_historical_read_allowed(session, context, site_id=site_id)
+            for site_id in history_site_ids
+        ):
+            raise
+        access = resolve_orthodontics_access(session, context)
     company = session.get(Company, context.user.company_id)
     country = (company.country if company else "").strip().upper()
     record_label = (
@@ -332,10 +343,14 @@ def get_patient_orthodontics(
         active_case=_case_response(session, active) if active else None,
         historical_cases=[_case_response(session, item) for item in historical],
         summary=_summary(session, active) if active else None,
-        eligible_responsibles=_eligible_responsibles(
-            session,
-            context.user.company_id,
-            context.auth_session.active_site_id,
+        eligible_responsibles=(
+            _eligible_responsibles(
+                session,
+                context.user.company_id,
+                context.auth_session.active_site_id,
+            )
+            if access.allowed
+            else []
         ),
         record_label=record_label,
     )

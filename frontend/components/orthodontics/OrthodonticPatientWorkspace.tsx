@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Alert } from "@/components/shared/Alert";
 import { OrthodonticEvolutionPanel } from "@/components/orthodontics/OrthodonticEvolutionPanel";
+import { OrthodonticClinicalRecordPanel } from "@/components/orthodontics/OrthodonticClinicalRecordPanel";
 import { ApiError } from "@/services/apiClient";
 import {
   activateOrthodonticCase,
@@ -38,6 +39,9 @@ export function OrthodonticPatientWorkspace({ patientId, initial }: { patientId:
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const initialRecordCaseId = initial.active_case?.id ?? initial.historical_cases[0]?.id ?? "";
+  const [recordCaseId, setRecordCaseId] = useState(initialRecordCaseId);
+  const [recordDirty, setRecordDirty] = useState(false);
 
   useEffect(() => {
     setWorkspace(initial);
@@ -46,6 +50,7 @@ export function OrthodonticPatientWorkspace({ patientId, initial }: { patientId:
     setEditing(false);
     setMessage(null);
     setError(null);
+    setRecordCaseId(initial.active_case?.id ?? initial.historical_cases[0]?.id ?? "");
   }, [initial, patientId]);
 
   async function refresh() {
@@ -68,17 +73,27 @@ export function OrthodonticPatientWorkspace({ patientId, initial }: { patientId:
   }
 
   const current = workspace.active_case;
+  const recordCases = current ? [current, ...workspace.historical_cases] : workspace.historical_cases;
+  const recordCase = recordCases.find((item) => item.id === recordCaseId) ?? recordCases[0];
   return <div>
     <div className="mb-5 flex flex-wrap gap-2" role="tablist" aria-label="Ortodoncia">
       {([{ id: "summary", label: "Resumen" }, { id: "evolution", label: "Evolución" }, { id: "record", label: workspace.record_label }] as { id: InternalTab; label: string }[]).map((item) =>
-        <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => setTab(item.id)} className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === item.id ? "bg-green-700 text-white" : "border bg-white text-slate-700"}`}>{item.label}</button>
+        <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} onClick={() => { if (tab === "record" && item.id !== "record" && recordDirty && !window.confirm("Hay cambios sin guardar. ¿Deseas descartarlos?")) return; setTab(item.id); }} className={`rounded-xl px-4 py-2 text-sm font-bold ${tab === item.id ? "bg-green-700 text-white" : "border bg-white text-slate-700"}`}>{item.label}</button>
       )}
     </div>
     {message && <div className="mb-4"><Alert>{message}</Alert></div>}
     {error && <div className="mb-4"><Alert tone="error">{error}</Alert></div>}
     {tab === "evolution" && current && <OrthodonticEvolutionPanel orthodonticCase={current} onChanged={refresh} />}
     {tab === "evolution" && !current && <section className="rounded-2xl border bg-white p-8 text-center"><h2 className="font-black">Evolución de Ortodoncia</h2><p className="mt-2 text-sm text-slate-500">Crea y activa primero un caso de Ortodoncia.</p></section>}
-    {tab === "record" && <section className="rounded-2xl border bg-white p-8 text-center"><h2 className="font-black">{workspace.record_label}</h2><p className="mt-2 text-sm text-slate-500">Disponible en ORT-4.</p></section>}
+    {tab === "record" && recordCase && <div>
+      {recordCases.length > 1 && <label className="mb-4 block max-w-xl text-sm font-bold">Caso de Ortodoncia
+        <select value={recordCase.id} onChange={(event) => { if (recordDirty && !window.confirm("Hay cambios sin guardar. ¿Deseas descartarlos?")) return; setRecordCaseId(event.target.value); }} className="mt-1 min-h-11 w-full rounded-xl border bg-white px-3 font-normal">
+          {recordCases.map((item) => <option key={item.id} value={item.id}>{statusLabel[item.display_status]} · {date(item.started_at)} · {item.responsible_dentist_name}</option>)}
+        </select>
+      </label>}
+      <OrthodonticClinicalRecordPanel key={recordCase.id} caseId={recordCase.id} caseStatus={recordCase.status} label={workspace.record_label} accessAllowed={workspace.access.allowed} onDirtyChange={setRecordDirty} />
+    </div>}
+    {tab === "record" && !recordCase && <section className="rounded-2xl border bg-white p-8 text-center"><h2 className="font-black">{workspace.record_label}</h2><p className="mt-2 text-sm text-slate-500">Crea primero un caso de Ortodoncia.</p></section>}
     {tab === "summary" && !current && <form onSubmit={save} className="rounded-2xl border bg-white p-6 shadow-sm"><h2 className="text-xl font-black">Iniciar caso de Ortodoncia</h2><p className="mt-2 text-sm text-slate-500">Se creará un borrador clínico asociado a la historia del paciente.</p><ClinicalFields plan={plan} appliance={appliance} onPlan={setPlan} onAppliance={setAppliance} /><button disabled={busy} className="mt-5 rounded-xl bg-green-700 px-5 py-3 font-bold text-white disabled:opacity-50">{busy ? "Guardando…" : "Crear caso en borrador"}</button></form>}
     {tab === "summary" && current && <>
       <section className="grid gap-4 sm:grid-cols-3"><Stat label="Estado" value={statusLabel[current.display_status]} /><Stat label="Responsable" value={current.responsible_dentist_name} /><Stat label="Inicio" value={date(current.started_at)} /></section>

@@ -671,6 +671,39 @@ def require_orthodontics_clinical_access(
     return access
 
 
+def orthodontics_historical_read_allowed(
+    session: Session,
+    context: AuthContext,
+    *,
+    site_id: UUID,
+) -> bool:
+    """Preserve read-only clinical history after entitlement/seat revocation."""
+    if "clinical.view" not in context.permissions:
+        return False
+    if not set(context.roles).intersection({"DENTIST", "DENTIST_ADMIN"}):
+        return False
+    dentist = session.scalar(
+        select(Dentist).where(
+            Dentist.company_id == context.user.company_id,
+            Dentist.user_id == context.user.id,
+            Dentist.is_active.is_(True),
+            Dentist.status == "Activo",
+        )
+    )
+    if dentist is None or not context.user.is_active or context.user.status != "Activo":
+        return False
+    return bool(
+        session.scalar(
+            select(DentistSite.id).where(
+                DentistSite.company_id == context.user.company_id,
+                DentistSite.dentist_id == dentist.id,
+                DentistSite.site_id == site_id,
+                DentistSite.is_active.is_(True),
+            )
+        )
+    )
+
+
 def require_assigned_orthodontist(
     session: Session,
     *,
