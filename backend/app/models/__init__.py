@@ -63,6 +63,7 @@ from app.models.odontogram import (
     OdontogramEventDetail,
 )
 from app.models.orthodontics import (
+    OrthodonticCase,
     OrthodonticsDentistAssignment,
     OrthodonticsEntitlement,
 )
@@ -134,6 +135,7 @@ __all__ = [
     "OdontogramEvent",
     "OdontogramEventDetail",
     "OrthodonticsDentistAssignment",
+    "OrthodonticCase",
     "OrthodonticsEntitlement",
     "Permission",
     "Prescription",

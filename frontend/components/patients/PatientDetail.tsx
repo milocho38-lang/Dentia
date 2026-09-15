@@ -9,11 +9,13 @@ import { Spinner } from "@/components/shared/Spinner";
 import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { ClinicalRecordPage } from "@/components/patients/ClinicalRecordPage";
 import { OdontogramPage } from "@/components/patients/OdontogramPage";
+import { OrthodonticPatientWorkspace } from "@/components/orthodontics/OrthodonticPatientWorkspace";
 import { PatientConsentsWorkspace } from "@/components/consents/PatientConsentsWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
 import { getClinicalSummary } from "@/services/clinicalRecordService";
+import { getPatientOrthodontics } from "@/services/orthodonticCaseService";
 import {
   createClinicalDocument,
   downloadClinicalDocumentPdf,
@@ -64,6 +66,7 @@ import type {
 import type { ClinicalSummary } from "@/types/clinicalRecord";
 import type { ClinicalDocument, ClinicalDocumentInput, ClinicalDocumentType } from "@/types/clinicalDocument";
 import type { Followup } from "@/types/followup";
+import type { OrthodonticPatientWorkspace as OrthodonticWorkspace } from "@/types/orthodonticCase";
 import type { Prescription, PrescriptionInput, PrescriptionItemInput } from "@/types/prescription";
 import type { Budget, Payment, Procedure, TreatmentListItem } from "@/types/treatment";
 
@@ -86,6 +89,7 @@ function money(value: string | number | null | undefined) {
 type PatientWorkspaceTab =
   | "summary"
   | "clinical"
+  | "orthodontics"
   | "odontogram"
   | "treatments"
   | "finance"
@@ -101,6 +105,8 @@ export function PatientDetail({ patientId }: { patientId: string }) {
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [clinicalSummary, setClinicalSummary] =
     useState<ClinicalSummary | null>(null);
+  const [orthodontics, setOrthodontics] =
+    useState<OrthodonticWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [responsibleOpen, setResponsibleOpen] = useState(false);
@@ -142,12 +148,21 @@ export function PatientDetail({ patientId }: { patientId: string }) {
       } catch {
         setClinicalSummary(null);
       }
+      if (hasPermission("clinical.view")) {
+        try {
+          setOrthodontics(await getPatientOrthodontics(patientId));
+        } catch {
+          setOrthodontics(null);
+        }
+      } else {
+        setOrthodontics(null);
+      }
     } catch {
       setError("No fue posible cargar el paciente.");
     } finally {
       setLoading(false);
     }
-  }, [patientId]);
+  }, [hasPermission, patientId]);
 
   useEffect(() => {
     load();
@@ -157,7 +172,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
     const tab = searchParams.get("tab");
     if (
       tab &&
-      ["summary", "clinical", "odontogram", "treatments", "finance", "agenda", "documents", "consents", "files"].includes(tab)
+      ["summary", "clinical", "orthodontics", "odontogram", "treatments", "finance", "agenda", "documents", "consents", "files"].includes(tab)
     ) {
       setActiveTab(tab as PatientWorkspaceTab);
     }
@@ -253,6 +268,9 @@ export function PatientDetail({ patientId }: { patientId: string }) {
       label: clinicalSummary?.terminology.record ?? "Historia Clínica",
       permission: "clinical_records.view_sensitive",
     },
+    ...(orthodontics
+      ? [{ id: "orthodontics" as const, label: "Ortodoncia" }]
+      : []),
     { id: "odontogram", label: "Odontograma", permission: "odontogram.view" },
     { id: "treatments", label: "Tratamientos", permission: "treatments.view" },
     { id: "finance", label: "Finanzas", permission: "payments.view" },
@@ -445,6 +463,13 @@ export function PatientDetail({ patientId }: { patientId: string }) {
           ) : (
             <AccessCard title="Acceso clínico restringido" />
           )
+        )}
+
+        {activeTab === "orthodontics" && orthodontics && (
+          <OrthodonticPatientWorkspace
+            patientId={patient.id}
+            initial={orthodontics}
+          />
         )}
 
         {activeTab === "odontogram" && (

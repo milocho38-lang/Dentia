@@ -10,6 +10,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     text,
     true,
@@ -165,5 +166,123 @@ class OrthodonticsDentistAssignment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     revocation_reason: Mapped[str | None] = mapped_column(
         String(300),
+        nullable=True,
+    )
+
+
+class OrthodonticCase(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "orthodontic_cases"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["responsible_dentist_id", "empresa_id"],
+            ["odontologos.id", "odontologos.empresa_id"],
+            name="fk_orthodontic_case_responsible_company",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "status IN ('DRAFT', 'ACTIVE', 'SUSPENDED', 'COMPLETED')",
+            name="orthodontic_case_status",
+        ),
+        CheckConstraint(
+            "row_version >= 1",
+            name="orthodontic_case_row_version_positive",
+        ),
+        CheckConstraint(
+            "(status = 'COMPLETED' AND completed_at IS NOT NULL) OR "
+            "(status <> 'COMPLETED' AND completed_at IS NULL)",
+            name="orthodontic_case_completion_state",
+        ),
+        CheckConstraint(
+            "(status = 'DRAFT' AND started_at IS NULL) OR "
+            "(status <> 'DRAFT' AND started_at IS NOT NULL)",
+            name="orthodontic_case_started_state",
+        ),
+        CheckConstraint(
+            "(status = 'COMPLETED' AND closed_by_user_id IS NOT NULL "
+            "AND closure_reason_code IN ('COMPLETED', 'DISCONTINUED')) OR "
+            "(status <> 'COMPLETED' AND closed_by_user_id IS NULL "
+            "AND closure_reason_code IS NULL AND closure_notes IS NULL)",
+            name="orthodontic_case_closure_state",
+        ),
+        CheckConstraint(
+            "closure_reason_code <> 'DISCONTINUED' OR closure_notes IS NOT NULL",
+            name="orthodontic_case_discontinuation_reason",
+        ),
+        Index(
+            "uq_orthodontic_case_open_patient",
+            "empresa_id",
+            "paciente_id",
+            unique=True,
+            postgresql_where=text("status IN ('DRAFT', 'ACTIVE', 'SUSPENDED')"),
+        ),
+        Index(
+            "ix_orthodontic_cases_patient_created",
+            "empresa_id",
+            "paciente_id",
+            "created_at",
+        ),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(
+        "empresa_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("empresas.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    patient_id: Mapped[UUID] = mapped_column(
+        "paciente_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("pacientes.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    clinical_record_id: Mapped[UUID] = mapped_column(
+        "historia_clinica_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("historias_clinicas.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    primary_site_id: Mapped[UUID] = mapped_column(
+        "sede_principal_id",
+        PGUUID(as_uuid=True),
+        ForeignKey("sedes.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    responsible_dentist_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="DRAFT", server_default="DRAFT"
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    closed_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    closure_reason_code: Mapped[str | None] = mapped_column(
+        String(40), nullable=True
+    )
+    closure_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    treatment_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_appliance_summary: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    row_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    created_by_user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    updated_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("usuarios.id", ondelete="SET NULL"),
         nullable=True,
     )

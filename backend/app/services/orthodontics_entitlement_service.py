@@ -650,3 +650,74 @@ def resolve_orthodontics_access(
         entitlement_enabled=True,
         assignment_active=True,
     )
+
+
+def require_orthodontics_clinical_access(
+    session: Session,
+    context: AuthContext,
+    *,
+    write: bool = False,
+) -> OrthodonticsAccessResponse:
+    required_permission = "clinical.update" if write else "clinical.view"
+    if required_permission not in context.permissions:
+        raise OrthodonticsError(
+            "ORTHODONTICS_ACCESS_DENIED",
+            "No tienes permiso clínico para esta acción de Ortodoncia.",
+            403,
+        )
+    access = resolve_orthodontics_access(session, context)
+    if not access.allowed:
+        raise OrthodonticsError(access.code, access.message, 403)
+    return access
+
+
+def require_assigned_orthodontist(
+    session: Session,
+    *,
+    company_id: UUID,
+    dentist_id: UUID,
+    site_id: UUID | None = None,
+) -> Dentist:
+    entitlement = _entitlement(session, company_id)
+    if not _is_effectively_enabled(entitlement):
+        raise OrthodonticsError(
+            "ORTHODONTICS_NOT_ENABLED",
+            "El módulo de Ortodoncia no está habilitado para la empresa.",
+            403,
+        )
+    try:
+        dentist, user = _dentist_and_user(session, company_id, dentist_id)
+    except OrthodonticsError as exc:
+        if exc.code != "ORTHODONTICS_DENTIST_NOT_IN_COMPANY":
+            raise
+        raise OrthodonticsError(
+            "ORTHODONTICS_RESPONSIBLE_NOT_ASSIGNED",
+            "El responsable no pertenece a la empresa o no está disponible.",
+            409,
+        ) from exc
+    if not _dentist_is_operational(dentist, user):
+        raise OrthodonticsError(
+            "ORTHODONTICS_RESPONSIBLE_NOT_ASSIGNED",
+            "El responsable debe ser un odontólogo activo con usuario vinculado.",
+            409,
+        )
+    if _active_assignment_for_dentist(session, company_id, dentist_id) is None:
+        raise OrthodonticsError(
+            "ORTHODONTICS_RESPONSIBLE_NOT_ASSIGNED",
+            "El responsable no tiene un cupo activo de Ortodoncia.",
+            409,
+        )
+    if site_id is not None and session.scalar(
+        select(DentistSite.id).where(
+            DentistSite.company_id == company_id,
+            DentistSite.dentist_id == dentist_id,
+            DentistSite.site_id == site_id,
+            DentistSite.is_active.is_(True),
+        )
+    ) is None:
+        raise OrthodonticsError(
+            "ORTHODONTICS_RESPONSIBLE_NOT_ASSIGNED",
+            "El responsable no está habilitado en la sede activa.",
+            409,
+        )
+    return dentist

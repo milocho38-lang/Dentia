@@ -105,7 +105,7 @@ def _module_for(path: str) -> str:
         return "consent_access_public"
     if path.startswith("/api/platform"):
         return "platform"
-    if path.startswith("/api/orthodontics"):
+    if path.startswith("/api/orthodontics") or "/orthodontics" in path:
         return "orthodontics"
     if path.startswith("/api/consent-library"):
         return "consent_library"
@@ -249,8 +249,8 @@ def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: 
         return TestStatus.DB_BACKED, "backend/tests/administration/test_admin_finance_reports.py::test_reports_are_tenant_scoped_financially_restricted_and_platform_denied", ""
     if path.startswith(("/api/company", "/api/sites", "/api/dentists", "/api/users")):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_admin_finance_reports.py", ""
-    if path.startswith("/api/orthodontics"):
-        return TestStatus.DB_BACKED, "backend/tests/administration/test_orthodontics_entitlement.py", ""
+    if path.startswith("/api/orthodontics") or "/orthodontics" in path:
+        return TestStatus.DB_BACKED, "backend/tests/administration/test_orthodontic_cases.py", ""
     if path.startswith("/api/consent-library"):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_library_package.py", ""
     if path.startswith(("/api/consent-templates", "/api/consent-template-catalog")):
