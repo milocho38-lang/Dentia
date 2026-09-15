@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import json
 from datetime import datetime, timezone
 from uuid import UUID
@@ -941,6 +942,19 @@ def _canonical_evolution_payload(
 def _content_hash(payload: dict) -> str:
     encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def clinical_evolution_integrity_status(
+    session: Session,
+    evolution: ClinicalEvolution,
+) -> str:
+    """Verify the complete signed payload, including registered extensions."""
+    if evolution.status != "SIGNED":
+        return "NOT_APPLICABLE"
+    if not evolution.content_hash:
+        return "FAIL"
+    expected = _content_hash(_canonical_evolution_payload(session, evolution))
+    return "PASS" if hmac.compare_digest(expected, evolution.content_hash) else "FAIL"
 
 
 def _evolution_summary(evolution: ClinicalEvolution, *, limit: int = 180) -> str:

@@ -16,7 +16,7 @@ assert.match(workspace, /OrthodonticEvolutionPanel/);
 assert.match(workspace, /Sin evoluciones firmadas/);
 assert.match(workspace, /Sin próxima cita agendada/);
 assert.match(workspace, /Cambios guardados de forma explícita/);
-assert.match(workspace, /current\.status !== "COMPLETED" && !editing/);
+assert.match(workspace, /canWrite && \["DRAFT", "ACTIVE"\]\.includes\(current\.status\) && !editing/);
 assert.match(workspace, /Historial de casos/);
 assert.match(workspace, /Motivo obligatorio de interrupción/);
 assert.match(service, /\/api\/patients\/\$\{patientId\}\/orthodontics/);

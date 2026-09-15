@@ -59,6 +59,7 @@ class OrthodonticCaseResponse(BaseModel):
     primary_site_id: UUID
     responsible_dentist_id: UUID
     responsible_dentist_name: str
+    responsible_dentist_available: bool
     status: str
     display_status: str
     started_at: datetime | None

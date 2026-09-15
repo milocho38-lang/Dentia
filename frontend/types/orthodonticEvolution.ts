@@ -25,6 +25,7 @@ export interface OrthodonticEvolution {
   next_control: OptionSnapshot; next_control_value: number | null;
   next_control_unit: "WEEK" | "MONTH" | null; suggested_next_control_date: string | null;
   alert_text: string | null; alert_active: boolean; orthodontic_payload_hash: string | null;
+  integrity_status: "NOT_APPLICABLE" | "PASS" | "FAIL";
 }
 export interface OptionSnapshot { option_id: string | null; code: string | null; label: string | null }
 export interface OrthodonticEvolutionPayload {

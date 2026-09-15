@@ -30,9 +30,9 @@ from app.schemas.orthodontic_case_schema import (
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.orthodontics_entitlement_service import (
     OrthodonticsError,
-    orthodontics_historical_read_allowed,
     require_assigned_orthodontist,
     require_orthodontics_clinical_access,
+    require_orthodontics_historical_read_access,
     resolve_orthodontics_access,
 )
 
@@ -162,6 +162,28 @@ def _current_dentist_id(session: Session, context: AuthContext) -> UUID:
     return access.dentist_id
 
 
+def _require_case_write_access(
+    session: Session,
+    context: AuthContext,
+    case: OrthodonticCase,
+) -> UUID:
+    """Apply the active module, identity, assignment and case-site gates."""
+    access = require_orthodontics_clinical_access(session, context, write=True)
+    if access.dentist_id is None:
+        raise OrthodonticCaseError(
+            "ORTHODONTICS_ACCESS_DENIED",
+            "No existe identidad odontológica activa para esta acción.",
+            403,
+        )
+    require_assigned_orthodontist(
+        session,
+        company_id=case.company_id,
+        dentist_id=access.dentist_id,
+        site_id=case.primary_site_id,
+    )
+    return access.dentist_id
+
+
 def _check_version(case: OrthodonticCase, row_version: int) -> None:
     if case.row_version != row_version:
         raise OrthodonticCaseError(
@@ -172,9 +194,49 @@ def _check_version(case: OrthodonticCase, row_version: int) -> None:
 
 
 def _case_response(session: Session, case: OrthodonticCase) -> OrthodonticCaseResponse:
-    responsible_name = session.scalar(
-        select(Dentist.name).where(Dentist.id == case.responsible_dentist_id)
-    ) or "Profesional no disponible"
+    responsible = session.execute(
+        select(
+            Dentist,
+            User,
+            OrthodonticsDentistAssignment.id,
+            DentistSite.id,
+        )
+        .outerjoin(User, User.id == Dentist.user_id)
+        .outerjoin(
+            OrthodonticsDentistAssignment,
+            (OrthodonticsDentistAssignment.company_id == case.company_id)
+            & (OrthodonticsDentistAssignment.dentist_id == Dentist.id)
+            & (OrthodonticsDentistAssignment.is_active.is_(True)),
+        )
+        .outerjoin(
+            DentistSite,
+            (DentistSite.company_id == case.company_id)
+            & (DentistSite.dentist_id == Dentist.id)
+            & (DentistSite.site_id == case.primary_site_id)
+            & (DentistSite.is_active.is_(True)),
+        )
+        .where(
+            Dentist.id == case.responsible_dentist_id,
+            Dentist.company_id == case.company_id,
+        )
+    ).first()
+    responsible_dentist = responsible[0] if responsible else None
+    responsible_user = responsible[1] if responsible else None
+    responsible_name = (
+        responsible_dentist.name
+        if responsible_dentist is not None
+        else "Profesional no disponible"
+    )
+    responsible_available = bool(
+        responsible_dentist is not None
+        and responsible_dentist.is_active
+        and responsible_dentist.status == "Activo"
+        and responsible_user is not None
+        and responsible_user.is_active
+        and responsible_user.status == "Activo"
+        and responsible[2] is not None
+        and responsible[3] is not None
+    )
     display_status = (
         "DISCONTINUED"
         if case.status == "COMPLETED" and case.closure_reason_code == "DISCONTINUED"
@@ -188,6 +250,7 @@ def _case_response(session: Session, case: OrthodonticCase) -> OrthodonticCaseRe
         primary_site_id=case.primary_site_id,
         responsible_dentist_id=case.responsible_dentist_id,
         responsible_dentist_name=responsible_name,
+        responsible_dentist_available=responsible_available,
         status=case.status,
         display_status=display_status,
         started_at=case.started_at,
@@ -319,18 +382,39 @@ def get_patient_orthodontics(
             .order_by(OrthodonticCase.created_at.desc(), OrthodonticCase.id.desc())
         )
     )
+    visible_cases: list[OrthodonticCase] = []
+    access = None
+    denied: OrthodonticsError | None = None
+    for item in cases:
+        try:
+            item_access = require_orthodontics_historical_read_access(
+                session,
+                context,
+                site_id=item.primary_site_id,
+            )
+        except OrthodonticsError as exc:
+            denied = exc
+            continue
+        visible_cases.append(item)
+        if item_access.allowed:
+            access = item_access
+
+    if not cases:
+        access = require_orthodontics_clinical_access(session, context)
+    elif not visible_cases:
+        if denied is not None:
+            raise denied
+        raise OrthodonticCaseError(
+            "ORTHODONTICS_ACCESS_DENIED",
+            "No tienes acceso al historial de Ortodoncia de este paciente.",
+            403,
+        )
+    elif access is None:
+        access = resolve_orthodontics_access(session, context)
+
+    cases = visible_cases
     active = next((item for item in cases if item.status in OPEN_STATUSES), None)
     historical = [item for item in cases if item.status not in OPEN_STATUSES]
-    try:
-        access = require_orthodontics_clinical_access(session, context)
-    except OrthodonticsError:
-        history_site_ids = {item.primary_site_id for item in cases}
-        if not history_site_ids or not any(
-            orthodontics_historical_read_allowed(session, context, site_id=site_id)
-            for site_id in history_site_ids
-        ):
-            raise
-        access = resolve_orthodontics_access(session, context)
     company = session.get(Company, context.user.company_id)
     country = (company.country if company else "").strip().upper()
     record_label = (
@@ -452,8 +536,13 @@ def get_orthodontic_case(
     context: AuthContext,
     case_id: UUID,
 ) -> OrthodonticSummaryResponse:
-    require_orthodontics_clinical_access(session, context)
-    return _summary(session, _case(session, context, case_id))
+    case = _case(session, context, case_id)
+    require_orthodontics_historical_read_access(
+        session,
+        context,
+        site_id=case.primary_site_id,
+    )
+    return _summary(session, case)
 
 
 def update_orthodontic_case(
@@ -463,11 +552,15 @@ def update_orthodontic_case(
     payload: OrthodonticCaseUpdateRequest,
     metadata: RequestMetadata,
 ) -> OrthodonticCaseActionResponse:
-    require_orthodontics_clinical_access(session, context, write=True)
     case = _case(session, context, case_id, lock=True)
-    if case.status == "COMPLETED":
+    _require_case_write_access(session, context, case)
+    if case.status not in {"DRAFT", "ACTIVE"}:
+        suspended = case.status == "SUSPENDED"
+        message = "El caso suspendido es de solo lectura. Reactívalo para modificarlo." if suspended else "El caso cerrado es de solo lectura."
         raise OrthodonticCaseError(
-            "ORTHODONTICS_CASE_CLOSED", "El caso cerrado es de solo lectura.", 409
+            "ORTHODONTICS_CASE_SUSPENDED" if suspended else "ORTHODONTICS_CASE_CLOSED",
+            message,
+            409,
         )
     _check_version(case, payload.row_version)
     changed: list[str] = []
@@ -503,8 +596,8 @@ def activate_orthodontic_case(
     payload: OrthodonticCaseTransitionRequest,
     metadata: RequestMetadata,
 ) -> OrthodonticCaseActionResponse:
-    require_orthodontics_clinical_access(session, context, write=True)
     case = _case(session, context, case_id, lock=True)
+    _require_case_write_access(session, context, case)
     _check_version(case, payload.row_version)
     if case.status != "DRAFT":
         raise OrthodonticCaseError(
@@ -536,8 +629,8 @@ def suspend_orthodontic_case(
     payload: OrthodonticCaseTransitionRequest,
     metadata: RequestMetadata,
 ) -> OrthodonticCaseActionResponse:
-    require_orthodontics_clinical_access(session, context, write=True)
     case = _case(session, context, case_id, lock=True)
+    _require_case_write_access(session, context, case)
     _check_version(case, payload.row_version)
     if case.status != "ACTIVE":
         raise OrthodonticCaseError(
@@ -578,8 +671,8 @@ def resume_orthodontic_case(
     payload: OrthodonticCaseTransitionRequest,
     metadata: RequestMetadata,
 ) -> OrthodonticCaseActionResponse:
-    require_orthodontics_clinical_access(session, context, write=True)
     case = _case(session, context, case_id, lock=True)
+    _require_case_write_access(session, context, case)
     _check_version(case, payload.row_version)
     if case.status != "SUSPENDED":
         raise OrthodonticCaseError(
@@ -600,14 +693,14 @@ def resume_orthodontic_case(
         session,
         context,
         case,
-        title="Tratamiento de Ortodoncia reanudado",
-        event_type="ORTHODONTIC_CASE_RESUMED",
+        title="Tratamiento de Ortodoncia reactivado",
+        event_type="ORTHODONTIC_CASE_REACTIVATED",
     )
-    _audit(session, context, metadata, case, "ORTHODONTIC_CASE_RESUMED")
+    _audit(session, context, metadata, case, "ORTHODONTIC_CASE_REACTIVATED")
     session.commit()
     session.refresh(case)
     return OrthodonticCaseActionResponse(
-        message="Caso de Ortodoncia reanudado.",
+        message="Caso de Ortodoncia reactivado.",
         case=_case_response(session, case),
     )
 
@@ -621,8 +714,8 @@ def _close_case(
     *,
     discontinued: bool,
 ) -> OrthodonticCaseActionResponse:
-    require_orthodontics_clinical_access(session, context, write=True)
     case = _case(session, context, case_id, lock=True)
+    _require_case_write_access(session, context, case)
     _check_version(case, payload.row_version)
     if case.status not in {"ACTIVE", "SUSPENDED"}:
         raise OrthodonticCaseError(
@@ -645,7 +738,7 @@ def _close_case(
     case.row_version += 1
     case.updated_by_user_id = context.user.id
     action = "ORTHODONTIC_CASE_DISCONTINUED" if discontinued else "ORTHODONTIC_CASE_COMPLETED"
-    title = "Tratamiento de Ortodoncia interrumpido" if discontinued else "Tratamiento de Ortodoncia finalizado"
+    title = "Tratamiento de Ortodoncia interrumpido" if discontinued else "Tratamiento de Ortodoncia completado"
     _timeline(session, context, case, title=title, event_type=action)
     _audit(session, context, metadata, case, action, {"closure_reason_code": case.closure_reason_code})
     session.commit()
@@ -668,8 +761,8 @@ def change_responsible_orthodontist(
     payload: OrthodonticResponsibleChangeRequest,
     metadata: RequestMetadata,
 ) -> OrthodonticCaseActionResponse:
-    require_orthodontics_clinical_access(session, context, write=True)
     case = _case(session, context, case_id, lock=True)
+    _require_case_write_access(session, context, case)
     if case.status == "COMPLETED":
         raise OrthodonticCaseError("ORTHODONTICS_CASE_CLOSED", "El caso cerrado es de solo lectura.", 409)
     _check_version(case, payload.row_version)
@@ -684,6 +777,13 @@ def change_responsible_orthodontist(
         case.responsible_dentist_id = new_responsible.id
         case.row_version += 1
         case.updated_by_user_id = context.user.id
+        _timeline(
+            session,
+            context,
+            case,
+            title="Responsable de Ortodoncia actualizado",
+            event_type="ORTHODONTIC_CASE_RESPONSIBLE_CHANGED",
+        )
         _audit(session, context, metadata, case, "ORTHODONTIC_CASE_RESPONSIBLE_CHANGED", {"previous_dentist_id": str(previous), "new_dentist_id": str(new_responsible.id)})
         session.commit()
         session.refresh(case)

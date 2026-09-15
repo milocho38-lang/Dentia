@@ -5,6 +5,7 @@ export interface OrthodonticsAccessResponse {
 export interface OrthodonticCase {
   id: string; company_id: string; patient_id: string; clinical_record_id: string;
   primary_site_id: string; responsible_dentist_id: string; responsible_dentist_name: string;
+  responsible_dentist_available: boolean;
   status: "DRAFT" | "ACTIVE" | "SUSPENDED" | "COMPLETED";
   display_status: "DRAFT" | "ACTIVE" | "SUSPENDED" | "COMPLETED" | "DISCONTINUED";
   started_at: string | null; completed_at: string | null;

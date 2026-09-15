@@ -45,6 +45,7 @@ from app.schemas.orthodontic_evolution_schema import (
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.clinical_record_service import (
     ClinicalRecordError,
+    clinical_evolution_integrity_status,
     create_clinical_evolution,
     sign_clinical_evolution,
     update_clinical_evolution_draft,
@@ -53,6 +54,7 @@ from app.services.orthodontics_entitlement_service import (
     OrthodonticsError,
     require_assigned_orthodontist,
     require_orthodontics_clinical_access,
+    require_orthodontics_historical_read_access,
 )
 
 
@@ -121,18 +123,38 @@ def _ensure_case_active(case: OrthodonticCase) -> None:
 
 
 def _clinical_access(session: Session, context: AuthContext, case: OrthodonticCase, *, write: bool) -> UUID:
-    access = require_orthodontics_clinical_access(session, context, write=write)
-    if access.dentist_id is None:
-        raise OrthodonticEvolutionError(
-            "ORTHODONTIC_EVOLUTION_ACCESS_DENIED", "No existe identidad odontológica activa.", 403
+    try:
+        access = require_orthodontics_clinical_access(session, context, write=write)
+        if access.dentist_id is None:
+            raise OrthodonticsError(
+                "ORTHODONTIC_EVOLUTION_ACCESS_DENIED",
+                "No existe identidad odontológica activa.",
+                403,
+            )
+        require_assigned_orthodontist(
+            session,
+            company_id=case.company_id,
+            dentist_id=access.dentist_id,
+            site_id=case.primary_site_id,
         )
-    require_assigned_orthodontist(
-        session,
-        company_id=case.company_id,
-        dentist_id=access.dentist_id,
-        site_id=case.primary_site_id,
-    )
-    return access.dentist_id
+        return access.dentist_id
+    except OrthodonticsError as exc:
+        raise OrthodonticEvolutionError(exc.code, str(exc), exc.status_code) from exc
+
+
+def _historical_read_access(
+    session: Session,
+    context: AuthContext,
+    case: OrthodonticCase,
+) -> None:
+    try:
+        require_orthodontics_historical_read_access(
+            session,
+            context,
+            site_id=case.primary_site_id,
+        )
+    except OrthodonticsError as exc:
+        raise OrthodonticEvolutionError(exc.code, str(exc), exc.status_code) from exc
 
 
 def _catalog_type(value: str) -> str:
@@ -501,6 +523,7 @@ def _response(session: Session, item: OrthodonticEvolution, parent: ClinicalEvol
         alert_text=item.alert_text,
         alert_active=item.alert_active,
         orthodontic_payload_hash=item.orthodontic_payload_hash,
+        integrity_status=clinical_evolution_integrity_status(session, parent),
     )
 
 
@@ -569,7 +592,7 @@ def list_orthodontic_evolutions(
     session: Session, context: AuthContext, case_id: UUID
 ) -> OrthodonticEvolutionListResponse:
     case = _case(session, context, case_id)
-    _clinical_access(session, context, case, write=False)
+    _historical_read_access(session, context, case)
     rows = session.execute(
         select(OrthodonticEvolution, ClinicalEvolution)
         .join(ClinicalEvolution, ClinicalEvolution.id == OrthodonticEvolution.clinical_evolution_id)
@@ -586,7 +609,7 @@ def get_orthodontic_evolution(
     session: Session, context: AuthContext, evolution_id: UUID
 ) -> OrthodonticEvolutionResponse:
     item, parent, case = _extension(session, context, evolution_id)
-    _clinical_access(session, context, case, write=False)
+    _historical_read_access(session, context, case)
     return _response(session, item, parent)
 
 
@@ -685,6 +708,23 @@ def require_orthodontic_addendum_access(
     _clinical_access(session, context, case, write=True)
 
 
+def _ensure_referenced_catalog_options_active(
+    session: Session,
+    context: AuthContext,
+    item: OrthodonticEvolution,
+) -> None:
+    """Revalidate draft references immediately before creating signed evidence."""
+    references = (
+        (item.upper_material_option_id, "ARCH_MATERIAL"),
+        (item.upper_size_option_id, "ARCH_SIZE"),
+        (item.lower_material_option_id, "ARCH_MATERIAL"),
+        (item.lower_size_option_id, "ARCH_SIZE"),
+        (item.next_control_option_id, "CONTROL_INTERVAL"),
+    )
+    for option_id, catalog_type in references:
+        _visible_option(session, context, option_id, catalog_type)
+
+
 def prepare_orthodontic_extension_for_sign(
     session: Session, context: AuthContext, parent: ClinicalEvolution
 ) -> None:
@@ -700,6 +740,7 @@ def prepare_orthodontic_extension_for_sign(
     _clinical_access(session, context, case, write=True)
     if parent.patient_id != case.patient_id or parent.clinical_record_id != case.clinical_record_id:
         raise ClinicalRecordError("La evolución ortodóncica no coincide con el caso.", 409)
+    _ensure_referenced_catalog_options_active(session, context, item)
     canonical = _canonical_extension(session, item)
     item.orthodontic_payload_hash = hashlib.sha256(
         json.dumps(canonical, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")

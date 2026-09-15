@@ -120,7 +120,7 @@ export function OrthodonticClinicalRecordPanel({ caseId, caseStatus, label, acce
     <p className="mt-2 text-sm text-slate-500">Este caso aún no tiene {label.toLowerCase()}.</p>
     {caseStatus === "ACTIVE" && accessAllowed
       ? <button type="button" disabled={busy} onClick={() => void run(() => createOrthodonticRecord(caseId))} className="mt-5 rounded-xl bg-green-700 px-5 py-3 font-bold text-white disabled:opacity-50">Crear ficha</button>
-      : <p className="mt-4 text-sm font-semibold text-amber-700">Activa el caso y verifica tu asignación para crearla.</p>}
+      : <p className="mt-4 text-sm font-semibold text-amber-700">{accessAllowed ? "Activa el caso para crearla." : "Tu acceso de Ortodoncia ya no está habilitado."}</p>}
     {error && <div className="mt-4"><Alert tone="error">{error}</Alert></div>}
   </section>;
 
@@ -129,7 +129,7 @@ export function OrthodonticClinicalRecordPanel({ caseId, caseStatus, label, acce
   return <div className="space-y-4">
     <section className="rounded-2xl border bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div><h2 className="text-xl font-black">{record.label}</h2><p className="mt-1 text-sm text-slate-500">Versión {version.version_number} · {version.status === "DRAFT" ? "Borrador" : `Finalizada ${formattedDate(version.finalized_at)}`}</p></div>
+        <div><h2 className="text-xl font-black">{record.label}</h2><p className="mt-1 text-sm text-slate-500">Versión {version.version_number} · {version.status === "DRAFT" ? "Borrador · Versión actual" : `Finalizada ${formattedDate(version.finalized_at)}${record.versions[0]?.id === version.id ? " · Versión actual" : " · Histórica"}`}</p></div>
         <label className="text-sm font-bold">Versión
           <select value={version.id} onChange={(event) => void selectVersion(event.target.value)} className="ml-2 min-h-10 rounded-xl border bg-white px-3 font-normal">
             {record.versions.map((item) => <option key={item.id} value={item.id}>v{item.version_number} · {item.status === "DRAFT" ? "Borrador" : formattedDate(item.finalized_at)}</option>)}
@@ -137,6 +137,7 @@ export function OrthodonticClinicalRecordPanel({ caseId, caseStatus, label, acce
         </label>
       </div>
       {record.read_only_reason && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">{record.read_only_reason}</p>}
+      {version.integrity_status === "FAIL" && <div className="mt-3"><Alert tone="error">No fue posible verificar la integridad de esta versión finalizada.</Alert></div>}
       {message && <div className="mt-4"><Alert>{message}</Alert></div>}
       {error && <div className="mt-4"><Alert tone="error">{error}</Alert></div>}
     </section>

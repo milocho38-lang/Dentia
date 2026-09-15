@@ -14,7 +14,7 @@ assert.match(panel, /Tipo de elásticos/);
 assert.match(panel, /Agregar microtornillo/);
 assert.match(panel, /Indicaciones próxima sesión/);
 assert.match(panel, /Firmar/);
-assert.match(panel, /Reactiva el caso/);
+assert.match(panel, /Reactívalo/);
 assert.match(service, /clinical_evolution_version/);
 assert.match(service, /orthodontics\/evolutions/);
 assert.match(types, /OptionSnapshot/);

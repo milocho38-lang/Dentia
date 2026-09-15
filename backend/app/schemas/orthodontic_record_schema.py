@@ -66,6 +66,7 @@ class OrthodonticRecordVersionResponse(BaseModel):
     clinical_date: datetime | None
     timezone_name: str | None
     content_hash: str | None
+    integrity_status: Literal["NOT_APPLICABLE", "PASS", "FAIL"]
     created_by_user_id: UUID
     updated_by_user_id: UUID
     finalized_by_user_id: UUID | None

@@ -704,6 +704,43 @@ def orthodontics_historical_read_allowed(
     )
 
 
+def require_orthodontics_historical_read_access(
+    session: Session,
+    context: AuthContext,
+    *,
+    site_id: UUID,
+) -> OrthodonticsAccessResponse:
+    """Allow active module access or preserved read-only clinical history.
+
+    Commercial entitlement and seat assignment gate new orthodontic work. They
+    must not make already-recorded clinical history disappear from an otherwise
+    authorized clinician in the same tenant and site scope.
+    """
+    try:
+        access = require_orthodontics_clinical_access(session, context)
+        if access.dentist_id is None:
+            raise OrthodonticsError(
+                "ORTHODONTICS_ACCESS_DENIED",
+                "No existe identidad odontológica activa para consultar Ortodoncia.",
+                403,
+            )
+        require_assigned_orthodontist(
+            session,
+            company_id=context.user.company_id,
+            dentist_id=access.dentist_id,
+            site_id=site_id,
+        )
+        return access
+    except OrthodonticsError:
+        if not orthodontics_historical_read_allowed(
+            session,
+            context,
+            site_id=site_id,
+        ):
+            raise
+        return resolve_orthodontics_access(session, context)
+
+
 def require_assigned_orthodontist(
     session: Session,
     *,

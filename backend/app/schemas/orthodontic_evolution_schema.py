@@ -25,7 +25,10 @@ class OrthodonticCatalogOptionCreateRequest(BaseModel):
     @field_validator("label")
     @classmethod
     def clean_label(cls, value: str) -> str:
-        return " ".join(value.split())
+        normalized = " ".join(value.split())
+        if "<" in normalized or ">" in normalized:
+            raise ValueError("La etiqueta debe ser texto plano.")
+        return normalized
 
     @model_validator(mode="after")
     def validate_interval(self):
@@ -199,6 +202,7 @@ class OrthodonticEvolutionResponse(BaseModel):
     alert_text: str | None
     alert_active: bool
     orthodontic_payload_hash: str | None
+    integrity_status: str
 
 
 class OrthodonticEvolutionListResponse(BaseModel):

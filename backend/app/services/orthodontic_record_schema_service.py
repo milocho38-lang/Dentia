@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
 ORTHODONTIC_RECORD_SCHEMA_VERSION = "ORTHODONTIC_RECORD_V1"
+ORTHODONTIC_RECORD_MAX_JSON_BYTES = 512_000
 
 
 def _options(*items: tuple[str, str]) -> list[dict[str, str]]:
@@ -201,6 +203,18 @@ def orthodontic_record_schema_payload() -> dict[str, Any]:
 
 
 def validate_orthodontic_record_content(content: dict[str, Any]) -> dict[str, Any]:
+    serialized_size = len(
+        json.dumps(
+            content,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    if serialized_size > ORTHODONTIC_RECORD_MAX_JSON_BYTES:
+        raise OrthodonticRecordSchemaError(
+            "La historia de Ortodoncia supera el tamaño técnico permitido."
+        )
     unknown = sorted(set(content) - set(_FIELDS_BY_KEY))
     if unknown:
         raise OrthodonticRecordSchemaError(

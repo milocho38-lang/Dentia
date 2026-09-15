@@ -16,7 +16,8 @@ export interface OrthodonticRecordVersion {
   schema_version: string; row_version: number; content: Record<string, unknown>;
   schema_snapshot: Record<string, unknown>; content_snapshot: Record<string, unknown> | null;
   based_on_version_id: string | null; clinical_date: string | null; timezone_name: string | null;
-  content_hash: string | null; created_by_user_id: string; updated_by_user_id: string;
+  content_hash: string | null; integrity_status: "NOT_APPLICABLE" | "PASS" | "FAIL";
+  created_by_user_id: string; updated_by_user_id: string;
   finalized_by_user_id: string | null; finalized_at: string | null;
   created_at: string; updated_at: string;
   section_progress: Record<string, "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED">;

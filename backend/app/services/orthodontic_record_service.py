@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 from datetime import datetime, timezone
 from uuid import UUID
@@ -36,8 +37,9 @@ from app.services.orthodontic_record_schema_service import (
 )
 from app.services.orthodontics_entitlement_service import (
     OrthodonticsError,
-    orthodontics_historical_read_allowed,
+    require_assigned_orthodontist,
     require_orthodontics_clinical_access,
+    require_orthodontics_historical_read_access,
 )
 
 
@@ -142,13 +144,11 @@ def _require_read_access(
     context: AuthContext,
     case: OrthodonticCase,
 ) -> None:
-    try:
-        require_orthodontics_clinical_access(session, context)
-    except OrthodonticsError:
-        if not orthodontics_historical_read_allowed(
-            session, context, site_id=case.primary_site_id
-        ):
-            raise
+    require_orthodontics_historical_read_access(
+        session,
+        context,
+        site_id=case.primary_site_id,
+    )
 
 
 def _require_write_access(
@@ -156,7 +156,19 @@ def _require_write_access(
     context: AuthContext,
     case: OrthodonticCase,
 ) -> None:
-    require_orthodontics_clinical_access(session, context, write=True)
+    access = require_orthodontics_clinical_access(session, context, write=True)
+    if access.dentist_id is None:
+        raise OrthodonticRecordError(
+            "ORTHODONTIC_RECORD_ACCESS_DENIED",
+            "No existe identidad odontológica activa para esta acción.",
+            403,
+        )
+    require_assigned_orthodontist(
+        session,
+        company_id=case.company_id,
+        dentist_id=access.dentist_id,
+        site_id=case.primary_site_id,
+    )
     if case.status != "ACTIVE":
         raise OrthodonticRecordError(
             "ORTHODONTIC_RECORD_CASE_READ_ONLY",
@@ -173,7 +185,7 @@ def _can_edit(
     if case.status != "ACTIVE":
         return False
     try:
-        require_orthodontics_clinical_access(session, context, write=True)
+        _require_write_access(session, context, case)
     except OrthodonticsError:
         return False
     return True
@@ -189,6 +201,23 @@ def _read_only_reason(case: OrthodonticCase, can_edit: bool) -> str | None:
     if case.status == "DRAFT":
         return "Activa el caso para comenzar la historia clínica de Ortodoncia."
     return "El acceso histórico se conserva en modo de solo lectura."
+
+
+def _record_version_integrity_status(
+    version: OrthodonticClinicalRecordVersion,
+) -> str:
+    if version.status != "FINALIZED":
+        return "NOT_APPLICABLE"
+    if not version.content_hash or version.content_snapshot is None:
+        return "FAIL"
+    frozen_payload = {
+        "schema_version": version.schema_version,
+        "schema_snapshot": version.schema_snapshot,
+        "content": version.content,
+        "content_snapshot": version.content_snapshot,
+    }
+    expected = _canonical_hash(frozen_payload)
+    return "PASS" if hmac.compare_digest(expected, version.content_hash) else "FAIL"
 
 
 def _version_response(
@@ -208,6 +237,7 @@ def _version_response(
         clinical_date=version.clinical_date,
         timezone_name=version.timezone_name,
         content_hash=version.content_hash,
+        integrity_status=_record_version_integrity_status(version),
         created_by_user_id=version.created_by_user_id,
         updated_by_user_id=version.updated_by_user_id,
         finalized_by_user_id=version.finalized_by_user_id,
