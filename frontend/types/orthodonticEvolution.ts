@@ -16,7 +16,8 @@ export interface OrthodonticEvolution {
   professional_name: string; site_id: string; attended_at: string; timezone_name: string;
   status: "DRAFT" | "SIGNED" | "VOIDED_BY_COMPENSATING_RECORD";
   row_version: number; clinical_evolution_version: number; signed_at: string | null;
-  schema_version: string; performed_summary: string | null; notes: string | null;
+  schema_version: string; evolution_text: string | null;
+  performed_summary: string | null; notes: string | null;
   upper_material: OptionSnapshot; upper_size: OptionSnapshot;
   lower_material: OptionSnapshot; lower_size: OptionSnapshot;
   upper_aligner_note: string | null; lower_aligner_note: string | null;
@@ -29,7 +30,7 @@ export interface OrthodonticEvolution {
 }
 export interface OptionSnapshot { option_id: string | null; code: string | null; label: string | null }
 export interface OrthodonticEvolutionPayload {
-  performed_summary: string | null; notes: string | null;
+  evolution_text: string | null;
   upper_material_option_id: string | null; upper_size_option_id: string | null;
   lower_material_option_id: string | null; lower_size_option_id: string | null;
   upper_aligner_note: string | null; lower_aligner_note: string | null;

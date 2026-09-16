@@ -64,14 +64,31 @@ def _base_option(db_session, catalog_type, code, label, value=None, unit=None):
 
 def _create_evolution(api_client, tenant, case_id, **overrides):
     payload = {
-        "performed_summary": "Cambio de arcos y control de alineación",
-        "notes": "Paciente tolera adecuadamente el tratamiento.",
+        "evolution_text": (
+            "Cambio de arcos y control de alineación. "
+            "Paciente tolera adecuadamente el tratamiento."
+        ),
         **overrides,
     }
     return api_client.post(
         f"/api/orthodontics/cases/{case_id}/evolutions",
         token=tenant.dentist_admin.token,
         json=payload,
+    )
+
+
+def _create_legacy_evolution(
+    api_client,
+    tenant,
+    case_id,
+    *,
+    performed_summary=None,
+    notes=None,
+):
+    return api_client.post(
+        f"/api/orthodontics/cases/{case_id}/evolutions",
+        token=tenant.dentist_admin.token,
+        json={"performed_summary": performed_summary, "notes": notes},
     )
 
 
@@ -159,10 +176,16 @@ def test_draft_does_not_feed_summary_but_signed_evolution_does(
     signed_item = signed.json()
     assert signed_item["status"] == "SIGNED"
     assert signed_item["orthodontic_payload_hash"]
+    assert signed_item["integrity_status"] == "PASS"
     parent = db_session.get(ClinicalEvolution, signed_item["clinical_evolution_id"])
     assert parent.content_hash and signed_item["orthodontic_payload_hash"] != parent.content_hash
     summary = api_client.get(summary_path, token=tenant.dentist_admin.token).json()
-    assert summary["what_was_done"] == "Cambio de arcos y control de alineación"
+    expected_text = (
+        "Cambio de arcos y control de alineación. "
+        "Paciente tolera adecuadamente el tratamiento."
+    )
+    assert summary["evolution_text"] == expected_text
+    assert summary["what_was_done"] == expected_text
     assert summary["next_session_instructions"] == "Revisar higiene y cooperación."
     assert summary["next_clinical_control"] == "2 meses"
     assert summary["active_alerts"] == ["Controlar resorte superior."]
@@ -184,6 +207,140 @@ def test_signed_is_immutable_and_double_sign_is_safe(api_client, security_world)
         json={"row_version": draft["row_version"], "clinical_evolution_version": draft["clinical_evolution_version"], "performed_summary": "Mutación", "notes": None, "mini_screws": []},
     )
     assert edit.status_code == 409
+
+
+def test_unified_evolution_text_persists_in_draft_and_signed_integrity(
+    api_client,
+    db_session,
+    security_world,
+) -> None:
+    tenant, case = _prepare(api_client, security_world)
+    created = _create_evolution(
+        api_client,
+        tenant,
+        case["id"],
+        evolution_text="Control inicial con activación de arco superior.",
+    )
+    assert created.status_code == 201, created.text
+    draft = created.json()
+    assert draft["evolution_text"] == "Control inicial con activación de arco superior."
+    assert draft["performed_summary"] is None
+    assert draft["notes"] == "Control inicial con activación de arco superior."
+
+    updated = api_client.patch(
+        f"/api/orthodontics/evolutions/{draft['id']}/draft",
+        token=tenant.dentist_admin.token,
+        json={
+            "row_version": draft["row_version"],
+            "clinical_evolution_version": draft["clinical_evolution_version"],
+            "evolution_text": "Control actualizado; paciente evoluciona favorablemente.",
+            "mini_screws": [],
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    draft = updated.json()
+    assert draft["evolution_text"] == "Control actualizado; paciente evoluciona favorablemente."
+
+    signed = api_client.post(
+        f"/api/orthodontics/evolutions/{draft['id']}/sign",
+        token=tenant.dentist_admin.token,
+        json={
+            "row_version": draft["row_version"],
+            "clinical_evolution_version": draft["clinical_evolution_version"],
+            "confirm_complete": True,
+        },
+    )
+    assert signed.status_code == 200, signed.text
+    item = signed.json()
+    assert item["evolution_text"] == "Control actualizado; paciente evoluciona favorablemente."
+    assert item["integrity_status"] == "PASS"
+    parent = db_session.get(ClinicalEvolution, item["clinical_evolution_id"])
+    assert parent.evolution_text == item["evolution_text"]
+    assert parent.performed_procedure is None
+    assert parent.content_hash
+
+
+def test_legacy_evolution_fields_are_combined_without_mutating_signed_history(
+    api_client,
+    db_session,
+    security_world,
+) -> None:
+    tenant, case = _prepare(api_client, security_world)
+    only_performed = _create_legacy_evolution(
+        api_client,
+        tenant,
+        case["id"],
+        performed_summary="Cambio de arco superior.",
+    )
+    only_notes = _create_legacy_evolution(
+        api_client,
+        tenant,
+        case["id"],
+        notes="Buena tolerancia al tratamiento.",
+    )
+    both = _create_legacy_evolution(
+        api_client,
+        tenant,
+        case["id"],
+        performed_summary="Activación de aparatología.",
+        notes="Sin complicaciones durante la sesión.",
+    )
+    for response in (only_performed, only_notes, both):
+        assert response.status_code == 201, response.text
+    signed_legacy = []
+    for response in (only_performed, only_notes, both):
+        draft = response.json()
+        signed = api_client.post(
+            f"/api/orthodontics/evolutions/{draft['id']}/sign",
+            token=tenant.dentist_admin.token,
+            json={
+                "row_version": draft["row_version"],
+                "clinical_evolution_version": draft["clinical_evolution_version"],
+                "confirm_complete": True,
+            },
+        )
+        assert signed.status_code == 200, signed.text
+        assert signed.json()["integrity_status"] == "PASS"
+        signed_legacy.append(signed.json())
+
+    assert signed_legacy[0]["evolution_text"] == "Cambio de arco superior."
+    assert signed_legacy[1]["evolution_text"] == "Buena tolerancia al tratamiento."
+    assert signed_legacy[2]["evolution_text"] == (
+        "Activación de aparatología.\n\nSin complicaciones durante la sesión."
+    )
+
+    legacy = signed_legacy[2]
+    parent = db_session.get(ClinicalEvolution, legacy["clinical_evolution_id"])
+    original = {
+        "performed_procedure": parent.performed_procedure,
+        "evolution_text": parent.evolution_text,
+        "content_hash": parent.content_hash,
+        "version": parent.version,
+        "updated_at": parent.updated_at,
+    }
+
+    read_back = api_client.get(
+        f"/api/orthodontics/evolutions/{legacy['id']}",
+        token=tenant.dentist_admin.token,
+    )
+    assert read_back.status_code == 200, read_back.text
+    assert read_back.json()["evolution_text"] == (
+        "Activación de aparatología.\n\nSin complicaciones durante la sesión."
+    )
+    assert read_back.json()["integrity_status"] == "PASS"
+    summary = api_client.get(
+        f"/api/orthodontics/cases/{case['id']}",
+        token=tenant.dentist_admin.token,
+    ).json()
+    assert summary["evolution_text"] == read_back.json()["evolution_text"]
+
+    db_session.expire_all()
+    unchanged = db_session.get(ClinicalEvolution, legacy["clinical_evolution_id"])
+    assert unchanged.performed_procedure == original["performed_procedure"]
+    assert unchanged.evolution_text == original["evolution_text"]
+    assert unchanged.content_hash == original["content_hash"]
+    assert unchanged.version == original["version"]
+    assert unchanged.updated_at == original["updated_at"]
 
 
 def test_suspended_closed_unassigned_and_cross_tenant_are_denied(

@@ -50,6 +50,11 @@ from app.services.clinical_record_service import (
     sign_clinical_evolution,
     update_clinical_evolution_draft,
 )
+from app.services.orthodontic_evolution_text import (
+    STRUCTURED_ONLY_NOTE,
+    compose_orthodontic_evolution_text,
+    visible_orthodontic_evolution_notes,
+)
 from app.services.orthodontics_entitlement_service import (
     OrthodonticsError,
     require_assigned_orthodontist,
@@ -60,9 +65,6 @@ from app.services.orthodontics_entitlement_service import (
 
 class OrthodonticEvolutionError(OrthodonticsError):
     pass
-
-
-STRUCTURED_ONLY_NOTE = "Evolución ortodóncica estructurada."
 
 
 def _clean(value: str | None) -> str | None:
@@ -343,12 +345,17 @@ def _suggested_date(parent: ClinicalEvolution, option: OrthodonticCatalogOption 
 
 def _parent_payload(payload: OrthodonticEvolutionCreateRequest, dentist_id: UUID) -> ClinicalEvolutionCreateRequest:
     structured = _has_structured_content(payload)
+    uses_unified_text = payload.evolution_text is not None
     return ClinicalEvolutionCreateRequest(
         site_id=payload.site_id,
         dentist_id=dentist_id,
         attended_at=payload.attended_at,
-        evolution_text=payload.notes or (STRUCTURED_ONLY_NOTE if structured else None),
-        performed_procedure=payload.performed_summary,
+        evolution_text=(
+            payload.evolution_text
+            if uses_unified_text
+            else payload.notes or (STRUCTURED_ONLY_NOTE if structured else None)
+        ),
+        performed_procedure=None if uses_unified_text else payload.performed_summary,
         indications=payload.next_session_instructions,
     )
 
@@ -357,13 +364,18 @@ def _parent_update_payload(
     payload: OrthodonticEvolutionUpdateRequest, dentist_id: UUID
 ) -> ClinicalEvolutionDraftUpdateRequest:
     structured = _has_structured_content(payload)
+    uses_unified_text = payload.evolution_text is not None
     return ClinicalEvolutionDraftUpdateRequest(
         version=payload.clinical_evolution_version,
         site_id=payload.site_id,
         dentist_id=dentist_id,
         attended_at=payload.attended_at,
-        evolution_text=payload.notes or (STRUCTURED_ONLY_NOTE if structured else None),
-        performed_procedure=payload.performed_summary,
+        evolution_text=(
+            payload.evolution_text
+            if uses_unified_text
+            else payload.notes or (STRUCTURED_ONLY_NOTE if structured else None)
+        ),
+        performed_procedure=None if uses_unified_text else payload.performed_summary,
         indications=payload.next_session_instructions,
     )
 
@@ -504,8 +516,12 @@ def _response(session: Session, item: OrthodonticEvolution, parent: ClinicalEvol
         clinical_evolution_version=parent.version,
         signed_at=parent.signed_at,
         schema_version=item.schema_version,
+        evolution_text=compose_orthodontic_evolution_text(
+            parent.performed_procedure,
+            parent.evolution_text,
+        ),
         performed_summary=parent.performed_procedure,
-        notes=None if parent.evolution_text == STRUCTURED_ONLY_NOTE else parent.evolution_text,
+        notes=visible_orthodontic_evolution_notes(parent.evolution_text),
         upper_material=OrthodonticOptionSnapshot(option_id=item.upper_material_option_id, code=item.upper_material_code, label=item.upper_material_label),
         upper_size=OrthodonticOptionSnapshot(option_id=item.upper_size_option_id, code=item.upper_size_code, label=item.upper_size_label),
         lower_material=OrthodonticOptionSnapshot(option_id=item.lower_material_option_id, code=item.lower_material_code, label=item.lower_material_label),

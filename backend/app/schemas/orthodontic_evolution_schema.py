@@ -105,6 +105,8 @@ class OrthodonticEvolutionBaseInput(BaseModel):
 
     site_id: UUID | None = None
     attended_at: datetime | None = None
+    evolution_text: str | None = Field(default=None, max_length=12000)
+    # Legacy inputs remain accepted while older clients migrate to evolution_text.
     performed_summary: str | None = Field(default=None, max_length=6000)
     notes: str | None = Field(default=None, max_length=12000)
     upper_material_option_id: UUID | None = None
@@ -122,7 +124,7 @@ class OrthodonticEvolutionBaseInput(BaseModel):
     alert_active: bool = False
 
     @field_validator(
-        "performed_summary", "notes", "upper_aligner_note", "lower_aligner_note",
+        "evolution_text", "performed_summary", "notes", "upper_aligner_note", "lower_aligner_note",
         "elastic_type", "elastic_configuration", "next_session_instructions", "alert_text",
     )
     @classmethod
@@ -183,6 +185,8 @@ class OrthodonticEvolutionResponse(BaseModel):
     clinical_evolution_version: int
     signed_at: datetime | None
     schema_version: str
+    evolution_text: str | None
+    # Legacy response fields are preserved for compatibility and signed history.
     performed_summary: str | None
     notes: str | None
     upper_material: OrthodonticOptionSnapshot

@@ -28,6 +28,7 @@ from app.schemas.orthodontic_case_schema import (
     OrthodonticSummaryResponse,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
+from app.services.orthodontic_evolution_text import compose_orthodontic_evolution_text
 from app.services.orthodontics_entitlement_service import (
     OrthodonticsError,
     require_assigned_orthodontist,
@@ -35,8 +36,6 @@ from app.services.orthodontics_entitlement_service import (
     require_orthodontics_historical_read_access,
     resolve_orthodontics_access,
 )
-
-
 OPEN_STATUSES = ("DRAFT", "ACTIVE", "SUSPENDED")
 
 
@@ -314,11 +313,20 @@ def _summary(session: Session, case: OrthodonticCase) -> OrthodonticSummaryRespo
     orthodontic = latest[0] if latest else None
     clinical = latest[1] if latest else None
     professional_name = latest[2] if latest else None
+    evolution_text = (
+        compose_orthodontic_evolution_text(
+            clinical.performed_procedure,
+            clinical.evolution_text,
+        )
+        if clinical
+        else None
+    )
     return OrthodonticSummaryResponse(
         case=_case_response(session, case),
         last_visit=clinical.attended_at if clinical else None,
         last_visit_professional=professional_name,
-        what_was_done=clinical.performed_procedure if clinical else None,
+        evolution_text=evolution_text,
+        what_was_done=evolution_text,
         next_session_instructions=(orthodontic.next_session_instructions if orthodontic else None),
         next_clinical_control=(orthodontic.next_control_label if orthodontic else None),
         suggested_next_control_date=(orthodontic.suggested_next_control_date if orthodontic else None),

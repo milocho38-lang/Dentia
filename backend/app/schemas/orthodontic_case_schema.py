@@ -77,6 +77,8 @@ class OrthodonticSummaryResponse(BaseModel):
     case: OrthodonticCaseResponse
     last_visit: datetime | None = None
     last_visit_professional: str | None = None
+    evolution_text: str | None = None
+    # Retained for older clients; mirrors evolution_text.
     what_was_done: str | None = None
     next_session_instructions: str | None = None
     next_clinical_control: str | None = None
