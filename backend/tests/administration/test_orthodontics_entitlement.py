@@ -2,7 +2,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.core.security_catalog import ROLES
 from app.models.agenda import Dentist, DentistSite
+from app.models.associations import UserRole
 from app.models.audit_event import AuditEvent
+from app.models.orthodontics import OrthodonticsDentistAssignment
 
 
 def _role_permissions(code: str) -> set[str]:
@@ -75,6 +77,207 @@ def test_platform_manages_entitlement_without_tenant_clinical_access(api_client,
         token=security_world.tenant_a.admin.token,
         json={"enabled": True, "seat_limit": 4},
     ).status_code == 403
+
+
+def test_platform_user_seat_assignment_flow_is_separate_from_roles(
+    api_client,
+    db_session,
+    security_world,
+) -> None:
+    tenant = security_world.tenant_a
+    tenant.company.name = "Dentia prueba"
+    tenant.admin.user.email = "admin@dentiapro.com"
+    tenant.admin.user.normalized_email = "admin@dentiapro.com"
+    tenant.dentist_admin.user.email = "dentiaprueba@prueba.com"
+    tenant.dentist_admin.user.normalized_email = "dentiaprueba@prueba.com"
+    db_session.commit()
+    second_dentist = _ensure_dentist(db_session, tenant, tenant.dentist)
+    role_ids_before = {
+        row.role_id
+        for row in db_session.query(UserRole).filter(
+            UserRole.user_id == tenant.dentist_admin.user.id,
+            UserRole.is_active.is_(True),
+        )
+    }
+
+    disabled = api_client.get(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["entitlement"]["enabled"] is False
+
+    assert _enable(api_client, security_world, seats=1).status_code == 200
+    listing = api_client.get(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+    )
+    assert listing.status_code == 200, listing.text
+    target = next(
+        item
+        for item in listing.json()["items"]
+        if item["user_id"] == str(tenant.dentist_admin.user.id)
+    )
+    assert target["dentist_id"] == str(tenant.dentist_profile.id)
+    assert target["assigned"] is False
+
+    assigned = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+        json={"dentist_id": str(tenant.dentist_profile.id)},
+    )
+    assert assigned.status_code == 200, assigned.text
+    assert assigned.json()["created"] is True
+    assert assigned.json()["seats"] == {
+        "seat_limit": 1,
+        "assigned_active": 1,
+        "available": 0,
+    }
+    assignment_id = assigned.json()["assignment"]["id"]
+
+    repeated = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+        json={"dentist_id": str(tenant.dentist_profile.id)},
+    )
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json()["created"] is False
+
+    full = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+        json={"dentist_id": str(second_dentist.id)},
+    )
+    assert full.status_code == 409
+    assert full.json()["detail"]["code"] == "ORTHODONTICS_NO_AVAILABLE_SEATS"
+
+    foreign = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+        json={"dentist_id": str(security_world.tenant_b.dentist_profile.id)},
+    )
+    assert foreign.status_code == 404
+    assert api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=tenant.admin.token,
+        json={"dentist_id": str(tenant.dentist_profile.id)},
+    ).status_code == 403
+
+    clinical_access = api_client.get(
+        "/api/orthodontics/access",
+        token=tenant.dentist_admin.token,
+    )
+    assert clinical_access.status_code == 200
+    assert clinical_access.json()["allowed"] is True
+    assert api_client.get(
+        "/api/orthodontics/access",
+        token=security_world.platform_admin.token,
+    ).status_code == 403
+
+    revoked = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments/{assignment_id}/revoke",
+        token=security_world.platform_admin.token,
+        json={"reason": "Fin de asignación de prueba"},
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert revoked.json()["assignment"]["assigned"] is False
+    assert revoked.json()["seats"] == {
+        "seat_limit": 1,
+        "assigned_active": 0,
+        "available": 1,
+    }
+    repeated_revoke = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments/{assignment_id}/revoke",
+        token=security_world.platform_admin.token,
+        json={"reason": "Reintento idempotente"},
+    )
+    assert repeated_revoke.status_code == 200, repeated_revoke.text
+    assert repeated_revoke.json()["message"] == "El cupo de Ortodoncia ya estaba retirado."
+
+    db_session.expire_all()
+    historical = db_session.get(OrthodonticsDentistAssignment, assignment_id)
+    assert historical is not None
+    assert historical.is_active is False
+    assert historical.revoked_at is not None
+    assignment_actions = [
+        event.action
+        for event in db_session.query(AuditEvent).filter(
+            AuditEvent.company_id == tenant.company.id,
+            AuditEvent.entity == "orthodontics_dentist_assignment",
+            AuditEvent.entity_id == assignment_id,
+        )
+    ]
+    assert assignment_actions.count("ORTHODONTICS_DENTIST_ASSIGNED") == 1
+    assert assignment_actions.count("ORTHODONTICS_DENTIST_REVOKED") == 1
+    role_ids_after = {
+        row.role_id
+        for row in db_session.query(UserRole).filter(
+            UserRole.user_id == tenant.dentist_admin.user.id,
+            UserRole.is_active.is_(True),
+        )
+    }
+    assert role_ids_after == role_ids_before
+
+    reassigned = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+        json={"dentist_id": str(tenant.dentist_profile.id)},
+    )
+    assert reassigned.status_code == 200, reassigned.text
+    assert reassigned.json()["created"] is True
+    reassignment_id = reassigned.json()["assignment"]["id"]
+    assert reassignment_id != assignment_id
+    assert reassigned.json()["seats"] == {
+        "seat_limit": 1,
+        "assigned_active": 1,
+        "available": 0,
+    }
+    repeated_reassignment = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+        json={"dentist_id": str(tenant.dentist_profile.id)},
+    )
+    assert repeated_reassignment.status_code == 200, repeated_reassignment.text
+    assert repeated_reassignment.json()["created"] is False
+    assert repeated_reassignment.json()["assignment"]["id"] == reassignment_id
+
+    final_revoke = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments/{reassignment_id}/revoke",
+        token=security_world.platform_admin.token,
+        json={"reason": "Cierre del ciclo de reasignación"},
+    )
+    assert final_revoke.status_code == 200, final_revoke.text
+    assert final_revoke.json()["seats"] == {
+        "seat_limit": 1,
+        "assigned_active": 0,
+        "available": 1,
+    }
+
+
+def test_platform_assignment_rejects_inactive_or_missing_dentist_profile(
+    api_client,
+    db_session,
+    security_world,
+) -> None:
+    tenant = security_world.tenant_a
+    assert _enable(api_client, security_world, seats=1).status_code == 200
+    tenant.dentist_profile.is_active = False
+    tenant.dentist_profile.status = "Inactivo"
+    db_session.commit()
+
+    inactive = api_client.post(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+        json={"dentist_id": str(tenant.dentist_profile.id)},
+    )
+    assert inactive.status_code == 409
+    assert inactive.json()["detail"]["code"] == "ORTHODONTICS_DENTIST_INACTIVE"
+    listing = api_client.get(
+        f"/api/platform/companies/{tenant.company.id}/orthodontics-assignments",
+        token=security_world.platform_admin.token,
+    )
+    linked_user_ids = {item["user_id"] for item in listing.json()["items"]}
+    assert str(tenant.secretary.user.id) not in linked_user_ids
 
 
 def test_assignment_seat_accounting_access_and_cross_tenant(api_client, db_session, security_world) -> None:

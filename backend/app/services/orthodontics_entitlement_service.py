@@ -346,11 +346,10 @@ def _assignment_response(
     )
 
 
-def list_tenant_assignments(
+def _list_company_assignments(
     session: Session,
-    context: AuthContext,
+    company_id: UUID,
 ) -> OrthodonticsAssignmentListResponse:
-    company_id = context.user.company_id
     entitlement = _entitlement(session, company_id)
     dentists = list(
         session.scalars(
@@ -380,13 +379,29 @@ def list_tenant_assignments(
     )
 
 
-def assign_dentist(
+def list_tenant_assignments(
     session: Session,
     context: AuthContext,
+) -> OrthodonticsAssignmentListResponse:
+    return _list_company_assignments(session, context.user.company_id)
+
+
+def list_platform_assignments(
+    session: Session,
+    company_id: UUID,
+) -> OrthodonticsAssignmentListResponse:
+    _company(session, company_id)
+    return _list_company_assignments(session, company_id)
+
+
+def _assign_company_dentist(
+    session: Session,
+    context: AuthContext,
+    company_id: UUID,
     dentist_id: UUID,
     metadata: RequestMetadata,
 ) -> OrthodonticsAssignmentActionResponse:
-    company_id = context.user.company_id
+    _company(session, company_id)
     entitlement = _entitlement(session, company_id, lock=True)
     if not _is_effectively_enabled(entitlement):
         raise OrthodonticsError(
@@ -462,21 +477,52 @@ def assign_dentist(
     )
 
 
-def revoke_assignment(
+def assign_dentist(
     session: Session,
     context: AuthContext,
+    dentist_id: UUID,
+    metadata: RequestMetadata,
+) -> OrthodonticsAssignmentActionResponse:
+    return _assign_company_dentist(
+        session,
+        context,
+        context.user.company_id,
+        dentist_id,
+        metadata,
+    )
+
+
+def assign_platform_dentist(
+    session: Session,
+    context: AuthContext,
+    company_id: UUID,
+    dentist_id: UUID,
+    metadata: RequestMetadata,
+) -> OrthodonticsAssignmentActionResponse:
+    return _assign_company_dentist(
+        session,
+        context,
+        company_id,
+        dentist_id,
+        metadata,
+    )
+
+
+def _revoke_company_assignment(
+    session: Session,
+    context: AuthContext,
+    company_id: UUID,
     assignment_id: UUID,
     metadata: RequestMetadata,
     *,
     reason: str | None = None,
 ) -> OrthodonticsAssignmentActionResponse:
-    company_id = context.user.company_id
+    _company(session, company_id)
     assignment = session.scalar(
         select(OrthodonticsDentistAssignment)
         .where(
             OrthodonticsDentistAssignment.id == assignment_id,
             OrthodonticsDentistAssignment.company_id == company_id,
-            OrthodonticsDentistAssignment.is_active.is_(True),
         )
         .with_for_update()
     )
@@ -491,6 +537,17 @@ def revoke_assignment(
         company_id,
         assignment.dentist_id,
     )
+    if not assignment.is_active:
+        return OrthodonticsAssignmentActionResponse(
+            created=False,
+            message="El cupo de Ortodoncia ya estaba retirado.",
+            assignment=_assignment_response(dentist, user, assignment),
+            seats=_seat_summary(
+                session,
+                company_id,
+                _entitlement(session, company_id),
+            ),
+        )
     assignment.is_active = False
     assignment.revoked_at = _now()
     assignment.revoked_by_user_id = context.user.id
@@ -516,6 +573,43 @@ def revoke_assignment(
         message="Módulo de Ortodoncia retirado.",
         assignment=_assignment_response(dentist, user, assignment),
         seats=_seat_summary(session, company_id, entitlement),
+    )
+
+
+def revoke_assignment(
+    session: Session,
+    context: AuthContext,
+    assignment_id: UUID,
+    metadata: RequestMetadata,
+    *,
+    reason: str | None = None,
+) -> OrthodonticsAssignmentActionResponse:
+    return _revoke_company_assignment(
+        session,
+        context,
+        context.user.company_id,
+        assignment_id,
+        metadata,
+        reason=reason,
+    )
+
+
+def revoke_platform_assignment(
+    session: Session,
+    context: AuthContext,
+    company_id: UUID,
+    assignment_id: UUID,
+    metadata: RequestMetadata,
+    *,
+    reason: str | None = None,
+) -> OrthodonticsAssignmentActionResponse:
+    return _revoke_company_assignment(
+        session,
+        context,
+        company_id,
+        assignment_id,
+        metadata,
+        reason=reason,
     )
 
 

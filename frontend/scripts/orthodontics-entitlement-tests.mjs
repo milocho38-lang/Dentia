@@ -5,6 +5,8 @@ const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "
 const nav = read("config/navigation.ts");
 const tenant = read("components/orthodontics/OrthodonticsAssignmentPage.tsx");
 const platform = read("components/orthodontics/PlatformOrthodonticsEntitlementCard.tsx");
+const platformUser = read("components/orthodontics/PlatformUserOrthodonticsAddon.tsx");
+const platformCompanies = read("components/platform/PlatformCompanyPages.tsx");
 const service = read("services/orthodonticsService.ts");
 
 assert.match(nav, /orthodontics\.assignment\.view/);
@@ -15,4 +17,14 @@ assert.match(tenant, /El módulo no está habilitado/);
 assert.match(platform, /Habilitación comercial y cupos por odontólogo/);
 assert.match(service, /\/api\/orthodontics\/assignments/);
 assert.match(service, /orthodontics-entitlement/);
+assert.match(service, /\/api\/platform\/companies\/\$\{companyId\}\/orthodontics-assignments/);
+assert.match(platformCompanies, /PlatformUserOrthodonticsAddon/);
+assert.match(platformUser, /Add-ons clínicos/);
+assert.match(platformUser, /Asignar cupo de Ortodoncia/);
+assert.match(platformUser, /No elegible para Ortodoncia/);
+assert.match(platformUser, /No hay cupos disponibles/);
+assert.match(platformUser, /no modifica sus roles/);
+assert.match(platformUser, /Cupos contratados/);
+assert.match(platformUser, /Cupos asignados/);
+assert.match(platformUser, /Cupos disponibles/);
 console.log("orthodontics-entitlement-tests OK");

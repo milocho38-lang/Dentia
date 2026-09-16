@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Alert } from "@/components/shared/Alert";
 import { Spinner } from "@/components/shared/Spinner";
 import { PlatformOrthodonticsEntitlementCard } from "@/components/orthodontics/PlatformOrthodonticsEntitlementCard";
+import { PlatformUserOrthodonticsAddon } from "@/components/orthodontics/PlatformUserOrthodonticsAddon";
 import {
   createPlatformCompany,
   deactivatePlatformCompany,
@@ -323,6 +324,7 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
   const [notice, setNotice] = useState<string | null>(null);
   const [dentistLimit, setDentistLimit] = useState(1);
   const [savingLimit, setSavingLimit] = useState(false);
+  const [orthodonticsRevision, setOrthodonticsRevision] = useState(0);
 
   async function load() {
     setLoading(true);
@@ -433,7 +435,10 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
           {savingLimit ? "Guardando…" : "Actualizar límite"}
         </button>
       </form>
-      <PlatformOrthodonticsEntitlementCard companyId={company.id} />
+      <PlatformOrthodonticsEntitlementCard
+        key={orthodonticsRevision}
+        companyId={company.id}
+      />
       <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
         <h2 className="font-black">Datos empresa</h2>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -598,6 +603,9 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
             updateUserInCompany(user);
             setNotice(message);
           }}
+          onOrthodonticsChanged={() => {
+            setOrthodonticsRevision((current) => current + 1);
+          }}
         />
       )}
     </div>
@@ -619,12 +627,14 @@ function CompanyUserRolesModal({
   mode,
   onClose,
   onSaved,
+  onOrthodonticsChanged,
 }: {
   company: PlatformCompanyDetail;
   user: PlatformUserSummary;
   mode: "view" | "edit";
   onClose: () => void;
   onSaved: (user: PlatformUserSummary, message: string) => void;
+  onOrthodonticsChanged: () => void;
 }) {
   const editable = mode === "edit";
   const [roleIds, setRoleIds] = useState<string[]>(user.role_ids);
@@ -831,6 +841,13 @@ function CompanyUserRolesModal({
               </p>
             </div>
           )}
+
+          <PlatformUserOrthodonticsAddon
+            companyId={company.id}
+            user={user}
+            editable={editable}
+            onChanged={onOrthodonticsChanged}
+          />
 
           {editable && (
             <div className="mt-6 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">

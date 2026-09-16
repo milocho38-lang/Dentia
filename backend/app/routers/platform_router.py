@@ -18,6 +18,10 @@ from app.schemas.platform_schema import (
     PlatformCompanyDentistLimitUpdateResponse,
 )
 from app.schemas.orthodontics_schema import (
+    OrthodonticsAssignmentActionResponse,
+    OrthodonticsAssignmentCreateRequest,
+    OrthodonticsAssignmentListResponse,
+    OrthodonticsAssignmentRevokeRequest,
     OrthodonticsEntitlementResponse,
     OrthodonticsEntitlementUpdateRequest,
 )
@@ -33,7 +37,10 @@ from app.services.platform_service import (
 )
 from app.services.orthodontics_entitlement_service import (
     OrthodonticsError,
+    assign_platform_dentist,
     get_platform_entitlement,
+    list_platform_assignments,
+    revoke_platform_assignment,
     update_platform_entitlement,
 )
 
@@ -95,6 +102,84 @@ def update_company_orthodontics_entitlement_endpoint(
             company_id,
             payload,
             get_request_metadata(request),
+        )
+    except OrthodonticsError as exc:
+        raise handle_orthodontics(exc)
+
+
+@router.get(
+    "/companies/{company_id}/orthodontics-assignments",
+    response_model=OrthodonticsAssignmentListResponse,
+)
+def company_orthodontics_assignments_endpoint(
+    company_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
+    _platform_context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.view"))
+    ],
+    _orthodontics_context: Annotated[
+        AuthContext, Depends(require_permission("orthodontics.entitlement.view"))
+    ],
+) -> OrthodonticsAssignmentListResponse:
+    try:
+        return list_platform_assignments(session, company_id)
+    except OrthodonticsError as exc:
+        raise handle_orthodontics(exc)
+
+
+@router.post(
+    "/companies/{company_id}/orthodontics-assignments",
+    response_model=OrthodonticsAssignmentActionResponse,
+)
+def assign_company_orthodontics_seat_endpoint(
+    company_id: UUID,
+    payload: OrthodonticsAssignmentCreateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+    _orthodontics_context: Annotated[
+        AuthContext, Depends(require_permission("orthodontics.entitlement.manage"))
+    ],
+) -> OrthodonticsAssignmentActionResponse:
+    try:
+        return assign_platform_dentist(
+            session,
+            context,
+            company_id,
+            payload.dentist_id,
+            get_request_metadata(request),
+        )
+    except OrthodonticsError as exc:
+        raise handle_orthodontics(exc)
+
+
+@router.post(
+    "/companies/{company_id}/orthodontics-assignments/{assignment_id}/revoke",
+    response_model=OrthodonticsAssignmentActionResponse,
+)
+def revoke_company_orthodontics_seat_endpoint(
+    company_id: UUID,
+    assignment_id: UUID,
+    payload: OrthodonticsAssignmentRevokeRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+    _orthodontics_context: Annotated[
+        AuthContext, Depends(require_permission("orthodontics.entitlement.manage"))
+    ],
+) -> OrthodonticsAssignmentActionResponse:
+    try:
+        return revoke_platform_assignment(
+            session,
+            context,
+            company_id,
+            assignment_id,
+            get_request_metadata(request),
+            reason=payload.reason,
         )
     except OrthodonticsError as exc:
         raise handle_orthodontics(exc)

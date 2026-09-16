@@ -250,7 +250,7 @@ def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: 
     if path.startswith(("/api/company", "/api/sites", "/api/dentists", "/api/users")):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_admin_finance_reports.py", ""
     if path.startswith("/api/orthodontics") or "/orthodontics" in path:
-        return TestStatus.DB_BACKED, "backend/tests/administration/test_orthodontic_cases.py", ""
+        return TestStatus.DB_BACKED, "backend/tests/administration/test_orthodontics_entitlement.py backend/tests/administration/test_orthodontic_cases.py", ""
     if path.startswith("/api/consent-library"):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_library_package.py", ""
     if path.startswith(("/api/consent-templates", "/api/consent-template-catalog")):
