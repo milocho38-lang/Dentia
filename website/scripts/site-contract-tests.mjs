@@ -14,6 +14,9 @@ const pages = {
   demo: read("app/demo/page.tsx"),
 };
 const source = Object.values(pages).join("\n");
+const carousel = read("components/ProductCarousel.tsx");
+const carouselAutoplay = read("lib/carouselAutoplay.ts");
+const globalStyles = read("app/globals.css");
 
 for (const route of ["/producto", "/precios", "/seguridad", "/demo"]) {
   assert.match(read("lib/site.ts"), new RegExp(route.replace("/", "\\/")), `Missing navigation route ${route}`);
@@ -22,6 +25,9 @@ for (const route of ["/producto", "/precios", "/seguridad", "/demo"]) {
 assert.match(read("lib/site.ts"), /https:\/\/app\.dentiapro\.com/, "The app login origin must remain canonical");
 assert.match(pages.home, /Toda tu consulta odontológica en un solo lugar\./);
 assert.match(pages.home, /En validación con prácticas odontológicas reales en Colombia y Chile\./);
+assert.match(pages.home, /<ProductCarousel \/>/, "The compact home must render the product carousel");
+assert.doesNotMatch(pages.home, /story-stack|journey__step/, "The old repeated vertical product story must be removed");
+assert.doesNotMatch(pages.home, /Ortodoncia|Periodontograma/, "Pilot or design-stage modules must not be marketed");
 assert.match(pages.product, /Agenda/);
 assert.match(pages.product, /Odontograma/);
 assert.match(pages.product, /Configuración y gestión de plantillas de consentimientos/);
@@ -94,6 +100,34 @@ for (const filename of expectedAssets) {
 assert.match(read("app/robots.ts"), /siteIsIndexable/);
 assert.match(read("app/sitemap.ts"), /\/producto/);
 assert.match(read("app/globals.css"), /prefers-reduced-motion/);
+
+const carouselSlides = [
+  "Agenda organizada",
+  "Pacientes en contexto",
+  "Historia clínica trazable",
+  "Odontograma clínico",
+  "Tratamientos conectados",
+  "Consentimientos gestionados",
+  "Finanzas del paciente",
+  "Seguimientos visibles",
+];
+for (const slide of carouselSlides) {
+  assert.ok(carousel.includes(slide), `Missing carousel slide ${slide}`);
+}
+assert.match(carouselAutoplay, /AUTOPLAY_DELAY_MS = 6000/, "Carousel autoplay must use the approved six-second interval");
+assert.match(carouselAutoplay, /MANUAL_INTERACTION_PAUSE_MS = 10000/, "Manual interaction pause must be temporary");
+assert.match(carousel, /prefers-reduced-motion: reduce/, "Carousel must disable autoplay for reduced motion");
+assert.match(carousel, /visibilitychange/, "Carousel must pause while the page is hidden");
+assert.match(carousel, /onMouseEnter=.*setHoverPaused\(true\)/, "Carousel must pause on hover");
+assert.match(carousel, /onFocusCapture=.*handleFocus/, "Carousel must pause for keyboard-visible focus");
+assert.match(carousel, /onPointerDown=.*pauseForManualInteraction/, "Swipe interaction must pause autoplay temporarily");
+assert.match(carousel, /setInteractionPaused\(false\)/, "Autoplay must resume after manual interaction");
+assert.match(carousel, /ArrowLeft/);
+assert.match(carousel, /ArrowRight/);
+assert.match(carousel, /aria-live="polite"/);
+assert.match(globalStyles, /scroll-snap-type: x mandatory/);
+assert.match(globalStyles, /overscroll-behavior-inline: contain/);
+assert.match(globalStyles, /min-width: calc\(100% - 1\.4rem\)/, "Mobile must preserve a visible next-slide affordance");
 
 const nextConfig = read("next.config.ts");
 assert.match(nextConfig, /source: "\/consentimiento\/:path\*"/);

@@ -2,13 +2,14 @@
   "name": "dentia-public-website",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "node .next/standalone/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/site-contract-tests.mjs"
+    "test": "node scripts/site-contract-tests.mjs && node scripts/carousel-autoplay-tests.mjs"
   },
   "dependencies": {
     "next": "16.3.4",
