@@ -55,7 +55,7 @@ export function Sidebar({
 
         <div className="mt-10 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
           <div className="space-y-7 pb-4">
-            {(["Operación", "Configuración"] as const).map((section) => {
+            {(["Operación", "Administración", "Configuración"] as const).map((section) => {
               const sectionItems = visibleItems.filter(
                 (item) => item.section === section,
               );

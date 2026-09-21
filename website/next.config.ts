@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://app.dentiapro.com").replace(/\/$/, "");
+const apiProxyTarget = (process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -36,6 +37,7 @@ const applicationRedirects = [
   "/configuracion/:path*",
   "/cambiar-contrasena",
   "/sin-acceso",
+  "/administracion/:path*",
 ] as const;
 
 const nextConfig: NextConfig = {
@@ -57,6 +59,14 @@ const nextConfig: NextConfig = {
         destination: `${appUrl}${source}`,
         permanent: false,
       })),
+    ];
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/api/public/demo-requests",
+        destination: `${apiProxyTarget}/api/public/demo-requests`,
+      },
     ];
   },
   images: {

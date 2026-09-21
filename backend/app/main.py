@@ -17,6 +17,7 @@ from app.routers.consent_library_router import router as consent_library_router
 from app.routers.consent_instance_router import router as consent_instance_router
 from app.routers.consent_access_router import private as consent_access_router, public as public_consent_router
 from app.routers.health_router import router as health_router
+from app.routers.demo_request_router import platform as platform_demo_request_router, public as public_demo_request_router
 from app.routers.organization_router import router as organization_router
 from app.routers.orthodontics_router import router as orthodontics_router
 from app.routers.orthodontic_case_router import router as orthodontic_case_router
@@ -45,11 +46,22 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def safe_public_consent_validation_error(request: Request, exc: RequestValidationError):
+        if request.method == "POST" and request.url.path == "/api/public/demo-requests":
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "detail": {
+                        "code": "DEMO_REQUEST_INVALID",
+                        "message": "Revisa los campos obligatorios y la autorización de contacto.",
+                    }
+                },
+            )
         if request.method == "POST" and request.url.path.startswith("/api/public/consents/") and request.url.path.endswith("/acceptance"):
             return JSONResponse(status_code=422,content={"detail":{"code":"REQUEST_INVALID","message":"La solicitud de aceptación está incompleta o no es válida."}})
         return await request_validation_exception_handler(request,exc)
 
     app.include_router(health_router)
+    app.include_router(public_demo_request_router)
     app.include_router(auth_router)
     app.include_router(user_router)
     app.include_router(organization_router)
@@ -72,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(prescription_router)
     app.include_router(followup_router)
     app.include_router(platform_router)
+    app.include_router(platform_demo_request_router)
     app.include_router(report_router)
     app.include_router(treatment_router)
 

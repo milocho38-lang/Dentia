@@ -85,6 +85,7 @@ PUBLIC_ROUTES = {
     ("GET", "/api/public/consents/{token}/acceptance-requirements"),
     ("POST", "/api/public/consents/{token}/acceptance"),
     ("GET", "/api/public/consents/final-documents/{download_token}"),
+    ("POST", "/api/public/demo-requests"),
 }
 
 AUTHENTICATED_ONLY_ROUTES = {
@@ -103,6 +104,8 @@ def _module_for(path: str) -> str:
         return "auth"
     if path.startswith("/api/public/consents"):
         return "consent_access_public"
+    if path.startswith("/api/public/demo-requests"):
+        return "demo_requests_public"
     if path.startswith("/api/platform"):
         return "platform"
     if path.startswith("/api/orthodontics") or "/orthodontics" in path:
@@ -158,6 +161,8 @@ def _module_for(path: str) -> str:
 
 def _category_for(path: str) -> RouteCategory:
     lower_path = path.lower()
+    if path.startswith("/api/public/"):
+        return RouteCategory.PUBLIC
     if (path == "/health") or path.startswith("/api/auth"):
         return RouteCategory.PUBLIC if any((method, path) in PUBLIC_ROUTES for method in {"GET", "POST"}) else RouteCategory.AUTHENTICATED
     if path.startswith("/api/platform"):
@@ -179,6 +184,8 @@ def _category_for(path: str) -> RouteCategory:
 
 
 def _scope_for(path: str) -> Scope:
+    if path.startswith("/api/public/demo-requests"):
+        return Scope.PLATFORM
     if path.startswith("/api/platform"):
         return Scope.PLATFORM
     if path.startswith("/api/consent-library") and "approve-equivalence" in path:
@@ -221,6 +228,8 @@ def _is_critical(path: str, method: str, category: RouteCategory) -> bool:
 
 def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: RiskLevel) -> tuple[TestStatus, str, str]:
     key = (method, path)
+    if path.startswith("/api/public/demo-requests"):
+        return TestStatus.DB_BACKED, "backend/tests/administration/test_demo_requests.py", "Validación, consentimiento, anti-spam, deduplicación y persistencia cubiertos con PostgreSQL real."
     if path.startswith("/api/public/consents"):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_instances.py::test_secure_access_otp_document_clarification_reissue_and_tenant_boundaries", "Token opaco, OTP, cookie, snapshot y respuestas públicas cubiertos con PostgreSQL real."
     if key in PUBLIC_ROUTES:

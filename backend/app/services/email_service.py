@@ -17,6 +17,7 @@ class EmailDelivery:
     subject: str
     body: str
     attachments: tuple[tuple[str, str, bytes], ...] = ()
+    sender: str | None = None
 
 
 class EmailDeliveryError(RuntimeError):
@@ -118,7 +119,10 @@ class SmtpEmailProvider(EmailProvider):
         if not _valid_recipient(delivery.recipient):
             raise EmailDeliveryError("El destinatario de correo no es válido.")
         message = EmailMessage()
-        message["From"] = settings.smtp_from_email
+        sender = delivery.sender or settings.smtp_from_email
+        if not sender or not _valid_recipient(sender):
+            raise EmailDeliveryError("El remitente de correo no es válido.")
+        message["From"] = sender
         message["To"] = delivery.recipient
         message["Subject"] = delivery.subject
         message.set_content(delivery.body)

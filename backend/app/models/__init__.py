@@ -9,6 +9,7 @@ from app.models.agenda import (
     PatientResponsible,
 )
 from app.models.audit_event import AuditEvent
+from app.models.demo_request import DemoRequest, DemoRequestNote
 from app.models.followup import AppointmentCare, FollowupManagement, PatientFollowup
 from app.models.auth_attempt import AuthAttempt
 from app.models.auth_session import AuthSession
@@ -90,6 +91,8 @@ from app.models.user import User
 
 __all__ = [
     "AuditEvent",
+    "DemoRequest",
+    "DemoRequestNote",
     "Appointment",
     "AppointmentHistory",
     "AppointmentType",

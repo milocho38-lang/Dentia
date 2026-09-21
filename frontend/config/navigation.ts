@@ -2,10 +2,16 @@ export interface NavigationItem {
   label: string;
   href: string;
   permission: string;
-  section: "Operación" | "Configuración";
+  section: "Operación" | "Administración" | "Configuración";
 }
 
 export const navigationItems: NavigationItem[] = [
+  {
+    label: "Solicitudes de demo",
+    href: "/administracion/solicitudes-demo",
+    permission: "platform.demo_requests.view",
+    section: "Administración",
+  },
   {
     label: "Dashboard",
     href: "/dashboard",

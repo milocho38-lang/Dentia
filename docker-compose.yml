@@ -72,12 +72,14 @@ services:
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://dentiapro.com}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.dentiapro.com}
         NEXT_PUBLIC_SITE_INDEXABLE: ${NEXT_PUBLIC_SITE_INDEXABLE:-false}
+        API_PROXY_TARGET: ${API_PROXY_TARGET:-http://dentia-backend:8000}
     container_name: ${DENTIA_WEBSITE_CONTAINER:-dentia-website}
     restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3010
       HOSTNAME: 0.0.0.0
+      API_PROXY_TARGET: ${API_PROXY_TARGET:-http://dentia-backend:8000}
     ports:
       - "${DENTIA_WEBSITE_BIND:-3010}:3010"
     networks:

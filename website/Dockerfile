@@ -8,10 +8,12 @@ WORKDIR /app
 ARG NEXT_PUBLIC_SITE_URL=http://localhost:3010
 ARG NEXT_PUBLIC_APP_URL=https://app.dentiapro.com
 ARG NEXT_PUBLIC_SITE_INDEXABLE=false
+ARG API_PROXY_TARGET=http://dentia-backend:8000
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_SITE_INDEXABLE=$NEXT_PUBLIC_SITE_INDEXABLE
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
@@ -22,6 +24,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3010
 ENV HOSTNAME=0.0.0.0
+ENV API_PROXY_TARGET=http://dentia-backend:8000
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

@@ -1541,11 +1541,59 @@ p {
   outline: 3px solid var(--green-100);
 }
 
+.demo-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  color: var(--slate-600);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.demo-consent input {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: none;
+  margin-top: 0.15rem;
+  accent-color: var(--green-600);
+}
+
+.demo-consent a {
+  color: var(--green-700);
+  font-weight: 750;
+}
+
+.demo-honeypot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.demo-form .button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  transform: none;
+}
+
 .form-disclosure {
   margin-bottom: 0;
   color: var(--slate-500);
   font-size: 0.8rem;
   line-height: 1.5;
+}
+
+.form-disclosure--success {
+  color: var(--green-700);
+  font-weight: 700;
+}
+
+.form-disclosure--error {
+  color: #b91c1c;
+  font-weight: 700;
 }
 
 .legal-placeholder {

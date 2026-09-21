@@ -47,11 +47,13 @@ assert.match(pages.security, /Conexiones protegidas/);
 assert.match(pages.security, /Trazabilidad de acciones críticas/);
 
 const demoForm = read("components/DemoForm.tsx");
-for (const field of ["demo-name", "demo-email", "demo-phone", "demo-country", "demo-practice", "demo-dentists", "demo-message"]) {
+for (const field of ["demo-name", "demo-last-name", "demo-email", "demo-phone", "demo-country", "demo-city", "demo-practice", "demo-dentists", "demo-message"]) {
   assert.ok(demoForm.includes(`htmlFor=\"${field}\"`), `Missing accessible label for ${field}`);
 }
-assert.match(demoForm, /type="submit" disabled/, "Demo submission must remain disabled until a safe lead channel exists");
-assert.match(demoForm, /no transmite ni almacena información/);
+assert.match(demoForm, /fetch\("\/api\/public\/demo-requests"/, "The demo form must use the same-origin public endpoint");
+assert.match(demoForm, /privacyConsent/);
+assert.match(demoForm, /Solicitud recibida/);
+assert.doesNotMatch(demoForm, /no transmite ni almacena información/);
 
 const prohibitedClaims = [
   /100\s*% legal/i,
@@ -130,6 +132,8 @@ assert.match(globalStyles, /overscroll-behavior-inline: contain/);
 assert.match(globalStyles, /min-width: calc\(100% - 1\.4rem\)/, "Mobile must preserve a visible next-slide affordance");
 
 const nextConfig = read("next.config.ts");
+assert.match(nextConfig, /source: "\/api\/public\/demo-requests"/);
+assert.match(nextConfig, /destination: `\$\{apiProxyTarget\}\/api\/public\/demo-requests`/);
 assert.match(nextConfig, /source: "\/consentimiento\/:path\*"/);
 assert.match(nextConfig, /destination: `\$\{appUrl\}\/consentimiento\/:path\*`/);
 for (const route of ["/login", "/dashboard", "/pacientes/:path*", "/agenda/:path*"]) {

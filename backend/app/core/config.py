@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     smtp_from_email: str | None = None
     smtp_use_tls: bool = True
     smtp_timeout_seconds: int = 10
+    demo_request_notification_emails: str = ""
+    demo_request_from_email: str | None = None
+    demo_request_consent_version: str = "DENTIA_PRIVACY_POLICY_V1"
+    demo_request_rate_limit_max: int = 8
+    demo_request_rate_limit_window_seconds: int = 300
+    demo_request_duplicate_window_seconds: int = 300
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
@@ -89,6 +95,25 @@ class Settings(BaseSettings):
                 "REFRESH_TOKEN_RACE_GRACE_SECONDS must be between 1 and 5."
             )
         return value
+
+    @field_validator(
+        "demo_request_rate_limit_max",
+        "demo_request_rate_limit_window_seconds",
+        "demo_request_duplicate_window_seconds",
+    )
+    @classmethod
+    def validate_positive_demo_request_limits(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("Demo request limits must be positive.")
+        return value
+
+    @property
+    def demo_request_notification_recipients(self) -> tuple[str, ...]:
+        return tuple(
+            item.strip().casefold()
+            for item in self.demo_request_notification_emails.split(",")
+            if item.strip()
+        )
 
     @property
     def database_configured(self) -> bool:

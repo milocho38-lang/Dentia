@@ -44,6 +44,7 @@ PUBLIC_ROUTES = {
     ("GET", "/api/public/consents/{token}/acceptance-requirements"),
     ("POST", "/api/public/consents/{token}/acceptance"),
     ("GET", "/api/public/consents/final-documents/{download_token}"),
+    ("POST", "/api/public/demo-requests"),
 }
 
 AUTHENTICATED_ONLY_ROUTES = {
@@ -54,7 +55,7 @@ AUTHENTICATED_ONLY_ROUTES = {
     ("POST", "/api/auth/change-password"),
 }
 
-EXPECTED_ROUTE_COUNT = 291
+EXPECTED_ROUTE_COUNT = 299
 
 
 def read(relative: str) -> str:

@@ -157,6 +157,8 @@ PERMISSIONS = (
     PermissionDefinition("orthodontics.catalog.manage", "Administrar catálogos de Ortodoncia", "orthodontics", "Crear y retirar opciones clínicas propias de la empresa."),
     PermissionDefinition("platform.companies.view", "Ver empresas de plataforma", "platform", "Consultar empresas administradas por la plataforma."),
     PermissionDefinition("platform.companies.manage", "Administrar empresas de plataforma", "platform", "Crear, activar e inactivar empresas desde plataforma."),
+    PermissionDefinition("platform.demo_requests.view", "Ver solicitudes de demo", "platform", "Consultar solicitudes comerciales recibidas desde la website."),
+    PermissionDefinition("platform.demo_requests.manage", "Gestionar solicitudes de demo", "platform", "Asignar, agendar y registrar el seguimiento de solicitudes de demo."),
 )
 
 ALL_PERMISSION_CODES = frozenset(permission.code for permission in PERMISSIONS)
@@ -164,6 +166,8 @@ PLATFORM_PERMISSION_CODES = frozenset(
     {
         "platform.companies.view",
         "platform.companies.manage",
+        "platform.demo_requests.view",
+        "platform.demo_requests.manage",
         "consent.library.manage",
         "orthodontics.entitlement.manage",
     }
