@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Alert } from "@/components/shared/Alert";
 import { Spinner } from "@/components/shared/Spinner";
 import { useAuth } from "@/hooks/useAuth";
+import { persistAndRefetchDemoRequest } from "@/lib/demoRequestMutation.mjs";
 import {
   addDemoRequestNote,
   assignDemoRequest,
@@ -31,6 +32,14 @@ export function DemoRequestDetailPage({ demoRequestId }: { demoRequestId: string
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  function applyDetail(detail: DemoRequestDetail) {
+    setItem(detail);
+    setOwnerId(detail.assigned_to?.id ?? "");
+    setTimezone(detail.timezone ?? "America/Bogota");
+    setMeetingUrl(detail.meeting_url ?? "");
+  }
 
   async function load() {
     setLoading(true);
@@ -40,11 +49,8 @@ export function DemoRequestDetailPage({ demoRequestId }: { demoRequestId: string
         getDemoRequest(demoRequestId),
         listDemoRequestOwners(),
       ]);
-      setItem(detail);
+      applyDetail(detail);
       setOwners(ownerResponse.items);
-      setOwnerId(detail.assigned_to?.id ?? "");
-      setTimezone(detail.timezone ?? "America/Bogota");
-      setMeetingUrl(detail.meeting_url ?? "");
     } catch {
       setError("No fue posible cargar la solicitud de demo.");
     } finally {
@@ -57,15 +63,24 @@ export function DemoRequestDetailPage({ demoRequestId }: { demoRequestId: string
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoRequestId]);
 
-  async function mutate(action: () => Promise<DemoRequestDetail>) {
+  async function mutate(
+    action: () => Promise<DemoRequestDetail>,
+    successMessage: string,
+  ): Promise<boolean> {
     setBusy(true);
     setError(null);
+    setSuccess(null);
     try {
-      const updated = await action();
-      setItem(updated);
-      setOwnerId(updated.assigned_to?.id ?? "");
+      const persisted = await persistAndRefetchDemoRequest(
+        action,
+        () => getDemoRequest(demoRequestId),
+      );
+      applyDetail(persisted);
+      setSuccess(successMessage);
+      return true;
     } catch {
       setError("No fue posible guardar el cambio. Recarga la solicitud e intenta nuevamente.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -97,6 +112,7 @@ export function DemoRequestDetailPage({ demoRequestId }: { demoRequestId: string
         <span className="self-start rounded-full bg-green-50 px-3 py-2 text-sm font-bold text-green-800">{DEMO_STATUS_LABELS[item.status]}</span>
       </header>
       {error && <div className="mt-5"><Alert tone="error">{error}</Alert></div>}
+      {success && <div className="mt-5"><Alert>{success}</Alert></div>}
 
       <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_1fr]">
         <div className="space-y-5">
@@ -126,15 +142,20 @@ export function DemoRequestDetailPage({ demoRequestId }: { demoRequestId: string
             {canManage && (
               <form
                 className="mt-4"
-                onSubmit={(event) => {
+                onSubmit={async (event) => {
                   event.preventDefault();
                   if (!note.trim()) return;
-                  mutate(() => addDemoRequestNote(item.id, note, item.row_version)).then(() => setNote(""));
+                  const saved = await mutate(
+                    () => addDemoRequestNote(item.id, note, item.row_version),
+                    "Nota interna guardada.",
+                  );
+                  if (saved) setNote("");
                 }}
               >
-                <label className="text-sm font-bold">Agregar nota</label>
+                <label className="text-sm font-bold">Agregar nota interna</label>
+                <p className="mt-1 text-xs text-slate-500">Se guarda como un registro independiente y no reemplaza el motivo de cierre.</p>
                 <textarea value={note} onChange={(event) => setNote(event.target.value)} className="mt-1 min-h-28 w-full rounded-xl border p-3" maxLength={2000} />
-                <button disabled={busy || !note.trim()} className="mt-2 min-h-10 rounded-xl bg-green-700 px-4 font-bold text-white disabled:opacity-50">Guardar nota</button>
+                <button type="submit" disabled={busy || !note.trim()} className="mt-2 min-h-10 rounded-xl bg-green-700 px-4 font-bold text-white disabled:opacity-50">Guardar nota interna</button>
               </form>
             )}
           </Card>
@@ -155,7 +176,7 @@ export function DemoRequestDetailPage({ demoRequestId }: { demoRequestId: string
                 <option value="">Sin asignar</option>
                 {owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.name} · {owner.email}</option>)}
               </select>
-              <button disabled={busy} onClick={() => mutate(() => assignDemoRequest(item.id, ownerId || null, item.row_version))} className="mt-3 min-h-10 rounded-xl border px-4 font-bold text-slate-700 disabled:opacity-50">Guardar responsable</button>
+              <button type="button" disabled={busy} onClick={() => mutate(() => assignDemoRequest(item.id, ownerId || null, item.row_version), "Responsable actualizado.")} className="mt-3 min-h-10 rounded-xl border px-4 font-bold text-slate-700 disabled:opacity-50">Guardar responsable</button>
             </Card>
           )}
 
@@ -163,10 +184,10 @@ export function DemoRequestDetailPage({ demoRequestId }: { demoRequestId: string
             <Card title="Agendar demo">
               <form
                 className="space-y-3"
-                onSubmit={(event: FormEvent) => {
+                onSubmit={async (event: FormEvent) => {
                   event.preventDefault();
                   if (!scheduleAt || !ownerId) return;
-                  mutate(() => scheduleDemoRequest(item.id, {
+                  const saved = await mutate(() => scheduleDemoRequest(item.id, {
                     // datetime-local intentionally has no offset: the backend
                     // interprets it in the explicitly selected IANA timezone.
                     scheduled_at: scheduleAt,
@@ -175,29 +196,40 @@ export function DemoRequestDetailPage({ demoRequestId }: { demoRequestId: string
                     assigned_to_user_id: ownerId,
                     note: scheduleNote || null,
                     row_version: item.row_version,
-                  })).then(() => setScheduleNote(""));
+                  }), "Demo agendada.");
+                  if (saved) setScheduleNote("");
                 }}
               >
                 <Field label="Fecha y hora"><input type="datetime-local" required value={scheduleAt} onChange={(event) => setScheduleAt(event.target.value)} className="min-h-11 w-full rounded-xl border px-3" /></Field>
                 <Field label="Zona horaria"><select value={timezone} onChange={(event) => setTimezone(event.target.value)} className="min-h-11 w-full rounded-xl border bg-white px-3"><option value="America/Bogota">America/Bogota</option><option value="America/Santiago">America/Santiago</option></select></Field>
                 <Field label="Enlace de reunión (opcional)"><input type="url" value={meetingUrl} onChange={(event) => setMeetingUrl(event.target.value)} className="min-h-11 w-full rounded-xl border px-3" placeholder="https://" /></Field>
-                <Field label="Nota (opcional)"><textarea value={scheduleNote} onChange={(event) => setScheduleNote(event.target.value)} className="min-h-20 w-full rounded-xl border p-3" /></Field>
+                <Field label="Nota de agenda (opcional)"><textarea value={scheduleNote} onChange={(event) => setScheduleNote(event.target.value)} className="min-h-20 w-full rounded-xl border p-3" /></Field>
                 {!ownerId && <p className="text-xs text-amber-700">Selecciona y guarda un responsable.</p>}
-                <button disabled={busy || !scheduleAt || !ownerId} className="min-h-10 rounded-xl bg-green-700 px-4 font-bold text-white disabled:opacity-50">Agendar demo</button>
+                <button type="submit" disabled={busy || !scheduleAt || !ownerId} className="min-h-10 rounded-xl bg-green-700 px-4 font-bold text-white disabled:opacity-50">Agendar demo</button>
               </form>
             </Card>
           )}
 
           {canManage && statusActions.length > 0 && (
             <Card title="Actualizar estado">
-              <label className="text-sm font-bold">Nota o motivo (opcional)</label>
+              <label className="text-sm font-bold">Motivo del cambio de estado (opcional)</label>
+              <p className="mt-1 text-xs text-slate-500">Este motivo se registra con la transición. Para seguimiento general usa “Agregar nota interna”.</p>
               <textarea value={statusReason} onChange={(event) => setStatusReason(event.target.value)} className="mt-1 min-h-20 w-full rounded-xl border p-3" maxLength={1000} />
               <div className="mt-3 flex flex-wrap gap-2">
                 {statusActions.map((action) => (
                   <button
+                    type="button"
                     key={action.status}
                     disabled={busy}
-                    onClick={() => mutate(() => updateDemoRequestStatus(item.id, action.status, item.row_version, statusReason)).then(() => setStatusReason(""))}
+                    onClick={async () => {
+                      const saved = await mutate(
+                        () => updateDemoRequestStatus(item.id, action.status, item.row_version, statusReason),
+                        action.status === "CONTACTED"
+                          ? "Contacto registrado."
+                          : "Estado actualizado.",
+                      );
+                      if (saved) setStatusReason("");
+                    }}
                     className="min-h-10 rounded-xl border px-4 font-bold text-slate-700 disabled:opacity-50"
                   >
                     {action.label}

@@ -29,8 +29,53 @@ assert.match(detail, /Marcar demo realizada/);
 assert.match(detail, /Marcar convertido/);
 assert.match(detail, /No continúa/);
 assert.match(detail, /platform\.demo_requests\.manage/);
+assert.match(detail, /persistAndRefetchDemoRequest/);
+assert.match(detail, /Contacto registrado\./);
+assert.match(detail, /Nota interna guardada\./);
+assert.match(detail, /if \(saved\) setNote\(""\)/);
+assert.match(detail, /if \(saved\) setStatusReason\(""\)/);
+assert.match(detail, /Agregar nota interna/);
+assert.match(detail, /Motivo del cambio de estado/);
+assert.doesNotMatch(detail, /\.then\(\(\) => setNote\(""\)\)/);
+assert.doesNotMatch(detail, /\.then\(\(\) => setStatusReason\(""\)\)/);
+assert.match(service, /JSON\.stringify\(\{ status, reason: reason \|\| null, row_version: rowVersion \}\)/);
+assert.match(service, /JSON\.stringify\(\{ text, row_version: rowVersion \}\)/);
 for (const endpoint of ["assignment", "status", "schedule", "notes", "owners"]) {
   assert.ok(service.includes(endpoint), `Missing service contract ${endpoint}`);
 }
+
+const { persistAndRefetchDemoRequest } = await import("../lib/demoRequestMutation.mjs");
+const calls = [];
+const persisted = await persistAndRefetchDemoRequest(
+  async () => calls.push("PATCH /status CONTACTED"),
+  async () => {
+    calls.push("GET /detail");
+    return { status: "CONTACTED", contacted_at: "2026-09-21T12:00:00Z" };
+  },
+);
+assert.deepEqual(calls, ["PATCH /status CONTACTED", "GET /detail"]);
+assert.equal(persisted.status, "CONTACTED");
+assert.ok(persisted.contacted_at);
+
+let refetchedAfterFailure = false;
+await assert.rejects(
+  persistAndRefetchDemoRequest(
+    async () => { throw new Error("backend rejected mutation"); },
+    async () => {
+      refetchedAfterFailure = true;
+      return {};
+    },
+  ),
+  /backend rejected mutation/,
+);
+assert.equal(refetchedAfterFailure, false, "A failed mutation must not report/refetch success");
+
+await assert.rejects(
+  persistAndRefetchDemoRequest(
+    async () => undefined,
+    async () => { throw new Error("persisted state could not be confirmed"); },
+  ),
+  /persisted state could not be confirmed/,
+);
 
 console.log("demo-request-platform-tests OK");

@@ -330,6 +330,166 @@ def test_platform_list_detail_assignment_schedule_notes_and_conversion(
         assert "+56900000000" not in serialized
 
 
+def test_platform_exact_contact_schedule_note_and_close_workflow(
+    api_client, db_session, security_world
+) -> None:
+    assert _create(
+        api_client,
+        email="ana.web4c1@example.test",
+        message="Solicitud sintética WEB-4C.1",
+    ).status_code == 201
+    db_session.expire_all()
+    item = db_session.scalar(
+        select(DemoRequest).where(
+            DemoRequest.normalized_email == "ana.web4c1@example.test"
+        )
+    )
+    assert item is not None and item.status == "NEW"
+
+    detail = api_client.get(
+        f"/api/platform/demo-requests/{item.id}",
+        token=security_world.platform_admin.token,
+    )
+    assigned = api_client.patch(
+        f"/api/platform/demo-requests/{item.id}/assignment",
+        token=security_world.platform_admin.token,
+        json={
+            "assigned_to_user_id": str(security_world.platform_admin.user.id),
+            "row_version": detail.json()["row_version"],
+        },
+    )
+    assert assigned.status_code == 200, assigned.text
+
+    contacted = api_client.patch(
+        f"/api/platform/demo-requests/{item.id}/status",
+        token=security_world.platform_admin.token,
+        json={
+            "status": "CONTACTED",
+            "reason": None,
+            "row_version": assigned.json()["row_version"],
+        },
+    )
+    assert contacted.status_code == 200, contacted.text
+    assert contacted.json()["status"] == "CONTACTED"
+    contacted_at = contacted.json()["contacted_at"]
+    assert contacted_at is not None
+
+    scheduled_local = (
+        datetime.now(timezone.utc) + timedelta(days=2)
+    ).astimezone(ZoneInfo("America/Santiago")).replace(tzinfo=None, microsecond=0)
+    scheduled = api_client.patch(
+        f"/api/platform/demo-requests/{item.id}/schedule",
+        token=security_world.platform_admin.token,
+        json={
+            "scheduled_at": scheduled_local.isoformat(),
+            "timezone": "America/Santiago",
+            "meeting_url": None,
+            "assigned_to_user_id": str(security_world.platform_admin.user.id),
+            "note": None,
+            "row_version": contacted.json()["row_version"],
+        },
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    assert scheduled.json()["status"] == "DEMO_SCHEDULED"
+    assert scheduled.json()["contacted_at"] == contacted_at
+
+    noted = api_client.post(
+        f"/api/platform/demo-requests/{item.id}/notes",
+        token=security_world.platform_admin.token,
+        json={
+            "text": "Prueba sintética WEB-4C",
+            "row_version": scheduled.json()["row_version"],
+        },
+    )
+    assert noted.status_code == 200, noted.text
+    assert [note["text"] for note in noted.json()["notes"]] == [
+        "Prueba sintética WEB-4C"
+    ]
+
+    completed = api_client.patch(
+        f"/api/platform/demo-requests/{item.id}/status",
+        token=security_world.platform_admin.token,
+        json={
+            "status": "DEMO_COMPLETED",
+            "reason": None,
+            "row_version": noted.json()["row_version"],
+        },
+    )
+    assert completed.status_code == 200, completed.text
+
+    closed = api_client.patch(
+        f"/api/platform/demo-requests/{item.id}/status",
+        token=security_world.platform_admin.token,
+        json={
+            "status": "NOT_CONTINUING",
+            "reason": "Lead sintético de validación WEB-4C",
+            "row_version": completed.json()["row_version"],
+        },
+    )
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["status"] == "NOT_CONTINUING"
+    assert closed.json()["contacted_at"] == contacted_at
+    assert closed.json()["assigned_to"]["id"] == str(
+        security_world.platform_admin.user.id
+    )
+    assert closed.json()["timezone"] == "America/Santiago"
+
+    db_session.expire_all()
+    persisted = db_session.get(DemoRequest, item.id)
+    assert persisted is not None
+    assert persisted.status == "NOT_CONTINUING"
+    assert persisted.contacted_at is not None
+    assert persisted.assigned_to_user_id == security_world.platform_admin.user.id
+    assert persisted.timezone == "America/Santiago"
+
+    notes = db_session.scalars(
+        select(DemoRequestNote)
+        .where(DemoRequestNote.demo_request_id == item.id)
+        .order_by(DemoRequestNote.created_at, DemoRequestNote.id)
+    ).all()
+    assert {note.text for note in notes} == {
+        "Prueba sintética WEB-4C",
+        "Lead sintético de validación WEB-4C",
+    }
+    assert len(notes) == 2
+    assert all(
+        note.author_user_id == security_world.platform_admin.user.id
+        and note.created_at is not None
+        for note in notes
+    )
+
+    events = db_session.scalars(
+        select(AuditEvent).where(AuditEvent.entity_id == item.id)
+    ).all()
+    actions = {event.action for event in events}
+    assert {
+        "DEMO_REQUEST_CREATED",
+        "DEMO_REQUEST_ASSIGNED",
+        "DEMO_REQUEST_STATUS_CHANGED",
+        "DEMO_REQUEST_SCHEDULED",
+        "DEMO_REQUEST_NOTE_ADDED",
+        "DEMO_REQUEST_CLOSED",
+    } <= actions
+    transitions = {
+        (
+            (event.detail or {}).get("previous_status"),
+            (event.detail or {}).get("new_status"),
+        )
+        for event in events
+        if event.action in {
+            "DEMO_REQUEST_STATUS_CHANGED",
+            "DEMO_REQUEST_SCHEDULED",
+            "DEMO_REQUEST_CLOSED",
+        }
+    }
+    assert {
+        ("NEW", "CONTACTED"),
+        ("CONTACTED", "DEMO_SCHEDULED"),
+        ("DEMO_SCHEDULED", "DEMO_COMPLETED"),
+        ("DEMO_COMPLETED", "NOT_CONTINUING"),
+    } <= transitions
+
+
 def test_not_continuing_and_rbac_catalog_are_platform_only(
     api_client, db_session, security_world
 ) -> None:
