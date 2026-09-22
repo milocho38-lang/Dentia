@@ -266,6 +266,8 @@ def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: 
         return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_templates.py", ""
     if path.startswith("/api/consent-instances"):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_instances.py", ""
+    if path.startswith("/api/platform/usage"):
+        return TestStatus.DB_BACKED, "backend/tests/administration/test_usage_adoption.py", "Actor attribution, tenant isolation, privacy and platform-only RBAC covered with PostgreSQL real."
     if path.startswith("/api/platform"):
         return TestStatus.DB_BACKED, "backend/tests/security/test_platform_admin.py backend/tests/administration/test_admin_finance_reports.py", ""
     if path.startswith(("/api/patients", "/api/agenda", "/api/appointments", "/api/treatments", "/api/clinical-records", "/api/clinical-evolutions", "/api/odontogram", "/api/prescriptions", "/api/clinical-documents")):

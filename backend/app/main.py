@@ -34,6 +34,7 @@ from app.routers.prescription_router import router as prescription_router
 from app.routers.report_router import router as report_router
 from app.routers.treatment_router import router as treatment_router
 from app.routers.user_router import router as user_router
+from app.routers.usage_adoption_router import router as usage_adoption_router
 
 
 def create_app() -> FastAPI:
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(followup_router)
     app.include_router(platform_router)
     app.include_router(platform_demo_request_router)
+    app.include_router(usage_adoption_router)
     app.include_router(report_router)
     app.include_router(treatment_router)
 

@@ -13,6 +13,12 @@ export const navigationItems: NavigationItem[] = [
     section: "Administración",
   },
   {
+    label: "Uso y adopción",
+    href: "/administracion/uso-adopcion",
+    permission: "platform.usage.view",
+    section: "Administración",
+  },
+  {
     label: "Dashboard",
     href: "/dashboard",
     permission: "dashboard.view",

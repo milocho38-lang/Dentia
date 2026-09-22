@@ -57,3 +57,20 @@ declare module "@/services/authBootstrap.mjs" {
 
   export function shouldBootstrapAuth(pathname: string): boolean;
 }
+
+declare module "@/lib/usageAdoptionView.mjs" {
+  import type { UsageAdoptionResponse } from "@/types/usageAdoption";
+
+  export function managedAppointments(
+    agenda: UsageAdoptionResponse["agenda"],
+  ): number;
+  export function hasUsageActivity(report: UsageAdoptionResponse | null): boolean;
+  export function hasOrthodonticActivity(
+    metrics: UsageAdoptionResponse["orthodontics"],
+  ): boolean;
+  export function isPeriodComplete(
+    periodMode: string,
+    startDate?: string,
+    endDate?: string,
+  ): boolean;
+}

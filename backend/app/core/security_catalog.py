@@ -159,6 +159,7 @@ PERMISSIONS = (
     PermissionDefinition("platform.companies.manage", "Administrar empresas de plataforma", "platform", "Crear, activar e inactivar empresas desde plataforma."),
     PermissionDefinition("platform.demo_requests.view", "Ver solicitudes de demo", "platform", "Consultar solicitudes comerciales recibidas desde la website."),
     PermissionDefinition("platform.demo_requests.manage", "Gestionar solicitudes de demo", "platform", "Asignar, agendar y registrar el seguimiento de solicitudes de demo."),
+    PermissionDefinition("platform.usage.view", "Ver métricas de adopción", "platform", "Consultar métricas agregadas de uso y adopción sin contenido clínico ni identificadores de pacientes."),
 )
 
 ALL_PERMISSION_CODES = frozenset(permission.code for permission in PERMISSIONS)
@@ -168,6 +169,7 @@ PLATFORM_PERMISSION_CODES = frozenset(
         "platform.companies.manage",
         "platform.demo_requests.view",
         "platform.demo_requests.manage",
+        "platform.usage.view",
         "consent.library.manage",
         "orthodontics.entitlement.manage",
     }
