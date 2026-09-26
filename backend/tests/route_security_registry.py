@@ -110,6 +110,8 @@ def _module_for(path: str) -> str:
         return "platform"
     if path.startswith("/api/orthodontics") or "/orthodontics" in path:
         return "orthodontics"
+    if path.startswith("/api/periodontograms") or "/periodontograms" in path:
+        return "periodontogram"
     if path.startswith("/api/consent-library"):
         return "consent_library"
     if path.startswith(("/api/consent-templates", "/api/consent-template-catalog")):
@@ -192,7 +194,7 @@ def _scope_for(path: str) -> Scope:
         return Scope.PLATFORM
     if path.startswith("/api/auth"):
         return Scope.USER
-    if "/sites" in path or path.startswith("/api/agenda") or path.startswith("/api/reports"):
+    if "/sites" in path or "/periodontograms" in path or path.startswith("/api/agenda") or path.startswith("/api/reports"):
         return Scope.SITE
     return Scope.COMPANY
 
@@ -217,7 +219,7 @@ def _is_critical(path: str, method: str, category: RouteCategory) -> bool:
         return True
     if path.startswith("/api/consent-library") and "approve-equivalence" in path:
         return True
-    if path.startswith(("/api/users", "/api/company", "/api/sites", "/api/dentists", "/api/orthodontics", "/api/reports", "/api/consent-templates", "/api/consent-instances")):
+    if path.startswith(("/api/users", "/api/company", "/api/sites", "/api/dentists", "/api/orthodontics", "/api/periodontograms", "/api/reports", "/api/consent-templates", "/api/consent-instances")) or "/periodontograms" in path:
         return True
     if path.startswith("/api/treatments") and (
         "budget" in path or "payments" in path or method in {"POST", "PATCH", "DELETE"}
@@ -260,6 +262,8 @@ def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: 
         return TestStatus.DB_BACKED, "backend/tests/administration/test_admin_finance_reports.py", ""
     if path.startswith("/api/orthodontics") or "/orthodontics" in path:
         return TestStatus.DB_BACKED, "backend/tests/administration/test_orthodontics_entitlement.py backend/tests/administration/test_orthodontic_cases.py", ""
+    if path.startswith("/api/periodontograms") or "/periodontograms" in path:
+        return TestStatus.DB_BACKED, "backend/tests/administration/test_periodontograms.py", "Tenant, sede, RBAC, lifecycle, concurrencia e integridad cubiertos con PostgreSQL real."
     if path.startswith("/api/consent-library"):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_consent_library_package.py", ""
     if path.startswith(("/api/consent-templates", "/api/consent-template-catalog")):

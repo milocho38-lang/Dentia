@@ -25,6 +25,11 @@ from app.schemas.orthodontics_schema import (
     OrthodonticsEntitlementResponse,
     OrthodonticsEntitlementUpdateRequest,
 )
+from app.schemas.periodontogram_schema import (
+    PeriodontogramPilotCompanyUpdateRequest,
+    PeriodontogramPilotDentistUpdateRequest,
+    PeriodontogramPilotResponse,
+)
 from app.services.auth_service import AuthContext
 from app.services.platform_service import (
     PlatformError,
@@ -43,6 +48,12 @@ from app.services.orthodontics_entitlement_service import (
     revoke_platform_assignment,
     update_platform_entitlement,
 )
+from app.services.periodontogram_pilot_service import (
+    PeriodontogramPilotError,
+    get_platform_periodontogram_pilot,
+    update_platform_periodontogram_dentist,
+    update_platform_periodontogram_pilot,
+)
 
 
 router = APIRouter(prefix="/api/platform", tags=["Platform"])
@@ -57,6 +68,92 @@ def handle_orthodontics(exc: OrthodonticsError) -> HTTPException:
         status_code=exc.status_code,
         detail={"code": exc.code, "message": str(exc)},
     )
+
+
+def handle_periodontogram_pilot(exc: PeriodontogramPilotError) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={"code": exc.code, "message": str(exc)},
+    )
+
+
+@router.get(
+    "/companies/{company_id}/periodontogram-pilot",
+    response_model=PeriodontogramPilotResponse,
+)
+def company_periodontogram_pilot_endpoint(
+    company_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
+    _platform_context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.view"))
+    ],
+    _pilot_context: Annotated[
+        AuthContext, Depends(require_permission("periodontogram.pilot.view"))
+    ],
+) -> PeriodontogramPilotResponse:
+    try:
+        return get_platform_periodontogram_pilot(session, company_id)
+    except PeriodontogramPilotError as exc:
+        raise handle_periodontogram_pilot(exc)
+
+
+@router.put(
+    "/companies/{company_id}/periodontogram-pilot",
+    response_model=PeriodontogramPilotResponse,
+)
+def update_company_periodontogram_pilot_endpoint(
+    company_id: UUID,
+    payload: PeriodontogramPilotCompanyUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+    _pilot_context: Annotated[
+        AuthContext, Depends(require_permission("periodontogram.pilot.manage"))
+    ],
+) -> PeriodontogramPilotResponse:
+    try:
+        return update_platform_periodontogram_pilot(
+            session,
+            context,
+            company_id,
+            enabled=payload.enabled,
+            metadata=get_request_metadata(request),
+        )
+    except PeriodontogramPilotError as exc:
+        raise handle_periodontogram_pilot(exc)
+
+
+@router.put(
+    "/companies/{company_id}/periodontogram-pilot/dentists/{dentist_id}",
+    response_model=PeriodontogramPilotResponse,
+)
+def update_company_periodontogram_pilot_dentist_endpoint(
+    company_id: UUID,
+    dentist_id: UUID,
+    payload: PeriodontogramPilotDentistUpdateRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+    _pilot_context: Annotated[
+        AuthContext, Depends(require_permission("periodontogram.pilot.manage"))
+    ],
+) -> PeriodontogramPilotResponse:
+    try:
+        return update_platform_periodontogram_dentist(
+            session,
+            context,
+            company_id,
+            dentist_id,
+            enabled=payload.enabled,
+            reason=payload.reason,
+            metadata=get_request_metadata(request),
+        )
+    except PeriodontogramPilotError as exc:
+        raise handle_periodontogram_pilot(exc)
 
 
 @router.get(

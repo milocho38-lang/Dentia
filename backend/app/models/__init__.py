@@ -74,6 +74,14 @@ from app.models.orthodontics import (
     OrthodonticsEntitlement,
 )
 from app.models.permission import Permission
+from app.models.periodontogram import (
+    PeriodontalExam,
+    PeriodontalExamVersion,
+    PeriodontalSite,
+    PeriodontalTooth,
+    PeriodontogramPilotCompanyGate,
+    PeriodontogramPilotDentistAuthorization,
+)
 from app.models.role import Role
 from app.models.site import Site
 from app.models.treatment import (
@@ -151,6 +159,12 @@ __all__ = [
     "OrthodonticEvolutionMiniScrew",
     "OrthodonticsEntitlement",
     "Permission",
+    "PeriodontalExam",
+    "PeriodontalExamVersion",
+    "PeriodontalSite",
+    "PeriodontalTooth",
+    "PeriodontogramPilotCompanyGate",
+    "PeriodontogramPilotDentistAuthorization",
     "Prescription",
     "PrescriptionItem",
     "Patient",

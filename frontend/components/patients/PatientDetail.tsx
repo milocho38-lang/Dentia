@@ -10,12 +10,14 @@ import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { ClinicalRecordPage } from "@/components/patients/ClinicalRecordPage";
 import { OdontogramPage } from "@/components/patients/OdontogramPage";
 import { OrthodonticPatientWorkspace } from "@/components/orthodontics/OrthodonticPatientWorkspace";
+import { PeriodontogramWorkspace } from "@/components/periodontogram/PeriodontogramWorkspace";
 import { PatientConsentsWorkspace } from "@/components/consents/PatientConsentsWorkspace";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
 import { getClinicalSummary } from "@/services/clinicalRecordService";
 import { getPatientOrthodontics } from "@/services/orthodonticCaseService";
+import { getPeriodontogramPilotAccess } from "@/services/periodontogramPilotService";
 import {
   createClinicalDocument,
   downloadClinicalDocumentPdf,
@@ -90,6 +92,7 @@ type PatientWorkspaceTab =
   | "summary"
   | "clinical"
   | "orthodontics"
+  | "periodontogram"
   | "odontogram"
   | "treatments"
   | "finance"
@@ -107,6 +110,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
     useState<ClinicalSummary | null>(null);
   const [orthodontics, setOrthodontics] =
     useState<OrthodonticWorkspace | null>(null);
+  const [periodontogramAllowed, setPeriodontogramAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [responsibleOpen, setResponsibleOpen] = useState(false);
@@ -157,6 +161,16 @@ export function PatientDetail({ patientId }: { patientId: string }) {
       } else {
         setOrthodontics(null);
       }
+      if (hasPermission("periodontogram.view")) {
+        try {
+          const access = await getPeriodontogramPilotAccess();
+          setPeriodontogramAllowed(access.allowed);
+        } catch {
+          setPeriodontogramAllowed(false);
+        }
+      } else {
+        setPeriodontogramAllowed(false);
+      }
     } catch {
       setError("No fue posible cargar el paciente.");
     } finally {
@@ -172,7 +186,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
     const tab = searchParams.get("tab");
     if (
       tab &&
-      ["summary", "clinical", "orthodontics", "odontogram", "treatments", "finance", "agenda", "documents", "consents", "files"].includes(tab)
+      ["summary", "clinical", "orthodontics", "periodontogram", "odontogram", "treatments", "finance", "agenda", "documents", "consents", "files"].includes(tab)
     ) {
       setActiveTab(tab as PatientWorkspaceTab);
     }
@@ -270,6 +284,9 @@ export function PatientDetail({ patientId }: { patientId: string }) {
     },
     ...(orthodontics
       ? [{ id: "orthodontics" as const, label: "Ortodoncia" }]
+      : []),
+    ...(periodontogramAllowed
+      ? [{ id: "periodontogram" as const, label: "Periodontograma", permission: "periodontogram.view" }]
       : []),
     { id: "odontogram", label: "Odontograma", permission: "odontogram.view" },
     { id: "treatments", label: "Tratamientos", permission: "treatments.view" },
@@ -470,6 +487,14 @@ export function PatientDetail({ patientId }: { patientId: string }) {
             patientId={patient.id}
             initial={orthodontics}
           />
+        )}
+
+        {activeTab === "periodontogram" && (
+          hasPermission("periodontogram.view") && periodontogramAllowed ? (
+            <PeriodontogramWorkspace patientId={patient.id} />
+          ) : (
+            <AccessCard title="Periodontograma no está habilitado para este usuario." />
+          )
         )}
 
         {activeTab === "odontogram" && (
