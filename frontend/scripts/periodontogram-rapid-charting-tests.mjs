@@ -6,9 +6,9 @@ import {
   buildCaptureSequence,
   calculateClinicalAttachmentLevel,
   calculateDraftIndicators,
-  cycleTriState,
   isPocket,
   siteOrderForTooth,
+  toggleBinaryFinding,
 } from "../lib/periodontalCharting.ts";
 
 const teeth = [...MAXILLARY_FDI, ...MANDIBULAR_FDI].map((fdi_number) => ({
@@ -57,7 +57,10 @@ assert.equal(calculateClinicalAttachmentLevel(4, null), null);
 assert.equal(isPocket(3), false);
 assert.equal(isPocket(4), true);
 assert.equal(isPocket(5), true);
-assert.deepEqual([cycleTriState(null), cycleTriState(false), cycleTriState(true)], [false, true, null]);
+assert.deepEqual(
+  [toggleBinaryFinding(null), toggleBinaryFinding(false), toggleBinaryFinding(true)],
+  [true, true, false],
+);
 
 const indicatorTeeth = [
   {
@@ -89,7 +92,7 @@ const indicators = calculateDraftIndicators(indicatorTeeth);
 assert.equal(indicators.coverage.evaluated_sites, 2);
 assert.equal(indicators.coverage.eligible_sites, 3);
 assert.equal(indicators.indices.bop.percentage, 66.67);
-assert.equal(indicators.indices.plaque.percentage, 50);
+assert.equal(indicators.indices.plaque.percentage, 33.33);
 
 const workspace = readFileSync(
   new URL("../components/periodontogram/PeriodontogramWorkspace.tsx", import.meta.url),
@@ -101,7 +104,8 @@ const editor = readFileSync(
 );
 const ui = `${workspace}\n${editor}`;
 assert.match(ui, /Cambios sin guardar/);
-assert.match(ui, /Pieza activa/);
+assert.match(ui, /Pieza \{activeTooth\.fdi_number\}/);
+assert.doesNotMatch(ui, /Pieza activa/);
 assert.match(ui, /inputMode=/);
 assert.match(ui, /event\.key === "Enter"/);
 assert.match(ui, /event\.shiftKey/);
@@ -111,6 +115,12 @@ assert.match(workspace, /RapidPeriodontalEditor/);
 assert.match(editor, /tooth\.state === "ABSENT"/);
 assert.match(editor, /tooth\.state === "IMPLANT"/);
 assert.match(editor, /suppuration/);
+assert.match(editor, /suppuration: site\.suppuration/);
+assert.match(editor, /const disabledForState = tooth\.state === "ABSENT"/);
+assert.match(editor, /SiteBinaryToggle/);
+assert.match(editor, /QuickBinaryToggle/);
+assert.doesNotMatch(editor, /TriState/);
+assert.doesNotMatch(editor, /no evaluad/);
 assert.match(editor, /MOLAR_FDI\.has/);
 assert.match(editor, /mobility_grade/);
 assert.match(editor, /clear_clinical_data/);

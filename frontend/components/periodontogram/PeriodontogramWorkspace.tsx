@@ -5,6 +5,7 @@ import { Alert } from "@/components/shared/Alert";
 import { Spinner } from "@/components/shared/Spinner";
 import { RapidPeriodontalEditor } from "@/components/periodontogram/RapidPeriodontalEditor";
 import { useAuth } from "@/hooks/useAuth";
+import { usePrivateShellLayout } from "@/providers/PrivateShellLayoutProvider";
 import {
   findReplacingVersion,
   historicalPeriodontalExam,
@@ -67,6 +68,7 @@ function errorMessage(error: unknown) {
 
 export function PeriodontogramWorkspace({ patientId }: { patientId: string }) {
   const { hasPermission, user } = useAuth();
+  const { sidebarCollapsed, setSidebarCollapsed } = usePrivateShellLayout();
   const activeTimezone = user?.sites.find((site) => site.id === user.active_site_id)?.timezone
     ?? "America/Bogota";
   const [items, setItems] = useState<PeriodontalExamHistoryItem[]>([]);
@@ -94,6 +96,11 @@ export function PeriodontogramWorkspace({ patientId }: { patientId: string }) {
   const replacingVersion = selected && displayedExam && isHistorical
     ? findReplacingVersion(selected, displayedExam.current_version)
     : null;
+
+  useEffect(
+    () => () => setSidebarCollapsed(false),
+    [setSidebarCollapsed],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -285,7 +292,11 @@ export function PeriodontogramWorkspace({ patientId }: { patientId: string }) {
   }
 
   return (
-    <section className="space-y-5" aria-labelledby="periodontogram-title">
+    <section
+      className="space-y-5"
+      aria-labelledby="periodontogram-title"
+      data-periodontogram-expanded={sidebarCollapsed}
+    >
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
           <div>
@@ -297,8 +308,17 @@ export function PeriodontogramWorkspace({ patientId }: { patientId: string }) {
               Controles independientes con versiones finalizadas inmutables y correcciones trazables.
             </p>
           </div>
-          {hasPermission("periodontogram.create") && (
-            <form className="flex flex-wrap items-end gap-2" onSubmit={createExam}>
+          <div className="flex flex-wrap items-end justify-end gap-2">
+            <button
+              type="button"
+              aria-pressed={sidebarCollapsed}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+            >
+              {sidebarCollapsed ? "Mostrar menú" : "Expandir periodontograma"}
+            </button>
+            {hasPermission("periodontogram.create") && (
+              <form className="flex flex-wrap items-end gap-2" onSubmit={createExam}>
               <label className="text-sm font-semibold text-slate-700">
                 Fecha clínica
                 <input
@@ -316,8 +336,9 @@ export function PeriodontogramWorkspace({ patientId }: { patientId: string }) {
               >
                 Nuevo periodontograma
               </button>
-            </form>
-          )}
+              </form>
+            )}
+          </div>
         </div>
       </div>
 
@@ -577,6 +598,7 @@ export function PeriodontogramWorkspace({ patientId }: { patientId: string }) {
             key={`${displayedExam.current_version.id}-${displayedExam.row_version}`}
             exam={displayedExam}
             saving={saving}
+            expandedLayout={sidebarCollapsed}
             canEdit={!isHistorical && selected.status === "DRAFT" && hasPermission("periodontogram.update_draft")}
             readOnlyLabel={isHistorical ? "Versión histórica · Solo lectura" : undefined}
             onDirtyChange={setClinicalDirty}

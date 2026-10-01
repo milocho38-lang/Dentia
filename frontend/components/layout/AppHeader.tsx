@@ -4,7 +4,15 @@ import { useState } from "react";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { useAuth } from "@/hooks/useAuth";
 
-export function AppHeader({ onMenuOpen }: { onMenuOpen: () => void }) {
+export function AppHeader({
+  sidebarCollapsed,
+  onMenuOpen,
+  onDesktopMenuOpen,
+}: {
+  sidebarCollapsed: boolean;
+  onMenuOpen: () => void;
+  onDesktopMenuOpen: () => void;
+}) {
   const { user, switchSite } = useAuth();
   const [switching, setSwitching] = useState(false);
 
@@ -26,6 +34,19 @@ export function AppHeader({ onMenuOpen }: { onMenuOpen: () => void }) {
             />
           </svg>
         </button>
+        {sidebarCollapsed && (
+          <button
+            type="button"
+            aria-label="Mostrar menú principal"
+            onClick={onDesktopMenuOpen}
+            className="hidden h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 lg:inline-flex"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" aria-hidden="true">
+              <path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            Mostrar menú
+          </button>
+        )}
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">
             Espacio de trabajo

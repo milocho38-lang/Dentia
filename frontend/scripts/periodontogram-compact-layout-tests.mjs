@@ -55,7 +55,9 @@ const workspace = readFileSync(
 assert.match(editor, /data-compact-periodontal-arch/);
 assert.match(editor, /data-periodontal-site-columns="48"/);
 assert.match(editor, /repeat\(\$\{PERIODONTAL_SITE_COLUMNS\}, minmax\(0, 1fr\)\)/);
+assert.match(editor, /min-w-\[1120px\] max-w-\[1600px\]/);
 assert.match(editor, /min-w-\[1200px\]/);
+assert.match(editor, /gridTemplateColumns: `144px repeat/);
 assert.match(editor, /sticky left-0/);
 assert.match(editor, /border-l-2 border-l-slate-400/);
 assert.match(editor, /overflow-x-auto/);
@@ -77,7 +79,12 @@ for (const label of [
 
 assert.doesNotMatch(editor, /function ToothCard/);
 assert.doesNotMatch(editor, /w-\[246px\]/);
-assert.match(editor, /Pieza seleccionada:/);
+assert.match(editor, /Pieza \{activeTooth\.fdi_number\}/);
+assert.doesNotMatch(editor, /Pieza seleccionada:/);
+assert.doesNotMatch(editor, /Panel contextual/);
+assert.match(editor, /data-periodontal-context-panel="sticky"/);
+assert.match(editor, /data-context-panel-layout="compact"/);
+assert.match(editor, /sticky top-20/);
 assert.match(editor, /tooth\.state === "ABSENT"/);
 assert.match(editor, /tooth\.state === "IMPLANT"/);
 assert.match(editor, /event\.key === "Enter"/);
@@ -100,5 +107,6 @@ assert.doesNotMatch(graph, /canvas/i);
 
 assert.match(workspace, /exam=\{displayedExam\}/);
 assert.match(workspace, /historicalPeriodontalExam/);
+assert.match(workspace, /expandedLayout=\{sidebarCollapsed\}/);
 
 console.log("periodontogram-compact-layout-tests OK");

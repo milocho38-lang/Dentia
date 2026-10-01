@@ -347,7 +347,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className={activeTab === "periodontogram" ? "mx-auto max-w-none" : "mx-auto max-w-6xl"}>
       <Link
         href="/pacientes"
         className="text-sm font-bold text-green-700 hover:underline"

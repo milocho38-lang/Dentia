@@ -33,8 +33,17 @@ def is_periodontal_pocket(probing_depth_mm: int | None) -> bool:
     return probing_depth_mm is not None and probing_depth_mm >= 4
 
 
-def _index(values: Iterable[bool | None]) -> dict[str, int | float | None]:
-    measured = [value for value in values if value is not None]
+def _index(
+    values: Iterable[bool | None],
+    *,
+    unmarked_is_negative: bool = False,
+) -> dict[str, int | float | None]:
+    raw_values = list(values)
+    measured = (
+        [value is True for value in raw_values]
+        if unmarked_is_negative
+        else [value for value in raw_values if value is not None]
+    )
     positives = sum(value is True for value in measured)
     return {
         "positive_sites": positives,
@@ -45,6 +54,8 @@ def _index(values: Iterable[bool | None]) -> dict[str, int | float | None]:
 
 def calculate_periodontal_aggregates(
     teeth: Iterable[Mapping[str, Any]],
+    *,
+    unmarked_findings_are_negative: bool = False,
 ) -> dict[str, dict[str, int | float | bool | None]]:
     eligible_sites = 0
     evaluated_sites = 0
@@ -59,6 +70,9 @@ def calculate_periodontal_aggregates(
         for site_code in SITE_CODES:
             site = sites_by_code.get(site_code)
             if site is None:
+                if unmarked_findings_are_negative:
+                    bleeding_values.append(False)
+                    plaque_values.append(False)
                 continue
             if site.get("probing_depth_mm") is not None and site.get("gingival_margin_mm") is not None:
                 evaluated_sites += 1
@@ -72,7 +86,13 @@ def calculate_periodontal_aggregates(
             "incomplete": evaluated_sites < eligible_sites,
         },
         "indices": {
-            "bop": _index(bleeding_values),
-            "plaque": _index(plaque_values),
+            "bop": _index(
+                bleeding_values,
+                unmarked_is_negative=unmarked_findings_are_negative,
+            ),
+            "plaque": _index(
+                plaque_values,
+                unmarked_is_negative=unmarked_findings_are_negative,
+            ),
         },
     }

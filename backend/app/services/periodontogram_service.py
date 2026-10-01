@@ -53,13 +53,17 @@ from app.services.periodontogram_pilot_service import (
 )
 
 
-PERIODONTAL_SCHEMA_VERSION = "PERIODONTAL_EXAM_V2"
+PERIODONTAL_SCHEMA_VERSION = "PERIODONTAL_EXAM_V3"
+PERIODONTAL_BINARY_FINDINGS_SCHEMA = "PERIODONTAL_EXAM_V3"
 PERIODONTAL_CLINICAL_CONTRACT = {
+    "binary_findings": "UNMARKED_IS_NEGATIVE",
+    "bop_plaque_denominator": "ELIGIBLE_SITES",
     "calculation": "PD_MINUS_GM",
     "dentition": "PERMANENT",
     "gm_sign": "APICAL_NEGATIVE_CORONAL_POSITIVE",
     "pocket_visual_threshold_mm": 4,
     "sites_per_tooth": 6,
+    "suppuration": "PRESENT_OR_IMPLANT_BINARY",
 }
 SITE_VALUE_FIELDS = (
     "probing_depth_mm",
@@ -227,6 +231,14 @@ def _blank_teeth_payload() -> list[dict[str, Any]]:
     ]
 
 
+def _uses_binary_findings(version: PeriodontalExamVersion) -> bool:
+    return version.schema_version == PERIODONTAL_BINARY_FINDINGS_SCHEMA
+
+
+def _binary_site_value(value: bool | None) -> bool:
+    return value is True
+
+
 def _clinical_rows(
     session: Session,
     version: PeriodontalExamVersion,
@@ -267,6 +279,7 @@ def _clinical_payload(session: Session, version: PeriodontalExamVersion) -> list
         if tooth is None:
             continue
         site_by_code = {site.site_code: site for site in sites_by_tooth.get(tooth.id, [])}
+        binary_findings = _uses_binary_findings(version)
         site_payload = []
         for site_code in SITE_CODES:
             site = site_by_code.get(site_code)
@@ -282,9 +295,21 @@ def _clinical_payload(session: Session, version: PeriodontalExamVersion) -> list
                         site.probing_depth_mm, site.gingival_margin_mm
                     ),
                     "is_periodontal_pocket": is_periodontal_pocket(site.probing_depth_mm),
-                    "bleeding_on_probing": site.bleeding_on_probing,
-                    "plaque": site.plaque,
-                    "suppuration": site.suppuration,
+                    "bleeding_on_probing": (
+                        _binary_site_value(site.bleeding_on_probing)
+                        if binary_findings and tooth.state != "ABSENT"
+                        else site.bleeding_on_probing
+                    ),
+                    "plaque": (
+                        _binary_site_value(site.plaque)
+                        if binary_findings and tooth.state != "ABSENT"
+                        else site.plaque
+                    ),
+                    "suppuration": (
+                        _binary_site_value(site.suppuration)
+                        if binary_findings and tooth.state != "ABSENT"
+                        else site.suppuration
+                    ),
                 }
             )
         result.append(
@@ -292,8 +317,16 @@ def _clinical_payload(session: Session, version: PeriodontalExamVersion) -> list
                 "fdi_number": tooth.fdi_number,
                 "state": tooth.state,
                 "mobility_grade": tooth.mobility_grade,
-                "furcation_mesial": tooth.furcation_mesial,
-                "furcation_distal": tooth.furcation_distal,
+                "furcation_mesial": (
+                    _binary_site_value(tooth.furcation_mesial)
+                    if binary_findings and tooth.state == "PRESENT" and tooth.fdi_number in MOLAR_FDI
+                    else tooth.furcation_mesial
+                ),
+                "furcation_distal": (
+                    _binary_site_value(tooth.furcation_distal)
+                    if binary_findings and tooth.state == "PRESENT" and tooth.fdi_number in MOLAR_FDI
+                    else tooth.furcation_distal
+                ),
                 "clinical_note": tooth.clinical_note,
                 "sites": site_payload,
             }
@@ -338,12 +371,6 @@ def _validate_clinical_payload(teeth: list[dict[str, Any]]) -> None:
             raise PeriodontogramError(
                 "PERIODONTAL_INVALID_FURCATION",
                 f"La furcación no es válida para la pieza {fdi}.",
-                409,
-            )
-        if state != "IMPLANT" and any(site["suppuration"] is not None for site in sites):
-            raise PeriodontogramError(
-                "PERIODONTAL_SUPPURATION_IMPLANT_ONLY",
-                f"La supuración solo aplica a implantes; revisa la pieza {fdi}.",
                 409,
             )
 
@@ -391,7 +418,10 @@ def _seed_blank_clinical_rows(
 
 
 def _snapshot(exam: PeriodontalExam, version: PeriodontalExamVersion, teeth: list[dict[str, Any]]) -> dict:
-    aggregates = calculate_periodontal_aggregates(teeth)
+    aggregates = calculate_periodontal_aggregates(
+        teeth,
+        unmarked_findings_are_negative=_uses_binary_findings(version),
+    )
     return {
         "clinical_contract": PERIODONTAL_CLINICAL_CONTRACT,
         "clinical_data": version.content,
@@ -513,7 +543,10 @@ def _exam_response(session: Session, exam: PeriodontalExam) -> PeriodontalExamRe
     site = session.get(Site, exam.site_id)
     company = session.get(Company, exam.company_id)
     teeth = _clinical_payload(session, current)
-    aggregates = calculate_periodontal_aggregates(teeth)
+    aggregates = calculate_periodontal_aggregates(
+        teeth,
+        unmarked_findings_are_negative=_uses_binary_findings(current),
+    )
     return PeriodontalExamResponse(
         id=exam.id,
         company_id=exam.company_id,
@@ -832,10 +865,20 @@ def update_periodontal_draft(
         new_state = item.state if "state" in fields and item.state is not None else tooth.state
         state_changed = new_state != tooth.state
         site_rows = sites_by_tooth.get(tooth.id, [])
-        has_data = any(
-            value is not None
-            for value in (tooth.mobility_grade, tooth.furcation_mesial, tooth.furcation_distal)
-        ) or any(getattr(site, field) is not None for site in site_rows for field in SITE_VALUE_FIELDS)
+        has_data = (
+            tooth.mobility_grade is not None
+            or tooth.furcation_mesial is True
+            or tooth.furcation_distal is True
+            or bool(tooth.clinical_note)
+            or any(
+                site.probing_depth_mm is not None
+                or site.gingival_margin_mm is not None
+                or site.bleeding_on_probing is True
+                or site.plaque is True
+                or site.suppuration is True
+                for site in site_rows
+            )
+        )
         if state_changed and has_data and not item.clear_clinical_data:
             raise PeriodontogramError(
                 "PERIODONTAL_STATE_CHANGE_REQUIRES_CLEAR",
@@ -908,12 +951,6 @@ def update_periodontal_draft(
             )
         for field in item.model_fields_set - {"fdi_number", "site_code"}:
             setattr(site, field, getattr(item, field))
-        if tooth.state != "IMPLANT" and site.suppuration is not None:
-            raise PeriodontogramError(
-                "PERIODONTAL_SUPPURATION_IMPLANT_ONLY",
-                "La supuración se registra únicamente para implantes en este alcance.",
-                422,
-            )
         site.updated_by_user_id = context.user.id
         changed_sites += 1
 

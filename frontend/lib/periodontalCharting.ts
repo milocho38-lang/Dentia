@@ -103,14 +103,12 @@ export function isPocket(probingDepth: number | null) {
   return probingDepth !== null && probingDepth >= 4;
 }
 
-export function cycleTriState(value: boolean | null): boolean | null {
-  if (value === null) return false;
-  if (value === false) return true;
-  return null;
+export function toggleBinaryFinding(value: boolean | null): boolean {
+  return value !== true;
 }
 
 function index(values: Array<boolean | null>) {
-  const evaluated = values.filter((value): value is boolean => value !== null);
+  const evaluated = values.map((value) => value === true);
   const positive = evaluated.filter(Boolean).length;
   return {
     positive_sites: positive,

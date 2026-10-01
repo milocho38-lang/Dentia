@@ -59,6 +59,8 @@ assert.deepEqual(siteGraphMarkers(site), {
   plaque: true,
   suppuration: true,
 });
+assert.equal(siteGraphMarkers(natural.sites[0]).suppuration, true);
+assert.equal(siteGraphMarkers(implant.sites[0]).suppuration, true);
 assert.equal(siteGraphMarkers({ ...site, probing_depth_mm: 3 }).pocket, false);
 assert.deepEqual(
   siteGraphMarkers({
@@ -197,7 +199,7 @@ assert.doesNotMatch(graph, /canvas/i);
 assert.doesNotMatch(graph, /periodontitis|enfermedad periodontal/i);
 assert.match(editor, /<PeriodontalArchGraph/);
 assert.match(editor, /data-periodontal-site-columns="48"/);
-assert.match(editor, /gridTemplateColumns: `176px repeat\(\$\{PERIODONTAL_SITE_COLUMNS\}, minmax\(0, 1fr\)\)`/);
+assert.match(editor, /gridTemplateColumns: `144px repeat\(\$\{PERIODONTAL_SITE_COLUMNS\}, minmax\(0, 1fr\)\)`/);
 assert.match(editor, /sticky left-0/);
 assert.match(editor, /Sangrado al sondaje/);
 assert.match(editor, /Margen gingival/);

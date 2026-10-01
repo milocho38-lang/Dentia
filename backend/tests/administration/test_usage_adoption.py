@@ -138,6 +138,11 @@ def test_appointment_attribution_uses_actor_not_assigned_dentist(
     secretary = tenant.secretary.user
     assigned_dentist = tenant.dentist_profile
     base = datetime(2026, 9, 10, 14, 0, tzinfo=timezone.utc)
+    # The shared security factory uses the database clock for audit timestamps.
+    # Anchor the fixture appointment inside this test's explicit reporting window
+    # so the assertion remains stable after 2026-09-30.
+    tenant.appointment.created_at = datetime(2026, 9, 5, 14, 0, tzinfo=timezone.utc)
+    tenant.appointment.updated_at = datetime(2026, 9, 5, 14, 0, tzinfo=timezone.utc)
     for index in range(10):
         appointment = Appointment(
             company_id=tenant.company.id,
@@ -199,6 +204,10 @@ def test_clinical_financial_orthodontic_counts_and_privacy(
 ) -> None:
     tenant = security_world.tenant_a
     actor = tenant.dentist_admin.user
+    # Orthodontic evolution attribution follows the linked clinical evolution
+    # timestamp. Keep that fixture deterministic within the requested period.
+    tenant.evolution.created_at = datetime(2026, 9, 12, 12, 5, tzinfo=timezone.utc)
+    tenant.evolution.updated_at = datetime(2026, 9, 12, 12, 5, tzinfo=timezone.utc)
     orthodontic_case = OrthodonticCase(
         company_id=tenant.company.id,
         patient_id=tenant.patient.id,

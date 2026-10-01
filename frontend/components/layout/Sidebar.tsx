@@ -8,9 +8,11 @@ import { useAuth } from "@/hooks/useAuth";
 
 export function Sidebar({
   open,
+  desktopCollapsed,
   onClose,
 }: {
   open: boolean;
+  desktopCollapsed: boolean;
   onClose: () => void;
 }) {
   const pathname = usePathname();
@@ -30,7 +32,8 @@ export function Sidebar({
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-hidden border-r border-slate-200 bg-white px-5 py-6 transition-transform duration-200 lg:translate-x-0 ${
+        inert={desktopCollapsed && !open}
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-hidden border-r border-slate-200 bg-white px-5 py-6 transition-transform duration-200 ${desktopCollapsed ? "lg:-translate-x-full" : "lg:translate-x-0"} ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >

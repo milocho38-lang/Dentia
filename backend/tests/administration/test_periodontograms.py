@@ -180,6 +180,35 @@ def test_periodontal_cal_pocket_and_index_semantics() -> None:
         "percentage": 50.0,
     }
 
+    binary = calculate_periodontal_aggregates(
+        [
+            {
+                "state": "PRESENT",
+                "sites": [
+                    {"site_code": "BUCCAL_DISTAL", "bleeding_on_probing": True, "plaque": None},
+                ],
+            },
+            {
+                "state": "IMPLANT",
+                "sites": [
+                    {"site_code": "BUCCAL_DISTAL", "bleeding_on_probing": None, "plaque": True},
+                ],
+            },
+            {"state": "ABSENT", "sites": []},
+        ],
+        unmarked_findings_are_negative=True,
+    )
+    assert binary["indices"]["bop"] == {
+        "positive_sites": 1,
+        "evaluated_sites": 12,
+        "percentage": 8.33,
+    }
+    assert binary["indices"]["plaque"] == {
+        "positive_sites": 1,
+        "evaluated_sites": 12,
+        "percentage": 8.33,
+    }
+
 
 def test_periodontogram_permission_matrix_is_clinical_only(
     db_session, security_world
@@ -411,11 +440,14 @@ def test_finalize_freezes_deterministic_snapshot_hash_and_audits_identifiers_onl
     assert len(version["snapshot_hash"]) == 64
     assert version["snapshot"]["clinical_contract"] == {
         "calculation": "PD_MINUS_GM",
+        "binary_findings": "UNMARKED_IS_NEGATIVE",
+        "bop_plaque_denominator": "ELIGIBLE_SITES",
         "dentition": "PERMANENT",
-        "gm_sign": "APICAL_NEGATIVE_CORONAL_POSITIVE",
-        "pocket_visual_threshold_mm": 4,
-        "sites_per_tooth": 6,
-    }
+            "gm_sign": "APICAL_NEGATIVE_CORONAL_POSITIVE",
+            "pocket_visual_threshold_mm": 4,
+            "sites_per_tooth": 6,
+            "suppuration": "PRESENT_OR_IMPLANT_BINARY",
+        }
     actions = list(
         db_session.scalars(
             select(AuditEvent).where(AuditEvent.entity_id == draft["id"])
@@ -624,7 +656,22 @@ def test_create_seeds_permanent_dentition_and_six_unmeasured_sites(
     assert [item["fdi_number"] for item in exam["teeth"]][:9] == [18, 17, 16, 15, 14, 13, 12, 11, 21]
     assert all(len(item["sites"]) == 6 for item in exam["teeth"])
     assert exam["coverage"] == {"eligible_sites": 192, "evaluated_sites": 0, "incomplete": True}
-    assert exam["indices"]["bop"]["percentage"] is None
+    assert exam["current_version"]["schema_version"] == "PERIODONTAL_EXAM_V3"
+    assert exam["indices"]["bop"] == {
+        "positive_sites": 0,
+        "evaluated_sites": 192,
+        "percentage": 0.0,
+    }
+    assert exam["indices"]["plaque"] == {
+        "positive_sites": 0,
+        "evaluated_sites": 192,
+        "percentage": 0.0,
+    }
+    present_molar = next(item for item in exam["teeth"] if item["fdi_number"] == 18)
+    assert present_molar["furcation_mesial"] is False
+    assert present_molar["furcation_distal"] is False
+    assert all(site["bleeding_on_probing"] is False for site in present_molar["sites"])
+    assert all(site["plaque"] is False for site in present_molar["sites"])
     version_id = exam["current_version"]["id"]
     assert db_session.scalar(
         select(func.count()).select_from(PeriodontalTooth).where(PeriodontalTooth.version_id == version_id)
@@ -743,24 +790,170 @@ def test_tooth_state_mobility_furcation_and_implant_rules(api_client, security_w
         api_client,
         tenant,
         suppuration.json()["exam"],
-        sites=[{"fdi_number": 13, "site_code": "BUCCAL_MID", "suppuration": False}],
+        sites=[{"fdi_number": 13, "site_code": "BUCCAL_MID", "suppuration": True}],
     )
-    assert natural_suppuration.status_code == 422
+    assert natural_suppuration.status_code == 200
+    natural_tooth = next(
+        item for item in natural_suppuration.json()["exam"]["teeth"]
+        if item["fdi_number"] == 13
+    )
+    natural_site = next(
+        item for item in natural_tooth["sites"]
+        if item["site_code"] == "BUCCAL_MID"
+    )
+    assert natural_site["suppuration"] is True
+
+    absent_suppuration = _update(
+        api_client,
+        tenant,
+        natural_suppuration.json()["exam"],
+        sites=[{"fdi_number": 11, "site_code": "BUCCAL_MID", "suppuration": True}],
+    )
+    assert absent_suppuration.status_code == 422
+    assert absent_suppuration.json()["detail"]["code"] == "PERIODONTAL_ABSENT_TOOTH_HAS_NO_SITES"
 
     non_molar = _update(
         api_client,
         tenant,
-        suppuration.json()["exam"],
+        natural_suppuration.json()["exam"],
         teeth=[{"fdi_number": 14, "furcation_mesial": True}],
     )
     assert non_molar.status_code == 422
     invalid_mobility = _update(
         api_client,
         tenant,
-        suppuration.json()["exam"],
+        natural_suppuration.json()["exam"],
         teeth=[{"fdi_number": 16, "mobility_grade": 4}],
     )
     assert invalid_mobility.status_code == 422
+
+
+def test_natural_and_implant_suppuration_binary_persist_in_snapshot_and_history(
+    api_client,
+    security_world,
+) -> None:
+    tenant = security_world.tenant_a
+    exam = _create(api_client, tenant).json()["exam"]
+    implant = _update(
+        api_client,
+        tenant,
+        exam,
+        teeth=[{"fdi_number": 12, "state": "IMPLANT"}],
+    ).json()["exam"]
+    marked = _update(
+        api_client,
+        tenant,
+        implant,
+        sites=[
+            {"fdi_number": 12, "site_code": "BUCCAL_MID", "suppuration": True},
+            {"fdi_number": 13, "site_code": "BUCCAL_MID", "suppuration": True},
+        ],
+    ).json()["exam"]
+    marked_tooth = next(item for item in marked["teeth"] if item["fdi_number"] == 12)
+    marked_site = next(item for item in marked_tooth["sites"] if item["site_code"] == "BUCCAL_MID")
+    assert marked_site["suppuration"] is True
+    marked_natural_tooth = next(item for item in marked["teeth"] if item["fdi_number"] == 13)
+    marked_natural_site = next(
+        item for item in marked_natural_tooth["sites"] if item["site_code"] == "BUCCAL_MID"
+    )
+    assert marked_natural_site["suppuration"] is True
+
+    finalized_v1 = api_client.post(
+        f"/api/periodontograms/{exam['id']}/finalize",
+        token=tenant.dentist_admin.token,
+        json={"row_version": marked["row_version"]},
+    ).json()["exam"]
+    v1 = finalized_v1["current_version"]
+    v1_tooth = next(item for item in v1["snapshot"]["teeth"] if item["fdi_number"] == 12)
+    v1_site = next(item for item in v1_tooth["sites"] if item["site_code"] == "BUCCAL_MID")
+    assert v1_site["suppuration"] is True
+    v1_natural_tooth = next(item for item in v1["snapshot"]["teeth"] if item["fdi_number"] == 13)
+    v1_natural_site = next(
+        item for item in v1_natural_tooth["sites"] if item["site_code"] == "BUCCAL_MID"
+    )
+    assert v1_natural_site["suppuration"] is True
+    assert v1["snapshot"]["clinical_contract"]["suppuration"] == "PRESENT_OR_IMPLANT_BINARY"
+
+    correction = api_client.post(
+        f"/api/periodontograms/{exam['id']}/correct",
+        token=tenant.dentist_admin.token,
+        json={"row_version": finalized_v1["row_version"], "reason": "Control de supuración"},
+    ).json()["exam"]
+    unmarked = _update(
+        api_client,
+        tenant,
+        correction,
+        sites=[
+            {"fdi_number": 12, "site_code": "BUCCAL_MID", "suppuration": False},
+            {"fdi_number": 13, "site_code": "BUCCAL_MID", "suppuration": False},
+        ],
+    ).json()["exam"]
+    finalized_v2 = api_client.post(
+        f"/api/periodontograms/{exam['id']}/finalize",
+        token=tenant.dentist_admin.token,
+        json={"row_version": unmarked["row_version"]},
+    ).json()["exam"]
+    historical_v1 = next(
+        version for version in finalized_v2["versions"] if version["version_number"] == 1
+    )
+    historical_tooth = next(
+        item for item in historical_v1["snapshot"]["teeth"] if item["fdi_number"] == 12
+    )
+    historical_site = next(
+        item for item in historical_tooth["sites"] if item["site_code"] == "BUCCAL_MID"
+    )
+    assert historical_site["suppuration"] is True
+    historical_natural_tooth = next(
+        item for item in historical_v1["snapshot"]["teeth"] if item["fdi_number"] == 13
+    )
+    historical_natural_site = next(
+        item for item in historical_natural_tooth["sites"] if item["site_code"] == "BUCCAL_MID"
+    )
+    assert historical_natural_site["suppuration"] is True
+    assert historical_v1["snapshot_hash"] == v1["snapshot_hash"]
+    current_tooth = next(
+        item for item in finalized_v2["current_version"]["snapshot"]["teeth"]
+        if item["fdi_number"] == 12
+    )
+    current_site = next(
+        item for item in current_tooth["sites"] if item["site_code"] == "BUCCAL_MID"
+    )
+    assert current_site["suppuration"] is False
+    current_natural_tooth = next(
+        item for item in finalized_v2["current_version"]["snapshot"]["teeth"]
+        if item["fdi_number"] == 13
+    )
+    current_natural_site = next(
+        item for item in current_natural_tooth["sites"] if item["site_code"] == "BUCCAL_MID"
+    )
+    assert current_natural_site["suppuration"] is False
+
+
+def test_binary_defaults_keep_absent_sites_ineligible_and_finalize_cleanly(
+    api_client,
+    security_world,
+) -> None:
+    tenant = security_world.tenant_a
+    exam = _create(api_client, tenant).json()["exam"]
+    draft = _update(
+        api_client,
+        tenant,
+        exam,
+        teeth=[{"fdi_number": 11, "state": "ABSENT"}],
+    ).json()["exam"]
+    absent = next(item for item in draft["teeth"] if item["fdi_number"] == 11)
+    assert all(site["bleeding_on_probing"] is None for site in absent["sites"])
+    assert all(site["plaque"] is None for site in absent["sites"])
+
+    finalized = api_client.post(
+        f"/api/periodontograms/{exam['id']}/finalize",
+        token=tenant.dentist_admin.token,
+        json={"row_version": draft["row_version"]},
+    )
+    assert finalized.status_code == 200, finalized.text
+    payload = finalized.json()["exam"]
+    assert payload["indices"]["bop"]["evaluated_sites"] == 186
+    assert payload["indices"]["plaque"]["evaluated_sites"] == 186
 
 
 def test_partial_finalize_snapshot_correction_and_child_immutability(
