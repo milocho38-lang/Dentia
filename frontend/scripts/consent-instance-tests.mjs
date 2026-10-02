@@ -5,6 +5,7 @@ import path from "node:path";
 const root = process.cwd();
 const workspace = fs.readFileSync(path.join(root, "frontend/components/consents/PatientConsentsWorkspace.tsx"), "utf8");
 const patientDetail = fs.readFileSync(path.join(root, "frontend/components/patients/PatientDetail.tsx"), "utf8");
+const patientNavigation = fs.readFileSync(path.join(root, "frontend/lib/patientNavigation.ts"), "utf8");
 const service = fs.readFileSync(path.join(root, "frontend/services/consentInstanceService.ts"), "utf8");
 
 for (const expected of [
@@ -53,7 +54,9 @@ for (const endpoint of [
   assert.ok(service.includes(endpoint), `missing consent-instance API contract: ${endpoint}`);
 }
 
-assert.ok(patientDetail.includes('{ id: "consents", label: "Consentimientos", permission: "consent.instance.read" }'));
+assert.ok(patientNavigation.includes('tab: "consents"'));
+assert.ok(patientNavigation.includes('label: "Consentimientos"'));
+assert.ok(patientNavigation.includes('permission: "consent.instance.read"'));
 for (const permission of ["consent.instance.read", "consent.instance.create", "consent.instance.edit_draft", "consent.instance.review", "consent.instance.void", "consent.instance.view_audit"]) {
   assert.ok(patientDetail.includes(permission), `missing permission-aware patient integration: ${permission}`);
 }

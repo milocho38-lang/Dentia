@@ -3,13 +3,16 @@ import fs from "node:fs";
 
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const patient = read("components/patients/PatientDetail.tsx");
+const patientNavigation = read("lib/patientNavigation.ts");
 const workspace = read("components/orthodontics/OrthodonticPatientWorkspace.tsx");
 const service = read("services/orthodonticCaseService.ts");
 const types = read("types/orthodonticCase.ts");
 
 assert.match(patient, /getPatientOrthodontics/);
-assert.match(patient, /orthodontics\s*\?\s*\[\{ id: "orthodontics"/);
+assert.match(patient, /orthodonticsVisible: Boolean\(orthodontics\)/);
 assert.match(patient, /OrthodonticPatientWorkspace/);
+assert.match(patientNavigation, /tab: "orthodontics"/);
+assert.match(patientNavigation, /dynamicModule: "orthodontics"/);
 assert.match(workspace, /Resumen/);
 assert.match(workspace, /Evolución/);
 assert.match(workspace, /OrthodonticEvolutionPanel/);

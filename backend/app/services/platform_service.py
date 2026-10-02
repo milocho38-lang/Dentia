@@ -1035,25 +1035,59 @@ def change_company_status(
     *,
     active: bool,
     metadata: RequestMetadata,
+    reason: str | None = None,
 ) -> PlatformCompanyActionResponse:
-    company = session.get(Company, company_id)
+    company = session.scalar(
+        select(Company)
+        .where(Company.id == company_id)
+        .with_for_update()
+    )
     if company is None:
         raise PlatformError("Empresa no encontrada.", 404)
     if company.id == context.user.company_id and not active:
-        raise PlatformError("No puedes inactivar la empresa de tu propia sesión.", 409)
-    company.status = "Activa" if active else "Inactiva"
+        raise PlatformError(
+            "No puedes desactivar esta clínica porque hacerlo bloquearía tu "
+            "acceso actual de administración de plataforma.",
+            409,
+        )
+
+    target_status = "Activa" if active else "Inactiva"
+    if company.status == target_status and company.is_active is active:
+        return PlatformCompanyActionResponse(
+            message=(
+                "La clínica ya estaba activa."
+                if active
+                else "La clínica ya estaba inactiva."
+            ),
+            company=_detail(session, company),
+        )
+
+    previous_status = company.status
+    previous_is_active = company.is_active
+    company.status = target_status
     company.is_active = active
     if not active:
         session.query(AuthSession).filter(
             AuthSession.company_id == company.id,
+            AuthSession.is_active.is_(True),
             AuthSession.revoked_at.is_(None),
         ).update(
             {
+                AuthSession.is_active: False,
                 AuthSession.revoked_at: datetime.now(timezone.utc),
-                AuthSession.revoked_reason: "COMPANY_DEACTIVATED",
+                AuthSession.revoked_by: context.user.id,
+                AuthSession.revoke_reason: "COMPANY_DEACTIVATED",
             },
             synchronize_session=False,
         )
+    audit_detail = {
+        "previous_status": previous_status,
+        "previous_is_active": previous_is_active,
+        "new_status": target_status,
+        "new_is_active": active,
+    }
+    if reason:
+        audit_detail["reason"] = reason
     _audit(
         session,
         context,
@@ -1061,9 +1095,10 @@ def change_company_status(
         company_id=company.id,
         entity_id=company.id,
         action="COMPANY_REACTIVATED" if active else "COMPANY_DEACTIVATED",
+        detail=audit_detail,
     )
     session.commit()
     return PlatformCompanyActionResponse(
-        message="Empresa reactivada." if active else "Empresa inactivada.",
+        message="Clínica reactivada." if active else "Clínica desactivada.",
         company=_detail(session, company),
     )

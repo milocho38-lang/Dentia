@@ -177,6 +177,17 @@ class PlatformCompanyActionResponse(BaseModel):
     company: PlatformCompanyDetail
 
 
+class PlatformCompanyStatusChangeRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=300)
+
+    @field_validator("reason")
+    @classmethod
+    def strip_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
 class PlatformCompanyUserRoleUpdateRequest(BaseModel):
     role_ids: list[UUID] = Field(min_length=1)
     site_ids: list[UUID] = Field(min_length=1)

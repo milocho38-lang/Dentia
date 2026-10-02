@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Alert } from "@/components/shared/Alert";
 import { Modal } from "@/components/shared/Modal";
@@ -9,10 +9,16 @@ import { Spinner } from "@/components/shared/Spinner";
 import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { ClinicalRecordPage } from "@/components/patients/ClinicalRecordPage";
 import { OdontogramPage } from "@/components/patients/OdontogramPage";
+import { PatientWorkspaceNavigation } from "@/components/patients/PatientWorkspaceNavigation";
 import { OrthodonticPatientWorkspace } from "@/components/orthodontics/OrthodonticPatientWorkspace";
 import { PeriodontogramWorkspace } from "@/components/periodontogram/PeriodontogramWorkspace";
 import { PatientConsentsWorkspace } from "@/components/consents/PatientConsentsWorkspace";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  buildPatientNavigation,
+  isPatientWorkspaceTab,
+  type PatientWorkspaceTab,
+} from "@/lib/patientNavigation";
 import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
 import { getClinicalSummary } from "@/services/clinicalRecordService";
@@ -88,21 +94,10 @@ function money(value: string | number | null | undefined) {
   }).format(Number(value ?? 0));
 }
 
-type PatientWorkspaceTab =
-  | "summary"
-  | "clinical"
-  | "orthodontics"
-  | "periodontogram"
-  | "odontogram"
-  | "treatments"
-  | "finance"
-  | "agenda"
-  | "documents"
-  | "consents"
-  | "files";
-
 export function PatientDetail({ patientId }: { patientId: string }) {
   const { hasPermission } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [summary, setSummary] = useState<PatientSummary | null>(null);
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
@@ -184,13 +179,16 @@ export function PatientDetail({ patientId }: { patientId: string }) {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (
-      tab &&
-      ["summary", "clinical", "orthodontics", "periodontogram", "odontogram", "treatments", "finance", "agenda", "documents", "consents", "files"].includes(tab)
-    ) {
-      setActiveTab(tab as PatientWorkspaceTab);
-    }
+    setActiveTab(isPatientWorkspaceTab(tab) ? tab : "summary");
   }, [searchParams]);
+
+  const navigateToTab = useCallback((tab: PatientWorkspaceTab) => {
+    setActiveTab(tab);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set("tab", tab);
+    const query = nextParams.toString();
+    router.push(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const loadWorkspaceData = useCallback(async () => {
     setWorkspaceLoading(true);
@@ -270,32 +268,12 @@ export function PatientDetail({ patientId }: { patientId: string }) {
     (sum, payment) => sum + Number(payment.value),
     0,
   );
-  const tabs: {
-    id: PatientWorkspaceTab;
-    label: string;
-    permission?: string;
-    disabled?: boolean;
-  }[] = [
-    { id: "summary", label: "Resumen" },
-    {
-      id: "clinical",
-      label: clinicalSummary?.terminology.record ?? "Historia Clínica",
-      permission: "clinical_records.view_sensitive",
-    },
-    ...(orthodontics
-      ? [{ id: "orthodontics" as const, label: "Ortodoncia" }]
-      : []),
-    ...(periodontogramAllowed
-      ? [{ id: "periodontogram" as const, label: "Periodontograma", permission: "periodontogram.view" }]
-      : []),
-    { id: "odontogram", label: "Odontograma", permission: "odontogram.view" },
-    { id: "treatments", label: "Tratamientos", permission: "treatments.view" },
-    { id: "finance", label: "Finanzas", permission: "payments.view" },
-    { id: "agenda", label: "Agenda", permission: "appointments.view" },
-    { id: "documents", label: "Documentos" },
-    { id: "consents", label: "Consentimientos", permission: "consent.instance.read" },
-    { id: "files", label: "Archivos" },
-  ];
+  const patientNavigation = buildPatientNavigation({
+    clinicalRecordLabel: clinicalSummary?.terminology.record,
+    orthodonticsVisible: Boolean(orthodontics),
+    periodontogramVisible: periodontogramAllowed,
+    hasPermission,
+  });
 
   async function changeStatus() {
     setSaving(true);
@@ -416,28 +394,17 @@ export function PatientDetail({ patientId }: { patientId: string }) {
 
       {error && <div className="mt-5"><Alert tone="error">{error}</Alert></div>}
 
-      <nav className="sticky top-0 z-20 mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur">
-        <div className="flex min-w-max gap-2">
-          {tabs
-            .filter((tab) => !tab.permission || hasPermission(tab.permission))
-            .map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`rounded-xl px-5 py-3 text-sm font-black transition ${
-                  activeTab === tab.id
-                    ? "bg-dentia-primary text-white shadow-sm"
-                    : "text-slate-600 hover:bg-green-50 hover:text-green-800"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-        </div>
-      </nav>
+      <PatientWorkspaceNavigation
+        activeTab={activeTab}
+        groups={patientNavigation}
+        onNavigate={navigateToTab}
+      />
 
-      <section className="mt-6">
+      <section
+        id="patient-workspace-panel"
+        aria-label="Contenido del paciente"
+        className="mt-6"
+      >
         {activeTab === "summary" && (
           <PatientSummaryWorkspace
             summary={summary}

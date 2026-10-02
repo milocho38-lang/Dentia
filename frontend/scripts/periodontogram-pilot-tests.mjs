@@ -5,6 +5,10 @@ const patientDetail = readFileSync(
   new URL("../components/patients/PatientDetail.tsx", import.meta.url),
   "utf8",
 );
+const patientNavigation = readFileSync(
+  new URL("../lib/patientNavigation.ts", import.meta.url),
+  "utf8",
+);
 const platformCard = readFileSync(
   new URL(
     "../components/periodontogram/PlatformPeriodontogramPilotCard.tsx",
@@ -19,11 +23,14 @@ const service = readFileSync(
 
 assert.match(patientDetail, /getPeriodontogramPilotAccess/);
 assert.match(patientDetail, /periodontogramAllowed/);
-assert.match(patientDetail, /\.\.\.\(periodontogramAllowed/);
+assert.match(patientDetail, /periodontogramVisible: periodontogramAllowed/);
 assert.match(
   patientDetail,
   /hasPermission\("periodontogram\.view"\) && periodontogramAllowed/,
 );
+assert.match(patientNavigation, /tab: "periodontogram"/);
+assert.match(patientNavigation, /permission: "periodontogram\.view"/);
+assert.match(patientNavigation, /dynamicModule: "periodontogram"/);
 
 assert.match(platformCard, /Piloto clínico/);
 assert.match(platformCard, /Habilitar para la empresa/);

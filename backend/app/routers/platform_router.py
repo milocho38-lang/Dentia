@@ -12,6 +12,7 @@ from app.schemas.platform_schema import (
     PlatformCompanyCreateResponse,
     PlatformCompanyDetail,
     PlatformCompanyListResponse,
+    PlatformCompanyStatusChangeRequest,
     PlatformCompanyUserRoleUpdateRequest,
     PlatformCompanyUserRoleUpdateResponse,
     PlatformCompanyDentistLimitUpdateRequest,
@@ -391,6 +392,7 @@ def deactivate_company_endpoint(
     context: Annotated[
         AuthContext, Depends(require_permission("platform.companies.manage"))
     ],
+    payload: PlatformCompanyStatusChangeRequest | None = None,
 ) -> PlatformCompanyActionResponse:
     try:
         return change_company_status(
@@ -399,6 +401,7 @@ def deactivate_company_endpoint(
             company_id,
             active=False,
             metadata=get_request_metadata(request),
+            reason=payload.reason if payload else None,
         )
     except PlatformError as exc:
         raise handle(exc)
@@ -415,6 +418,7 @@ def reactivate_company_endpoint(
     context: Annotated[
         AuthContext, Depends(require_permission("platform.companies.manage"))
     ],
+    payload: PlatformCompanyStatusChangeRequest | None = None,
 ) -> PlatformCompanyActionResponse:
     try:
         return change_company_status(
@@ -423,6 +427,7 @@ def reactivate_company_endpoint(
             company_id,
             active=True,
             metadata=get_request_metadata(request),
+            reason=payload.reason if payload else None,
         )
     except PlatformError as exc:
         raise handle(exc)

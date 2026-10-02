@@ -5,6 +5,10 @@ const detail = readFileSync(
   new URL("../components/patients/PatientDetail.tsx", import.meta.url),
   "utf8",
 );
+const patientNavigation = readFileSync(
+  new URL("../lib/patientNavigation.ts", import.meta.url),
+  "utf8",
+);
 const workspace = readFileSync(
   new URL("../components/periodontogram/PeriodontogramWorkspace.tsx", import.meta.url),
   "utf8",
@@ -19,8 +23,8 @@ const service = readFileSync(
   "utf8",
 );
 
-assert.match(detail, /id: "periodontogram"/);
-assert.match(detail, /permission: "periodontogram\.view"/);
+assert.match(patientNavigation, /tab: "periodontogram"/);
+assert.match(patientNavigation, /permission: "periodontogram\.view"/);
 assert.match(detail, /<PeriodontogramWorkspace patientId=\{patient\.id\}/);
 assert.match(workspace, /No hay periodontogramas registrados\./);
 assert.match(workspace, /Nuevo periodontograma/);

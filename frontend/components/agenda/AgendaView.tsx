@@ -18,6 +18,10 @@ import { Modal } from "@/components/shared/Modal";
 import { Spinner } from "@/components/shared/Spinner";
 import { useAuth } from "@/hooks/useAuth";
 import {
+  applyAppointmentType,
+  initializeAppointmentSchedule,
+} from "@/lib/appointmentFormState";
+import {
   adjustAppointmentTime,
   cancelAppointment,
   completeClinicalCare,
@@ -933,21 +937,43 @@ function AppointmentForm({
   const [searchingPatients, setSearchingPatients] = useState(false);
   const [dentistId, setDentistId] = useState(defaultDentistId);
   const [siteId, setSiteId] = useState(defaultSiteId);
-  const [typeId, setTypeId] = useState("");
-  const [appointmentDate, setAppointmentDate] = useState(date);
-  const [time, setTime] = useState(initialTime);
-  const [duration, setDuration] = useState(30);
+  const [schedule, setSchedule] = useState(() =>
+    initializeAppointmentSchedule(
+      {
+        appointmentDate: date,
+        time: initialTime,
+        typeId: "",
+        duration: 30,
+      },
+      date,
+      initialTime,
+      options.appointment_types[0],
+    ),
+  );
+  const modalWasOpen = useRef(false);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictPayload | null>(null);
   const [overbookReason, setOverbookReason] = useState("");
   const [quickPatient, setQuickPatient] = useState(false);
+  const { appointmentDate, time, typeId, duration } = schedule;
 
   useEffect(() => {
-    if (!open) return;
-    setAppointmentDate(date);
-    setTime(initialTime);
+    if (!open) {
+      modalWasOpen.current = false;
+      return;
+    }
+    if (modalWasOpen.current) return;
+    modalWasOpen.current = true;
+    setSchedule((current) =>
+      initializeAppointmentSchedule(
+        current,
+        date,
+        initialTime,
+        options.appointment_types[0],
+      ),
+    );
     setError(null);
     setConflict(null);
     setOverbookReason("");
@@ -958,10 +984,6 @@ function AppointmentForm({
       setPatientSearch(preselectedPatient.full_name);
       setPatients([preselectedPatient]);
     }
-    if (!typeId && options.appointment_types[0]) {
-      setTypeId(options.appointment_types[0].id);
-      setDuration(options.appointment_types[0].suggested_duration_minutes);
-    }
   }, [
     date,
     defaultDentistId,
@@ -970,7 +992,6 @@ function AppointmentForm({
     open,
     options,
     preselectedPatient,
-    typeId,
   ]);
 
   useEffect(() => {
@@ -1179,7 +1200,12 @@ function AppointmentForm({
             <input
               type="date"
               value={appointmentDate}
-              onChange={(event) => setAppointmentDate(event.target.value)}
+              onChange={(event) =>
+                setSchedule((current) => ({
+                  ...current,
+                  appointmentDate: event.target.value,
+                }))
+              }
               className="min-h-12 w-full rounded-xl border border-slate-300 px-3"
             />
           </label>
@@ -1191,7 +1217,12 @@ function AppointmentForm({
               type="time"
               step={900}
               value={time}
-              onChange={(event) => setTime(event.target.value)}
+              onChange={(event) =>
+                setSchedule((current) => ({
+                  ...current,
+                  time: event.target.value,
+                }))
+              }
               className="min-h-12 w-full rounded-xl border border-slate-300 px-3"
             />
           </label>
@@ -1202,11 +1233,12 @@ function AppointmentForm({
             <select
               value={typeId}
               onChange={(event) => {
-                setTypeId(event.target.value);
                 const type = options.appointment_types.find(
                   (item) => item.id === event.target.value,
                 );
-                if (type) setDuration(type.suggested_duration_minutes);
+                if (type) {
+                  setSchedule((current) => applyAppointmentType(current, type));
+                }
               }}
               className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3"
             >
@@ -1220,7 +1252,12 @@ function AppointmentForm({
           <FieldSelect
             label="Duración"
             value={String(duration)}
-            onChange={(value) => setDuration(Number(value))}
+            onChange={(value) =>
+              setSchedule((current) => ({
+                ...current,
+                duration: Number(value),
+              }))
+            }
             options={[15, 30, 45, 60, 75, 90, 120].map((value) => ({
               value: String(value),
               label: `${value} minutos`,

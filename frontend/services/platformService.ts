@@ -27,17 +27,25 @@ export function getPlatformCompany(id: string) {
   return apiRequest<PlatformCompanyDetail>(`/api/platform/companies/${id}`);
 }
 
-export function deactivatePlatformCompany(id: string) {
+export function deactivatePlatformCompany(id: string, reason?: string) {
   return apiRequest<{ company: PlatformCompanyDetail; message: string }>(
     `/api/platform/companies/${id}/deactivate`,
-    { method: "POST" },
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason?.trim() || null }),
+    },
   );
 }
 
-export function reactivatePlatformCompany(id: string) {
+export function reactivatePlatformCompany(id: string, reason?: string) {
   return apiRequest<{ company: PlatformCompanyDetail; message: string }>(
     `/api/platform/companies/${id}/reactivate`,
-    { method: "POST" },
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason?.trim() || null }),
+    },
   );
 }
 

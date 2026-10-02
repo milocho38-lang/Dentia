@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert } from "@/components/shared/Alert";
 import { Spinner } from "@/components/shared/Spinner";
+import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { PlatformOrthodonticsEntitlementCard } from "@/components/orthodontics/PlatformOrthodonticsEntitlementCard";
 import { PlatformUserOrthodonticsAddon } from "@/components/orthodontics/PlatformUserOrthodonticsAddon";
 import { PlatformPeriodontogramPilotCard } from "@/components/periodontogram/PlatformPeriodontogramPilotCard";
@@ -24,6 +25,7 @@ import type {
   PlatformCompanyUserRoleUpdateInput,
   PlatformUserSummary,
 } from "@/types/platform";
+import { useAuth } from "@/hooks/useAuth";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("es-CO", {
@@ -317,6 +319,7 @@ export function PlatformCompanyCreatePage() {
 }
 
 export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) {
+  const { user } = useAuth();
   const [company, setCompany] = useState<PlatformCompanyDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -326,6 +329,8 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
   const [dentistLimit, setDentistLimit] = useState(1);
   const [savingLimit, setSavingLimit] = useState(false);
   const [orthodonticsRevision, setOrthodonticsRevision] = useState(0);
+  const [statusAction, setStatusAction] = useState<"deactivate" | "reactivate" | null>(null);
+  const [statusBusy, setStatusBusy] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -345,14 +350,26 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
-  async function toggleStatus() {
-    if (!company) return;
-    if (company.is_active) {
-      const response = await deactivatePlatformCompany(company.id);
+  async function confirmStatusChange() {
+    if (!company || !statusAction) return;
+    setStatusBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = statusAction === "deactivate"
+        ? await deactivatePlatformCompany(company.id)
+        : await reactivatePlatformCompany(company.id);
       setCompany(response.company);
-    } else {
-      const response = await reactivatePlatformCompany(company.id);
-      setCompany(response.company);
+      setNotice(response.message);
+      setStatusAction(null);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "No fue posible actualizar el estado de la clínica.",
+      );
+    } finally {
+      setStatusBusy(false);
     }
   }
 
@@ -390,6 +407,17 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
   }
   if (!company) return <Alert tone="error">{error ?? "Empresa no disponible."}</Alert>;
 
+  const isOwnCompany = user?.company_id === company.id;
+  const activeUserCount = company.users.filter(
+    (companyUser) => companyUser.is_active && companyUser.status === "Activo",
+  ).length;
+  const cannotDeactivateOwnCompany = company.is_active && isOwnCompany;
+  const deactivateDescription =
+    "Los usuarios de esta clínica dejarán de poder operar en Dentia. " +
+    "La información clínica y administrativa se conservará y podrás reactivar la clínica posteriormente. " +
+    `Clínica: ${company.name}. Usuarios activos: ${activeUserCount}. ` +
+    `Odontólogos activos: ${company.active_dentist_count}.`;
+
   return (
     <div className="mx-auto max-w-6xl">
       <Link href="/configuracion/empresas" className="text-sm font-bold text-green-700">
@@ -402,10 +430,36 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
             {company.company_type ?? "Sin tipo"} · {company.country ?? "Sin país"} · {company.timezone}
           </p>
         </div>
-        <button onClick={toggleStatus} className="rounded-xl border px-4 py-3 font-bold">
-          {company.is_active ? "Inactivar" : "Reactivar"}
-        </button>
+        <div className="sm:max-w-md sm:text-right">
+          <button
+            type="button"
+            disabled={cannotDeactivateOwnCompany || statusBusy}
+            onClick={() => setStatusAction(company.is_active ? "deactivate" : "reactivate")}
+            title={
+              cannotDeactivateOwnCompany
+                ? "No puedes desactivar esta clínica porque hacerlo bloquearía tu acceso actual de administración de plataforma."
+                : undefined
+            }
+            className={`rounded-xl border px-4 py-3 font-bold disabled:cursor-not-allowed disabled:opacity-50 ${
+              company.is_active
+                ? "border-red-200 text-red-700"
+                : "border-green-200 text-green-700"
+            }`}
+          >
+            {company.is_active ? "Desactivar clínica" : "Reactivar clínica"}
+          </button>
+          {cannotDeactivateOwnCompany && (
+            <p className="mt-2 text-sm text-amber-700">
+              No puedes desactivar esta clínica porque hacerlo bloquearía tu acceso actual de administración de plataforma.
+            </p>
+          )}
+        </div>
       </header>
+      {error && (
+        <div className="mt-5">
+          <Alert tone="error">{error}</Alert>
+        </div>
+      )}
       <div className="mt-6 grid gap-4 sm:grid-cols-3 xl:grid-cols-6">
         <Card label="Estado" value={company.status} />
         <Card label="Sedes" value={String(company.site_count)} />
@@ -611,6 +665,22 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
           }}
         />
       )}
+      <ConfirmDialog
+        open={statusAction !== null}
+        title={statusAction === "deactivate" ? "Desactivar clínica" : "Reactivar clínica"}
+        description={
+          statusAction === "deactivate"
+            ? deactivateDescription
+            : `La clínica ${company.name} volverá a estar disponible para sus usuarios activos. Sus datos y configuraciones existentes se mantienen.`
+        }
+        confirmLabel={statusAction === "deactivate" ? "Desactivar clínica" : "Reactivar clínica"}
+        busy={statusBusy}
+        tone={statusAction === "deactivate" ? "danger" : "primary"}
+        onClose={() => {
+          if (!statusBusy) setStatusAction(null);
+        }}
+        onConfirm={confirmStatusChange}
+      />
     </div>
   );
 }
