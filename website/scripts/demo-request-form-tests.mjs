@@ -22,6 +22,11 @@ for (const name of [
 }
 assert.match(form, /privacyConsent\" type=\"checkbox\" required/);
 assert.match(form, /href="\/privacidad"/);
+assert.match(form, /Autorizo a Camilo Andres Medina Romero/);
+assert.match(form, /No incluyas información de pacientes\./);
+assert.match(form, /dentiapro\.notificaciones@gmail\.com/);
+assert.match(form, /DENTIA_PRIVACY_POLICY_V2_2026_10_04/);
+assert.match(form, /consent_version: DEMO_CONSENT_VERSION/);
 assert.match(form, /companyWebsite/);
 assert.match(styles, /\.demo-honeypot/);
 assert.match(form, /submittingRef\.current/);

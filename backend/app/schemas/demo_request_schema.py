@@ -8,6 +8,13 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models.demo_request import DEMO_PRACTICE_TYPES, DEMO_REQUEST_STATUSES
 
 
+LEGACY_DEMO_CONSENT_VERSION = "DENTIA_PRIVACY_POLICY_V1"
+PUBLIC_DEMO_CONSENT_VERSION = "DENTIA_PRIVACY_POLICY_V2_2026_10_04"
+KNOWN_DEMO_CONSENT_VERSIONS = frozenset(
+    {LEGACY_DEMO_CONSENT_VERSION, PUBLIC_DEMO_CONSENT_VERSION}
+)
+
+
 def _strip_required(value: str) -> str:
     return value.strip()
 
@@ -47,6 +54,13 @@ class PublicDemoRequestCreate(BaseModel):
     @classmethod
     def strip_optional(cls, value: str | None) -> str | None:
         return _strip_optional(value)
+
+    @field_validator("consent_version")
+    @classmethod
+    def validate_consent_version(cls, value: str | None) -> str | None:
+        if value is not None and value not in KNOWN_DEMO_CONSENT_VERSIONS:
+            raise ValueError("Versión de autorización no válida.")
+        return value
 
     @field_validator("email")
     @classmethod

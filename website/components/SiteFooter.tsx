@@ -14,7 +14,7 @@ export function SiteFooter() {
         <div>
           <h2>Conocer Dentia</h2>
           <Link href="/producto">Producto</Link>
-          <Link href="/precios">Precios</Link>
+          <Link href="/precios">Planes</Link>
           <Link href="/seguridad">Seguridad</Link>
         </div>
         <div>

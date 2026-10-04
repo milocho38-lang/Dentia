@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useRef, useState } from "react";
 
 type SubmissionState = "idle" | "submitting" | "success" | "error";
+const DEMO_CONSENT_VERSION = "DENTIA_PRIVACY_POLICY_V2_2026_10_04";
 
 export function DemoForm() {
   const [state, setState] = useState<SubmissionState>("idle");
@@ -32,6 +33,7 @@ export function DemoForm() {
           dentist_count: Number(data.get("dentistCount")),
           message: data.get("message") || null,
           privacy_consent: data.get("privacyConsent") === "on",
+          consent_version: DEMO_CONSENT_VERSION,
           company_website: data.get("companyWebsite") || null,
         }),
       });
@@ -99,11 +101,19 @@ export function DemoForm() {
           <input id="demo-company-website" name="companyWebsite" type="text" tabIndex={-1} autoComplete="off" />
         </div>
       </div>
+      <p className="form-disclosure">
+        Camilo Andres Medina Romero, responsable del tratamiento para Dentia Pro, usará tus datos para
+        responder tu solicitud, coordinar una demostración y darle seguimiento. Puedes ejercer tus derechos
+        en <a href="mailto:dentiapro.notificaciones@gmail.com">dentiapro.notificaciones@gmail.com</a>. Consulta
+        los detalles en nuestra <Link href="/privacidad">Política de privacidad y tratamiento de datos personales</Link>.
+        No incluyas información de pacientes.
+      </p>
       <label className="demo-consent">
         <input name="privacyConsent" type="checkbox" required />
         <span>
-          He leído la <Link href="/privacidad">política de privacidad</Link> y autorizo a Dentia a
-          contactarme respecto a mi solicitud de demostración.
+          Autorizo a Camilo Andres Medina Romero a recoger y tratar los datos de este formulario para
+          responder mi solicitud y contactarme por correo electrónico o teléfono en relación con la
+          demostración, según la <Link href="/privacidad">Política de privacidad y tratamiento de datos personales</Link>.
         </span>
       </label>
       <button className="button button--primary" type="submit" disabled={state === "submitting"}>

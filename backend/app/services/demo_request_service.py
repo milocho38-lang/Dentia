@@ -27,6 +27,7 @@ from app.schemas.demo_request_schema import (
     DemoRequestOwnersResponse,
     DemoRequestScheduleUpdate,
     DemoRequestStatusUpdate,
+    LEGACY_DEMO_CONSENT_VERSION,
     PublicDemoRequestCreate,
     PublicDemoRequestResponse,
 )
@@ -104,7 +105,11 @@ def _client_key(metadata: RequestMetadata) -> str:
     ).hexdigest()
 
 
-def _submission_fingerprint(payload: PublicDemoRequestCreate, client_key: str) -> str:
+def _submission_fingerprint(
+    payload: PublicDemoRequestCreate,
+    client_key: str,
+    consent_version: str,
+) -> str:
     parts = (
         payload.first_name.casefold(),
         payload.last_name.casefold(),
@@ -115,6 +120,7 @@ def _submission_fingerprint(payload: PublicDemoRequestCreate, client_key: str) -
         payload.practice_type,
         str(payload.dentist_count),
         (payload.message or "").casefold(),
+        consent_version,
         client_key,
     )
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
@@ -236,7 +242,8 @@ def create_public_demo_request(
 
     now = utc_now()
     client_key = _client_key(metadata)
-    fingerprint = _submission_fingerprint(payload, client_key)
+    consent_version = payload.consent_version or LEGACY_DEMO_CONSENT_VERSION
+    fingerprint = _submission_fingerprint(payload, client_key, consent_version)
     advisory_key = int(fingerprint[:16], 16)
     if advisory_key >= 2**63:
         advisory_key -= 2**64
@@ -270,9 +277,7 @@ def create_public_demo_request(
         source="WEBSITE",
         status="NEW",
         consent_at=now,
-        consent_version=(
-            payload.consent_version or settings.demo_request_consent_version
-        ),
+        consent_version=consent_version,
         submission_fingerprint=fingerprint,
     )
     session.add(item)

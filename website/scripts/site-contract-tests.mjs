@@ -5,6 +5,16 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
+const publicSourceDirectories = ["app", "components", "lib"];
+const approvedPublicEmails = new Set(["dentiapro.notificaciones@gmail.com"]);
+
+function sourceFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.(?:ts|tsx|js|jsx)$/.test(entry.name) ? [path] : [];
+  });
+}
 
 const pages = {
   home: read("app/page.tsx"),
@@ -12,6 +22,8 @@ const pages = {
   pricing: read("app/precios/page.tsx"),
   security: read("app/seguridad/page.tsx"),
   demo: read("app/demo/page.tsx"),
+  privacy: read("app/privacidad/page.tsx"),
+  terms: read("app/terminos/page.tsx"),
 };
 const source = Object.values(pages).join("\n");
 const carousel = read("components/ProductCarousel.tsx");
@@ -23,23 +35,34 @@ for (const route of ["/producto", "/precios", "/seguridad", "/demo"]) {
 }
 
 assert.match(read("lib/site.ts"), /https:\/\/app\.dentiapro\.com/, "The app login origin must remain canonical");
-assert.match(pages.home, /Toda tu consulta odontológica en un solo lugar\./);
-assert.match(pages.home, /En validación con prácticas odontológicas reales en Colombia y Chile\./);
+assert.match(pages.home, /Tu consulta, del primer contacto al seguimiento, en un solo contexto\./);
+assert.match(pages.home, /En lanzamiento y validación con prácticas odontológicas reales en Colombia y Chile\./);
 assert.match(pages.home, /<ProductCarousel \/>/, "The compact home must render the product carousel");
 assert.doesNotMatch(pages.home, /story-stack|journey__step/, "The old repeated vertical product story must be removed");
-assert.doesNotMatch(pages.home, /Ortodoncia|Periodontograma/, "Pilot or design-stage modules must not be marketed");
+assert.doesNotMatch(pages.home, /Ortodoncia/, "Orthodontics must not be marketed from the home");
 assert.match(pages.product, /Agenda/);
 assert.match(pages.product, /Odontograma/);
+assert.match(pages.product, /periodontograma general/i);
 assert.match(pages.product, /Configuración y gestión de plantillas de consentimientos/);
 
-for (const price of ["$85.000 COP", "$168.000 COP", "$252.000 COP", "$420.000 COP"]) {
-  assert.ok(pages.pricing.includes(price), `Missing Colombia price ${price}`);
+const publicSources = publicSourceDirectories.flatMap((directory) =>
+  sourceFiles(resolve(root, directory)),
+);
+for (const path of publicSources) {
+  const publicSource = readFileSync(path, "utf8");
+  assert.doesNotMatch(
+    publicSource,
+    /\$\s*[\d.]+|\b(?:COP|CLP|USD)\b|tarifa especial|\b(?:85\.000|168\.000|252\.000|420\.000|23\.900|47\.900|70\.900|118\.900)\b/i,
+    `Public pricing details must remain hidden: ${path}`,
+  );
+  const publicEmails = publicSource.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g) ?? [];
+  for (const email of publicEmails) {
+    assert.ok(approvedPublicEmails.has(email.toLowerCase()), `Unapproved public email found in ${path}`);
+  }
 }
-for (const price of ["$23.900 CLP", "$47.900 CLP", "$70.900 CLP", "$118.900 CLP"]) {
-  assert.ok(pages.pricing.includes(price), `Missing Chile price ${price}`);
-}
-assert.match(pages.pricing, /impuestos aplicables incluidos/);
-assert.match(pages.pricing, /tarifa especial de lanzamiento/);
+assert.match(pages.pricing, /Práctica independiente/);
+assert.match(pages.pricing, /Consultorio o clínica/);
+assert.match(pages.pricing, /Conocer Dentia y la propuesta/);
 
 assert.match(pages.security, /Separación entre organizaciones/);
 assert.match(pages.security, /Usuarios, roles y permisos/);
@@ -54,6 +77,22 @@ assert.match(demoForm, /fetch\("\/api\/public\/demo-requests"/, "The demo form m
 assert.match(demoForm, /privacyConsent/);
 assert.match(demoForm, /Solicitud recibida/);
 assert.doesNotMatch(demoForm, /no transmite ni almacena información/);
+assert.match(demoForm, /No incluyas información de pacientes\./);
+assert.match(demoForm, /Autorizo a Camilo Andres Medina Romero/);
+assert.match(demoForm, /dentiapro\.notificaciones@gmail\.com/);
+assert.match(demoForm, /DENTIA_PRIVACY_POLICY_V2_2026_10_04/);
+assert.match(demoForm, /consent_version: DEMO_CONSENT_VERSION/);
+
+assert.doesNotMatch(pages.privacy, /borrador|pendiente de revisión|se incorporará el día de la publicación/i);
+assert.doesNotMatch(pages.terms, /borrador|pendiente de revisión|se incorporará el día de la publicación/i);
+assert.match(pages.privacy, /<strong>Versión:<\/strong> DENTIA_PRIVACY_POLICY_V2_2026_10_04/);
+assert.match(pages.privacy, /<strong>Fecha de entrada en vigor:<\/strong> 3 de octubre de 2026\./);
+assert.match(pages.terms, /<strong>Fecha de entrada en vigor:<\/strong> 3 de octubre de 2026\./);
+assert.match(pages.privacy, /12 meses desde el último contacto/);
+assert.match(pages.privacy, /dentiapro\.notificaciones@gmail\.com/);
+assert.match(pages.privacy, /Ley 19\.628 vigente/);
+assert.match(pages.terms, /No permite contratar/);
+assert.match(pages.terms, /no imponen arbitraje obligatorio/);
 
 const prohibitedClaims = [
   /100\s*% legal/i,

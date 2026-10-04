@@ -109,8 +109,12 @@ Variables:
 ```text
 DEMO_REQUEST_NOTIFICATION_EMAILS=ventas@example.com,socia@example.com
 DEMO_REQUEST_FROM_EMAIL=no-reply@example.com
-DEMO_REQUEST_CONSENT_VERSION=DENTIA_PRIVACY_POLICY_V1
 ```
+
+La versión del consentimiento no se resuelve como una configuración “actual”. Una solicitud sin versión se
+conserva como `DENTIA_PRIVACY_POLICY_V1`; la website que presenta la política V2 envía
+`DENTIA_PRIVACY_POLICY_V2_2026_10_04` explícitamente. El backend mantiene una allowlist de versiones
+conocidas y rechaza cualquier valor arbitrario.
 
 La solicitud y su auditoría se confirman en PostgreSQL antes de intentar SMTP. Si el envío falla, el lead permanece guardado con `notification_status=FAILED` y un código técnico no sensible. Si no hay destinatarios configurados queda `NOT_CONFIGURED`.
 

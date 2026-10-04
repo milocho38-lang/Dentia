@@ -11,11 +11,11 @@ export default function HomePage() {
         <div className="container">
           <div className="hero__grid">
             <div className="hero__copy">
-              <p className="eyebrow">Gestión odontológica conectada</p>
-              <h1>Toda tu consulta odontológica en un solo lugar.</h1>
+              <p className="eyebrow">Menos información dispersa</p>
+              <h1>Tu consulta, del primer contacto al seguimiento, en un solo contexto.</h1>
               <p>
-                Conecta agenda, pacientes, historia clínica, tratamientos, consentimientos, pagos y
-                seguimiento en una plataforma diseñada para consultorios y clínicas odontológicas.
+                Organiza citas, expediente clínico, tratamientos, documentos, pagos y próximos controles
+                sin repartir el trabajo entre varias herramientas.
               </p>
               <div className="hero__actions">
                 <Link className="button button--primary" href="/demo">
@@ -26,7 +26,7 @@ export default function HomePage() {
                 </Link>
               </div>
               <span className="trust-line">
-                En validación con prácticas odontológicas reales en Colombia y Chile.
+                En lanzamiento y validación con prácticas odontológicas reales en Colombia y Chile.
               </span>
             </div>
             <div className="hero__visual">
@@ -67,24 +67,24 @@ export default function HomePage() {
         <div className="container">
           <div className="section-heading section-heading--center">
             <p className="eyebrow">Crece a tu ritmo</p>
-            <h2>Para tu consulta de hoy y la clínica que quieres construir.</h2>
+            <h2>Para ordenar una práctica pequeña sin sumar complejidad innecesaria.</h2>
           </div>
           <div className="audience-grid">
             <article className="audience-card">
               <span className="audience-card__label">Odontólogo independiente</span>
               <h3>Organiza tu consulta, incluso si tú mismo la administras.</h3>
               <p>
-                Mantén conectados pacientes, atención clínica, documentos y pagos sin depender de varias
-                herramientas o de un equipo administrativo grande.
+                Pasa de la agenda al expediente, registra lo realizado y consulta documentos, saldos y
+                próximos controles sin reconstruir la historia del paciente en cada paso.
               </p>
               <Link className="text-link" href="/producto">Explorar el producto</Link>
             </article>
             <article className="audience-card audience-card--clinic">
               <span className="audience-card__label">Clínica o consultorio</span>
-              <h3>Incorpora equipo y sedes sin perder el control.</h3>
+              <h3>Da acceso al equipo sin mezclar responsabilidades.</h3>
               <p>
-                Administra odontólogos, usuarios, permisos y sedes con información separada por empresa y
-                acceso según el rol de cada persona.
+                Organiza usuarios, permisos y sedes con información separada por empresa y acceso según el
+                rol de cada persona.
               </p>
               <span className="feature-note">Organización multiempresa con acceso por roles</span>
             </article>
@@ -110,15 +110,15 @@ export default function HomePage() {
             </article>
             <article className="trust-card">
               <span>02</span>
-              <h3>Implementación progresiva</h3>
+              <h3>Un flujo que puedes recorrer por partes</h3>
               <p>
-                Comienza con agenda y pacientes e incorpora historia clínica, tratamientos, documentos y
-                pagos a medida que tu equipo se familiariza.
+                En la demostración puedes revisar agenda, pacientes, registro clínico, tratamientos,
+                documentos, pagos y seguimiento según lo que hoy necesita tu práctica.
               </p>
             </article>
             <article className="trust-card">
               <span>03</span>
-              <h3>Acompañamiento cercano</h3>
+              <h3>Una demostración con tu contexto</h3>
               <p>
                 Solicita una demostración enfocada en tu forma de trabajo y conoce un recorrido claro para
                 adoptar Dentia por etapas.
@@ -132,10 +132,10 @@ export default function HomePage() {
         <div className="container validation__inner">
           <div>
             <p className="eyebrow">Validación real</p>
-            <h2>Dentia está creciendo junto a odontólogos reales.</h2>
+            <h2>Dentia está en lanzamiento y sigue aprendiendo de la práctica real.</h2>
             <p>
-              Trabajamos con prácticas fundadoras para perfeccionar la experiencia antes de ampliar nuestra
-              apertura comercial.
+              La experiencia se valida con prácticas odontológicas reales de Colombia y Chile para seguir
+              afinando el producto alrededor del trabajo clínico y administrativo cotidiano.
             </p>
           </div>
           <div className="validation__countries" aria-label="Países de validación">
@@ -148,24 +148,24 @@ export default function HomePage() {
       <section className="pricing-home section section--tint">
         <div className="container">
           <div className="section-heading section-heading--center">
-            <p className="eyebrow">Precios transparentes</p>
-            <h2>Planes para comenzar y crecer.</h2>
-            <p>Las funcionalidades principales están incluidas. Los planes crecen según el número de odontólogos.</p>
+            <p className="eyebrow">Planes Dentia</p>
+            <h2>Conoce una propuesta para el tamaño de tu práctica.</h2>
+            <p>Cuéntanos si trabajas de forma independiente o con un equipo para revisar la opción que corresponde.</p>
           </div>
           <div className="pricing-preview">
             <article className="price-card">
-              <span className="price-card__country">Colombia</span>
-              <span className="price-card__amount">Desde $85.000 <small>COP/mes</small></span>
-              <p>Para odontólogos independientes y clínicas que quieren ordenar su operación.</p>
+              <span className="price-card__country">Práctica independiente</span>
+              <span className="price-card__amount">Una propuesta según tu operación</span>
+              <p>Para quien atiende y administra su propia consulta.</p>
             </article>
             <article className="price-card">
-              <span className="price-card__country">Chile</span>
-              <span className="price-card__amount">Desde $23.900 <small>CLP/mes</small></span>
-              <p>La misma plataforma, con planes adaptados al crecimiento de la práctica.</p>
+              <span className="price-card__country">Consultorio o clínica</span>
+              <span className="price-card__amount">Una propuesta según el equipo</span>
+              <p>Para prácticas que coordinan varios odontólogos, usuarios o sedes.</p>
             </article>
           </div>
           <div className="pricing-action">
-            <Link className="button button--primary" href="/precios">Ver precios</Link>
+            <Link className="button button--primary" href="/precios">Conocer los planes</Link>
           </div>
         </div>
       </section>

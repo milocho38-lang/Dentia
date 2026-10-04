@@ -540,6 +540,8 @@ p {
 }
 
 .product-screenshot {
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   margin: 0;
   background: var(--white);
@@ -568,6 +570,7 @@ p {
 .product-screenshot img {
   display: block;
   width: 100%;
+  max-width: 100%;
   height: auto;
 }
 
@@ -1596,16 +1599,11 @@ p {
   font-weight: 700;
 }
 
-.legal-placeholder {
-  display: inline-flex;
-  margin-bottom: 1.5rem;
-  padding: 0.45rem 0.7rem;
-  color: #92400e;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 999px;
-  font-size: 0.76rem;
-  font-weight: 800;
+.form-disclosure a {
+  color: var(--green-700);
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .prose-card h1 {
@@ -1615,6 +1613,27 @@ p {
 .prose-card h2 {
   margin-top: 2rem;
   font-size: 1.4rem;
+}
+
+.prose-card h3 {
+  margin-top: 1.5rem;
+  font-size: 1.08rem;
+}
+
+.prose-card ul {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0 0 1.25rem;
+  padding-left: 1.35rem;
+  color: var(--slate-700);
+}
+
+.prose-card a {
+  overflow-wrap: anywhere;
+  color: var(--green-700);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .empty-page {

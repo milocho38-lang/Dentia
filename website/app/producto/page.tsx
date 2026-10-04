@@ -34,10 +34,10 @@ const features = [
   },
   {
     id: "odontograma",
-    title: "Odontograma",
-    copy: "Visualiza hallazgos y superficies, selecciona cada pieza y consulta su contexto mediante un inspector clínico conectado.",
+    title: "Odontograma y periodontograma general",
+    copy: "Consulta hallazgos por pieza y superficie en el odontograma. En el periodontograma general puedes registrar mediciones y hallazgos periodontales, consultar el gráfico y conservar versiones finalizadas y sus correcciones.",
     image: screenshots.odontograma,
-    alt: "Odontograma dual de Dentia con pieza seleccionada",
+    alt: "Odontograma de Dentia con pieza seleccionada",
   },
   {
     id: "tratamientos",
@@ -86,10 +86,10 @@ const features = [
 export default function ProductPage() {
   return (
     <>
-      <PageHero eyebrow="El producto" title="Una plataforma que conserva el contexto de cada paciente.">
+      <PageHero eyebrow="El producto" title="Menos pasos para entender qué pasó y qué sigue con cada paciente.">
         <p>
-          Dentia reúne las tareas clínicas y administrativas que acompañan la atención odontológica, sin
-          convertir la consulta en una colección de herramientas desconectadas.
+          Dentia conecta las tareas que una práctica pequeña repite cada día: agendar, consultar el
+          expediente, registrar la atención, organizar el tratamiento, cobrar y preparar el seguimiento.
         </p>
       </PageHero>
       <section className="section">

@@ -8,6 +8,10 @@ from app.core.config import settings
 from app.core.security_catalog import ROLES
 from app.models.audit_event import AuditEvent
 from app.models.demo_request import DemoRequest, DemoRequestNote
+from app.schemas.demo_request_schema import (
+    LEGACY_DEMO_CONSENT_VERSION,
+    PUBLIC_DEMO_CONSENT_VERSION,
+)
 from app.services.demo_request_service import reset_demo_request_throttle_for_tests
 from app.services.email_service import (
     EmailDeliveryError,
@@ -76,9 +80,65 @@ def test_public_request_requires_consent_validates_and_sanitizes(
     assert item.normalized_email == "ana.demo@example.test"
     assert "<script>" not in (item.message or "")
     assert item.consent_at is not None
-    assert item.consent_version == "DENTIA_PRIVACY_POLICY_V1"
+    assert item.consent_version == LEGACY_DEMO_CONSENT_VERSION
     assert item.status == "NEW"
     assert item.notification_status == "NOT_CONFIGURED"
+
+
+def test_public_request_uses_explicit_known_consent_versions_without_relabeling_history(
+    api_client, db_session
+) -> None:
+    legacy = _create(api_client, email="legacy-policy@example.test")
+    assert legacy.status_code == 201
+
+    current = _create(
+        api_client,
+        email="current-policy@example.test",
+        consent_version=PUBLIC_DEMO_CONSENT_VERSION,
+    )
+    assert current.status_code == 201
+
+    unknown = _create(
+        api_client,
+        email="unknown-policy@example.test",
+        consent_version="DENTIA_PRIVACY_POLICY_UNRECOGNIZED",
+    )
+    assert unknown.status_code == 422
+    assert unknown.json()["detail"]["code"] == "DEMO_REQUEST_INVALID"
+
+    db_session.expire_all()
+    items = {
+        item.normalized_email: item.consent_version
+        for item in db_session.scalars(select(DemoRequest)).all()
+    }
+    assert items == {
+        "legacy-policy@example.test": LEGACY_DEMO_CONSENT_VERSION,
+        "current-policy@example.test": PUBLIC_DEMO_CONSENT_VERSION,
+    }
+
+
+def test_consent_version_is_part_of_duplicate_evidence(
+    api_client, db_session
+) -> None:
+    legacy = _create(api_client)
+    current = _create(
+        api_client,
+        consent_version=PUBLIC_DEMO_CONSENT_VERSION,
+    )
+    duplicate_current = _create(
+        api_client,
+        consent_version=PUBLIC_DEMO_CONSENT_VERSION,
+    )
+
+    assert legacy.status_code == current.status_code == duplicate_current.status_code == 201
+    db_session.expire_all()
+    items = db_session.scalars(
+        select(DemoRequest).order_by(DemoRequest.created_at, DemoRequest.id)
+    ).all()
+    assert [item.consent_version for item in items] == [
+        LEGACY_DEMO_CONSENT_VERSION,
+        PUBLIC_DEMO_CONSENT_VERSION,
+    ]
 
 
 def test_honeypot_and_immediate_duplicate_do_not_create_extra_leads(

@@ -13,11 +13,11 @@ export const siteIsIndexable =
 
 export const siteName = "Dentia";
 export const siteDescription =
-  "Gestión odontológica para agenda, pacientes, historia clínica, tratamientos, consentimientos, pagos y seguimiento.";
+  "Gestión odontológica para organizar agenda, expediente clínico, tratamientos, documentos, pagos y seguimientos en un solo contexto.";
 
 export const mainNavigation = [
   { href: "/producto", label: "Producto" },
-  { href: "/precios", label: "Precios" },
+  { href: "/precios", label: "Planes" },
   { href: "/seguridad", label: "Seguridad" },
   { href: "/demo", label: "Solicitar demo" },
 ] as const;

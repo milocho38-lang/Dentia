@@ -60,7 +60,6 @@ class Settings(BaseSettings):
     smtp_timeout_seconds: int = 10
     demo_request_notification_emails: str = ""
     demo_request_from_email: str | None = None
-    demo_request_consent_version: str = "DENTIA_PRIVACY_POLICY_V1"
     demo_request_rate_limit_max: int = 8
     demo_request_rate_limit_window_seconds: int = 300
     demo_request_duplicate_window_seconds: int = 300
