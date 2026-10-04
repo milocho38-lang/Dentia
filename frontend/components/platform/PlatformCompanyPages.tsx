@@ -8,7 +8,6 @@ import { Spinner } from "@/components/shared/Spinner";
 import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { PlatformOrthodonticsEntitlementCard } from "@/components/orthodontics/PlatformOrthodonticsEntitlementCard";
 import { PlatformUserOrthodonticsAddon } from "@/components/orthodontics/PlatformUserOrthodonticsAddon";
-import { PlatformPeriodontogramPilotCard } from "@/components/periodontogram/PlatformPeriodontogramPilotCard";
 import {
   createPlatformCompany,
   deactivatePlatformCompany,
@@ -490,8 +489,7 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
           {savingLimit ? "Guardando…" : "Actualizar límite"}
         </button>
       </form>
-      <h2 className="mt-8 text-xl font-black">Módulos / Pilotos</h2>
-      <PlatformPeriodontogramPilotCard companyId={company.id} />
+      <h2 className="mt-8 text-xl font-black">Módulos</h2>
       <PlatformOrthodonticsEntitlementCard
         key={orthodonticsRevision}
         companyId={company.id}

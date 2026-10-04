@@ -33,7 +33,7 @@ Resumen y Tratamientos son accesos directos y no generan una segunda fila vacía
 ## Permisos dinámicos
 
 - Historia clínica, Odontograma, Tratamientos, Agenda, Finanzas y Consentimientos reutilizan sus permisos actuales.
-- Periodontograma requiere simultáneamente `periodontogram.view` y respuesta positiva del gate piloto existente.
+- Periodontograma requiere `periodontogram.view` y respuesta positiva del resolver clínico general, que valida usuario, empresa, identidad odontológica y sede activas.
 - Ortodoncia solo aparece cuando el endpoint clínico existente devuelve un workspace accesible, que ya aplica entitlement, assignment, identidad odontológica, tenant y scope.
 - Un grupo sin destinos visibles se omite por completo.
 

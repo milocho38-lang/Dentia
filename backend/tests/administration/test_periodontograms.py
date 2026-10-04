@@ -7,7 +7,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app.models.agenda import Dentist, DentistSite, Patient
 from app.models.audit_event import AuditEvent
-from app.models.associations import RolePermission
+from app.models.associations import RolePermission, UserRole
 from app.models.clinical_record import ClinicalEvolution, ClinicalRecord
 from app.models.permission import Permission
 from app.models.periodontogram import (
@@ -25,29 +25,7 @@ from app.services.periodontal_clinical import (
     is_periodontal_pocket,
 )
 from app.services import periodontogram_service
-
-
-@pytest.fixture(autouse=True)
-def _enable_default_periodontogram_pilots(db_session, security_world) -> None:
-    """Keep the accumulated PERIO regression suite inside an explicit pilot."""
-    for tenant in (security_world.tenant_a, security_world.tenant_b):
-        db_session.add(
-            PeriodontogramPilotCompanyGate(
-                company_id=tenant.company.id,
-                is_enabled=True,
-                enabled_at=datetime.now(timezone.utc),
-                enabled_by_user_id=security_world.platform_admin.user.id,
-            )
-        )
-        db_session.add(
-            PeriodontogramPilotDentistAuthorization(
-                company_id=tenant.company.id,
-                dentist_id=tenant.dentist_profile.id,
-                authorized_at=datetime.now(timezone.utc),
-                authorized_by_user_id=security_world.platform_admin.user.id,
-            )
-        )
-    db_session.commit()
+from tests.factories.world import _actor, _company, _seed_roles, _site
 
 
 def _path(tenant) -> str:
@@ -65,11 +43,12 @@ def _create(api_client, tenant, *, token=None, site_id=None):
     )
 
 
-def _enable_dentist_profile(db_session, tenant) -> Dentist:
+def _enable_dentist_profile(db_session, tenant, actor=None) -> Dentist:
+    actor = actor or tenant.dentist
     dentist = Dentist(
         company_id=tenant.company.id,
-        user_id=tenant.dentist.user.id,
-        name=tenant.dentist.user.name,
+        user_id=actor.user.id,
+        name=actor.user.name,
         status="Activo",
         is_active=True,
         created_by=tenant.admin.user.id,
@@ -87,6 +66,27 @@ def _enable_dentist_profile(db_session, tenant) -> Dentist:
     )
     db_session.commit()
     return dentist
+
+
+def _grant_periodontogram_view(db_session, tenant, role_code: str) -> None:
+    role = db_session.scalar(
+        select(Role).where(
+            Role.company_id == tenant.company.id,
+            Role.code == role_code,
+        )
+    )
+    permission = db_session.scalar(
+        select(Permission).where(Permission.code == "periodontogram.view")
+    )
+    db_session.add(
+        RolePermission(
+            company_id=tenant.company.id,
+            role_id=role.id,
+            permission_id=permission.id,
+            created_by=tenant.admin.user.id,
+        )
+    )
+    db_session.commit()
 
 
 def _update(api_client, tenant, exam, *, teeth=None, sites=None):
@@ -243,125 +243,273 @@ def test_periodontogram_permission_matrix_is_clinical_only(
     assert by_role["PLATFORM_ADMIN"] == pilot
 
 
-def test_periodontogram_pilot_company_dentist_platform_and_history_gates(
+def test_periodontogram_general_release_ignores_historical_pilot_configuration(
     api_client, db_session, security_world
 ) -> None:
     tenant = security_world.tenant_a
-    other = security_world.tenant_b
     platform_token = security_world.platform_admin.token
     pilot_path = f"/api/platform/companies/{tenant.company.id}/periodontogram-pilot"
     access_path = "/api/periodontograms/access"
 
-    current = api_client.get(pilot_path, token=platform_token)
-    assert current.status_code == 200, current.text
-    assert current.json()["enabled"] is True
-    authorized = {
-        item["dentist_id"]: item["authorized"] for item in current.json()["dentists"]
-    }
-    assert authorized[str(tenant.dentist_profile.id)] is True
-
+    assert db_session.scalar(
+        select(PeriodontogramPilotCompanyGate).where(
+            PeriodontogramPilotCompanyGate.company_id == tenant.company.id
+        )
+    ) is None
     access = api_client.get(access_path, token=tenant.dentist_admin.token)
     assert access.status_code == 200, access.text
     assert access.json()["allowed"] is True
+    assert access.json()["code"] == "PERIODONTOGRAM_ACCESS_GRANTED"
+    assert "company_enabled" not in access.json()
+    assert "dentist_authorized" not in access.json()
 
-    unassigned_dentist = _enable_dentist_profile(db_session, tenant)
     unassigned_access = api_client.get(access_path, token=tenant.dentist.token)
     assert unassigned_access.status_code == 200
     assert unassigned_access.json()["allowed"] is False
     assert (
         unassigned_access.json()["code"]
-        == "PERIODONTOGRAM_PILOT_DENTIST_NOT_AUTHORIZED"
+        == "PERIODONTAL_DENTIST_IDENTITY_REQUIRED"
     )
     assert api_client.get(_path(tenant), token=tenant.dentist.token).status_code == 403
+    _enable_dentist_profile(db_session, tenant)
+    newly_eligible = api_client.get(access_path, token=tenant.dentist.token)
+    assert newly_eligible.status_code == 200
+    assert newly_eligible.json()["allowed"] is True
 
-    exam = _create(api_client, tenant)
-    assert exam.status_code == 201, exam.text
-    exam_id = exam.json()["exam"]["id"]
+    draft = _create(api_client, tenant).json()["exam"]
+    finalized = _finalize(api_client, tenant, draft).json()["exam"]
+    clinical_identity_before = {
+        "exam_id": finalized["id"],
+        "current_version_id": finalized["current_version"]["id"],
+        "snapshot": finalized["current_version"]["snapshot"],
+        "snapshot_hash": finalized["current_version"]["snapshot_hash"],
+        "versions": finalized["versions"],
+    }
 
-    disabled = api_client.put(
-        pilot_path,
-        token=platform_token,
-        json={"enabled": False},
+    now = datetime.now(timezone.utc)
+    historical_gate = PeriodontogramPilotCompanyGate(
+        company_id=tenant.company.id,
+        is_enabled=False,
     )
-    assert disabled.status_code == 200, disabled.text
-    assert disabled.json()["enabled"] is False
-    denied = api_client.get(access_path, token=tenant.dentist_admin.token)
-    assert denied.status_code == 200
-    assert denied.json()["allowed"] is False
-    assert denied.json()["code"] == "PERIODONTOGRAM_PILOT_DISABLED"
-    assert api_client.get(_path(tenant), token=tenant.dentist_admin.token).status_code == 403
-    assert api_client.get(
-        f"/api/periodontograms/{exam_id}",
-        token=tenant.dentist_admin.token,
-    ).status_code == 403
-    assert db_session.get(PeriodontalExam, exam_id) is not None
+    historical_authorization = PeriodontogramPilotDentistAuthorization(
+        company_id=tenant.company.id,
+        dentist_id=tenant.dentist_profile.id,
+        is_active=False,
+        authorized_at=now,
+        authorized_by_user_id=security_world.platform_admin.user.id,
+        revoked_at=now,
+        revoked_by_user_id=security_world.platform_admin.user.id,
+        revocation_reason="Cierre histórico del piloto sintético",
+    )
+    db_session.add_all([historical_gate, historical_authorization])
+    db_session.commit()
 
-    enabled = api_client.put(
-        pilot_path,
-        token=platform_token,
-        json={"enabled": True},
-    )
-    assert enabled.status_code == 200, enabled.text
-    dentist_path = (
-        f"{pilot_path}/dentists/{tenant.dentist_profile.id}"
-    )
-    revoked = api_client.put(
-        dentist_path,
-        token=platform_token,
-        json={"enabled": False, "reason": "Fin temporal del piloto"},
-    )
-    assert revoked.status_code == 200, revoked.text
-    assert api_client.get(_path(tenant), token=tenant.dentist_admin.token).status_code == 403
-    assert db_session.get(PeriodontalExam, exam_id) is not None
-
-    repeated_revoke = api_client.put(
-        dentist_path,
-        token=platform_token,
-        json={"enabled": False},
-    )
-    assert repeated_revoke.status_code == 200
-    reauthorized = api_client.put(
-        dentist_path,
-        token=platform_token,
-        json={"enabled": True},
-    )
-    assert reauthorized.status_code == 200, reauthorized.text
+    allowed_with_history = api_client.get(access_path, token=tenant.dentist_admin.token)
+    assert allowed_with_history.status_code == 200
+    assert allowed_with_history.json()["allowed"] is True
     assert api_client.get(_path(tenant), token=tenant.dentist_admin.token).status_code == 200
-
-    cross_tenant = api_client.put(
-        f"{pilot_path}/dentists/{other.dentist_profile.id}",
-        token=platform_token,
-        json={"enabled": True},
+    read_after_history = api_client.get(
+        f"/api/periodontograms/{finalized['id']}", token=tenant.dentist_admin.token
     )
-    assert cross_tenant.status_code == 404
-    assert api_client.put(
-        pilot_path,
-        token=tenant.admin.token,
-        json={"enabled": False},
-    ).status_code == 403
+    assert read_after_history.status_code == 200
+    exam_after_history = read_after_history.json()
+    assert exam_after_history["id"] == clinical_identity_before["exam_id"]
+    assert exam_after_history["current_version"]["id"] == clinical_identity_before["current_version_id"]
+    assert exam_after_history["current_version"]["snapshot"] == clinical_identity_before["snapshot"]
+    assert exam_after_history["current_version"]["snapshot_hash"] == clinical_identity_before["snapshot_hash"]
+    assert exam_after_history["versions"] == clinical_identity_before["versions"]
+    assert api_client.get(pilot_path, token=platform_token).status_code == 404
+    assert api_client.put(pilot_path, token=platform_token, json={"enabled": True}).status_code == 404
     assert api_client.get(_path(tenant), token=platform_token).status_code == 403
+    assert db_session.get(PeriodontogramPilotCompanyGate, historical_gate.id) is not None
+    assert db_session.get(
+        PeriodontogramPilotDentistAuthorization, historical_authorization.id
+    ) is not None
 
-    actions = set(
-        db_session.scalars(
-            select(AuditEvent.action).where(
-                AuditEvent.company_id == tenant.company.id,
-                AuditEvent.action.in_(
-                    (
-                        "PERIODONTOGRAM_PILOT_DISABLED",
-                        "PERIODONTOGRAM_PILOT_ENABLED",
-                        "PERIODONTOGRAM_PILOT_DENTIST_REVOKED",
-                        "PERIODONTOGRAM_PILOT_DENTIST_AUTHORIZED",
-                    )
-                ),
-            )
+
+def test_new_company_is_ready_for_eligible_dentist_without_pilot_records(
+    api_client, db_session, security_world
+) -> None:
+    company = _company(db_session, "Perio General Release")
+    site = _site(db_session, company, "Perio General Release")
+    permissions = {
+        permission.code: permission for permission in db_session.scalars(select(Permission))
+    }
+    roles = _seed_roles(
+        db_session,
+        company,
+        permissions,
+        created_by=security_world.platform_admin.user.id,
+    )
+    dentist_actor = _actor(
+        db_session,
+        company=company,
+        roles=roles,
+        role_codes=("DENTIST",),
+        sites=(site,),
+        label="Perio General Release Dentist",
+    )
+    dentist = Dentist(
+        company_id=company.id,
+        user_id=dentist_actor.user.id,
+        name=dentist_actor.user.name,
+        status="Activo",
+        is_active=True,
+        created_by=dentist_actor.user.id,
+    )
+    db_session.add(dentist)
+    db_session.flush()
+    db_session.add(
+        DentistSite(
+            company_id=company.id,
+            dentist_id=dentist.id,
+            site_id=site.id,
+            is_active=True,
+            created_by=dentist_actor.user.id,
         )
     )
-    assert actions == {
-        "PERIODONTOGRAM_PILOT_DISABLED",
-        "PERIODONTOGRAM_PILOT_ENABLED",
-        "PERIODONTOGRAM_PILOT_DENTIST_REVOKED",
-        "PERIODONTOGRAM_PILOT_DENTIST_AUTHORIZED",
+    db_session.commit()
+
+    assert db_session.scalar(
+        select(PeriodontogramPilotCompanyGate).where(
+            PeriodontogramPilotCompanyGate.company_id == company.id
+        )
+    ) is None
+    assert db_session.scalar(
+        select(PeriodontogramPilotDentistAuthorization).where(
+            PeriodontogramPilotDentistAuthorization.company_id == company.id
+        )
+    ) is None
+    access = api_client.get(
+        "/api/periodontograms/access", token=dentist_actor.token
+    )
+    assert access.status_code == 200, access.text
+    assert access.json()["allowed"] is True
+    assert access.json()["dentist_id"] == str(dentist.id)
+
+
+def test_new_dentist_user_in_existing_company_needs_no_pilot_authorization(
+    api_client, db_session, security_world
+) -> None:
+    tenant = security_world.tenant_a
+    roles = {
+        role.code: role
+        for role in db_session.scalars(
+            select(Role).where(Role.company_id == tenant.company.id)
+        )
     }
+    new_dentist_actor = _actor(
+        db_session,
+        company=tenant.company,
+        roles=roles,
+        role_codes=("DENTIST",),
+        sites=(tenant.site_1,),
+        label="New General Release Dentist",
+    )
+    dentist = _enable_dentist_profile(db_session, tenant, new_dentist_actor)
+
+    assert db_session.scalar(
+        select(PeriodontogramPilotDentistAuthorization).where(
+            PeriodontogramPilotDentistAuthorization.company_id == tenant.company.id,
+            PeriodontogramPilotDentistAuthorization.dentist_id == dentist.id,
+        )
+    ) is None
+    access = api_client.get(
+        "/api/periodontograms/access", token=new_dentist_actor.token
+    )
+    assert access.status_code == 200, access.text
+    assert access.json()["allowed"] is True
+    assert access.json()["dentist_id"] == str(dentist.id)
+
+
+def test_non_clinical_roles_stay_denied_with_accidental_permission_and_profile(
+    api_client, db_session, security_world
+) -> None:
+    tenant = security_world.tenant_a
+    for role_code, actor in (
+        ("ADMINISTRATOR", tenant.admin),
+        ("SECRETARY", tenant.secretary),
+    ):
+        _grant_periodontogram_view(db_session, tenant, role_code)
+        _enable_dentist_profile(db_session, tenant, actor)
+        access = api_client.get("/api/periodontograms/access", token=actor.token)
+        assert access.status_code == 200, access.text
+        assert access.json()["allowed"] is False
+        assert access.json()["code"] == "PERIODONTAL_CLINICAL_ROLE_REQUIRED"
+        assert api_client.get(_path(tenant), token=actor.token).status_code == 403
+
+    platform = security_world.platform_admin
+    platform_role = db_session.scalar(
+        select(Role).where(
+            Role.company_id == platform.user.company_id,
+            Role.code == "PLATFORM_ADMIN",
+        )
+    )
+    view_permission = db_session.scalar(
+        select(Permission).where(Permission.code == "periodontogram.view")
+    )
+    db_session.add(
+        RolePermission(
+            company_id=platform.user.company_id,
+            role_id=platform_role.id,
+            permission_id=view_permission.id,
+            created_by=platform.user.id,
+        )
+    )
+    platform_dentist = Dentist(
+        company_id=platform.user.company_id,
+        user_id=platform.user.id,
+        name=platform.user.name,
+        status="Activo",
+        is_active=True,
+        created_by=platform.user.id,
+    )
+    db_session.add(platform_dentist)
+    db_session.flush()
+    db_session.add(
+        DentistSite(
+            company_id=platform.user.company_id,
+            dentist_id=platform_dentist.id,
+            site_id=platform.user.default_site_id,
+            is_active=True,
+            created_by=platform.user.id,
+        )
+    )
+    db_session.commit()
+    access = api_client.get("/api/periodontograms/access", token=platform.token)
+    assert access.status_code == 200, access.text
+    assert access.json()["allowed"] is False
+    assert access.json()["code"] == "PERIODONTAL_CLINICAL_ROLE_REQUIRED"
+    assert api_client.get(_path(tenant), token=platform.token).status_code == 404
+
+
+def test_combined_administrative_and_dentist_roles_keep_clinical_access(
+    api_client, db_session, security_world
+) -> None:
+    tenant = security_world.tenant_a
+    dentist = _enable_dentist_profile(db_session, tenant)
+    admin_role = db_session.scalar(
+        select(Role).where(
+            Role.company_id == tenant.company.id,
+            Role.code == "ADMINISTRATOR",
+        )
+    )
+    db_session.add(
+        UserRole(
+            company_id=tenant.company.id,
+            user_id=tenant.dentist.user.id,
+            role_id=admin_role.id,
+            created_by=tenant.admin.user.id,
+        )
+    )
+    db_session.commit()
+
+    access = api_client.get(
+        "/api/periodontograms/access", token=tenant.dentist.token
+    )
+    assert access.status_code == 200, access.text
+    assert access.json()["allowed"] is True
+    assert access.json()["dentist_id"] == str(dentist.id)
 
 
 def test_periodontogram_rbac_identity_site_and_tenant_boundaries(

@@ -16,52 +16,12 @@ PeriodontalSiteCode = Literal[
 ]
 
 
-class PeriodontogramPilotCompanyUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool
-
-
-class PeriodontogramPilotDentistUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool
-    reason: str | None = Field(default=None, max_length=300)
-
-
-class PeriodontogramPilotDentistResponse(BaseModel):
-    authorization_id: UUID | None
-    dentist_id: UUID
-    user_id: UUID | None
-    dentist_name: str
-    dentist_status: str
-    dentist_is_active: bool
-    user_is_active: bool
-    authorized: bool
-    authorized_at: datetime | None
-    authorized_by_user_id: UUID | None
-    revoked_at: datetime | None
-    revoked_by_user_id: UUID | None
-
-
-class PeriodontogramPilotResponse(BaseModel):
-    company_id: UUID
-    enabled: bool
-    enabled_at: datetime | None
-    enabled_by_user_id: UUID | None
-    disabled_at: datetime | None
-    disabled_by_user_id: UUID | None
-    dentists: list[PeriodontogramPilotDentistResponse]
-
-
-class PeriodontogramPilotAccessResponse(BaseModel):
+class PeriodontogramAccessResponse(BaseModel):
     allowed: bool
     code: str
     message: str
     company_id: UUID
     dentist_id: UUID | None
-    company_enabled: bool
-    dentist_authorized: bool
 
 
 class PeriodontalExamCreateRequest(BaseModel):

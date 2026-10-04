@@ -1,5 +1,10 @@
 # PERIO-6A — Integración y rollout controlado del piloto
 
+> **Estado histórico.** Este contrato documenta el piloto controlado que precedió
+> la liberación general. Desde `PERIO-7`, sus gates de empresa y autorizaciones
+> individuales se conservan solo como evidencia histórica y ya no participan en
+> la resolución de acceso operativo.
+
 ## Objetivo
 
 Publicar el MVP de Periodontograma sin habilitarlo automáticamente a todos los

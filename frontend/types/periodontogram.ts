@@ -157,3 +157,11 @@ export interface PeriodontalExamAction {
 export interface PeriodontalEvolutionCandidateList {
   items: PeriodontalEvolutionSummary[];
 }
+
+export interface PeriodontogramAccess {
+  allowed: boolean;
+  code: string;
+  message: string;
+  company_id: string;
+  dentist_id: string | null;
+}

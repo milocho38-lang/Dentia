@@ -14,10 +14,11 @@
     "@fullcalendar/interaction": "^6.1.19",
     "@fullcalendar/react": "^6.1.19",
     "@fullcalendar/timegrid": "^6.1.19",
-    "next": "15.5.22",
+    "next": "15.5.27",
     "qrcode.react": "^4.2.0",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "sharp": "0.35.4"
   },
   "devDependencies": {
     "@types/node": "22.10.10",
@@ -25,7 +26,7 @@
     "@types/react-dom": "19.0.3",
     "autoprefixer": "10.4.20",
     "eslint": "9.39.4",
-    "eslint-config-next": "15.5.22",
+    "eslint-config-next": "15.5.27",
     "postcss": "8.5.18",
     "tailwindcss": "3.4.17",
     "typescript": "5.7.3"

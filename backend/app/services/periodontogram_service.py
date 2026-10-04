@@ -47,9 +47,9 @@ from app.services.periodontal_clinical import (
     is_periodontal_pocket,
 )
 from app.services.site_access_service import authorized_site_ids, is_authorized_site
-from app.services.periodontogram_pilot_service import (
-    PeriodontogramPilotError,
-    require_periodontogram_pilot_access,
+from app.services.periodontogram_access_service import (
+    PeriodontogramAccessError,
+    require_periodontogram_access,
 )
 
 
@@ -106,12 +106,12 @@ def _patient(session: Session, context: AuthContext, patient_id: UUID) -> Patien
 
 def _active_dentist(session: Session, context: AuthContext, site_id: UUID) -> Dentist:
     try:
-        access = require_periodontogram_pilot_access(
+        access = require_periodontogram_access(
             session,
             context,
             site_id=site_id,
         )
-    except PeriodontogramPilotError as exc:
+    except PeriodontogramAccessError as exc:
         raise PeriodontogramError(exc.code, str(exc), exc.status_code) from exc
     dentist = session.scalar(
         select(Dentist).where(

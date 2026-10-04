@@ -5,7 +5,11 @@ import type {
   PeriodontalDraftBatchUpdate,
   PeriodontalExamList,
   PeriodontalEvolutionCandidateList,
+  PeriodontogramAccess,
 } from "@/types/periodontogram";
+
+export const getPeriodontogramAccess = () =>
+  apiRequest<PeriodontogramAccess>("/api/periodontograms/access");
 
 export const listPeriodontalExams = (patientId: string) =>
   apiRequest<PeriodontalExamList>(`/api/patients/${patientId}/periodontograms`);

@@ -16,7 +16,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV API_PROXY_TARGET=http://dentia-backend:8000
 RUN addgroup -S dentia && adduser -S dentia -G dentia
-COPY --from=builder /app ./
+COPY --chown=dentia:dentia --from=builder /app ./
 USER dentia
 EXPOSE 3000
 CMD ["npm", "run", "start"]

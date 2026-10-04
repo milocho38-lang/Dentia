@@ -16,7 +16,7 @@ from app.schemas.periodontogram_schema import (
     PeriodontalExamResponse,
     PeriodontalEvolutionCandidateListResponse,
     PeriodontalEvolutionLinkRequest,
-    PeriodontogramPilotAccessResponse,
+    PeriodontogramAccessResponse,
 )
 from app.services.auth_service import AuthContext
 from app.services.periodontogram_service import (
@@ -30,8 +30,8 @@ from app.services.periodontogram_service import (
     list_periodontal_evolution_candidates,
     update_periodontal_draft,
 )
-from app.services.periodontogram_pilot_service import (
-    resolve_periodontogram_pilot_access,
+from app.services.periodontogram_access_service import (
+    resolve_periodontogram_access,
 )
 
 
@@ -47,13 +47,13 @@ def _handle(exc: PeriodontogramError) -> HTTPException:
 
 @router.get(
     "/api/periodontograms/access",
-    response_model=PeriodontogramPilotAccessResponse,
+    response_model=PeriodontogramAccessResponse,
 )
 def periodontogram_access_endpoint(
     session: Annotated[Session, Depends(get_db)],
     context: Annotated[AuthContext, Depends(require_permission("periodontogram.view"))],
-) -> PeriodontogramPilotAccessResponse:
-    return resolve_periodontogram_pilot_access(session, context)
+) -> PeriodontogramAccessResponse:
+    return resolve_periodontogram_access(session, context)
 
 
 @router.get(

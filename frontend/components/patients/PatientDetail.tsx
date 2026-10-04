@@ -23,7 +23,7 @@ import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
 import { getClinicalSummary } from "@/services/clinicalRecordService";
 import { getPatientOrthodontics } from "@/services/orthodonticCaseService";
-import { getPeriodontogramPilotAccess } from "@/services/periodontogramPilotService";
+import { getPeriodontogramAccess } from "@/services/periodontogramService";
 import {
   createClinicalDocument,
   downloadClinicalDocumentPdf,
@@ -158,7 +158,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
       }
       if (hasPermission("periodontogram.view")) {
         try {
-          const access = await getPeriodontogramPilotAccess();
+          const access = await getPeriodontogramAccess();
           setPeriodontogramAllowed(access.allowed);
         } catch {
           setPeriodontogramAllowed(false);
