@@ -5,6 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=../lib/dentia_common.sh
 source "$SCRIPT_DIR/../lib/dentia_common.sh"
 
+# The deploy runner owns these verified paths and passes them to every
+# production helper it launches. Other scripts sourcing dentia_common do not
+# leak their resolved defaults into unrelated child processes.
+export DENTIA_PROJECT_DIR DENTIA_PRODUCTION_DIR DENTIA_ENV_FILE
+
 usage() {
   cat <<'EOF'
 Usage: deploy_dentia.sh --maintenance --target-sha <40-character-sha>
