@@ -22,6 +22,8 @@ services:
   dentia-backend:
     build:
       context: ./backend
+      args:
+        DENTIA_VCS_REF: ${DENTIA_BUILD_REVISION:-unknown}
     container_name: ${DENTIA_BACKEND_CONTAINER:-dentia-backend}
     restart: unless-stopped
     depends_on:
@@ -52,6 +54,7 @@ services:
       context: ./frontend
       args:
         API_PROXY_TARGET: ${API_PROXY_TARGET:-http://dentia-backend:8000}
+        DENTIA_VCS_REF: ${DENTIA_BUILD_REVISION:-unknown}
     container_name: ${DENTIA_FRONTEND_CONTAINER:-dentia-frontend}
     restart: unless-stopped
     depends_on:
@@ -73,6 +76,7 @@ services:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.dentiapro.com}
         NEXT_PUBLIC_SITE_INDEXABLE: ${NEXT_PUBLIC_SITE_INDEXABLE:-false}
         API_PROXY_TARGET: ${API_PROXY_TARGET:-http://dentia-backend:8000}
+        DENTIA_VCS_REF: ${DENTIA_BUILD_REVISION:-unknown}
     container_name: ${DENTIA_WEBSITE_CONTAINER:-dentia-website}
     restart: unless-stopped
     environment:

@@ -52,4 +52,6 @@ jobs:
           backend/.venv/bin/pip install -r backend/requirements.txt -r backend/requirements-test.txt
 
       - name: Run official security and hardening suites
-        run: ./scripts/local/test_dentia_security.sh --full
+        run: |
+          ./scripts/local/test_deploy_dentia_maintenance.sh
+          ./scripts/local/test_dentia_security.sh --full

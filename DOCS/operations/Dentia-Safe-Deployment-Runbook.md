@@ -40,10 +40,36 @@ El comando no imprime secretos y no inicia servicios.
 13. Registrar commit y backup usado.
 ```
 
+## Bootstrap inmutable por SHA
+
+El primer despliegue del runner de mantenimiento no debe ejecutar el
+`deploy_dentia.sh` que exista en el checkout productivo ni hacer `git pull`
+antes de seleccionar el runner. Partiendo de un repositorio limpio, use el SHA
+completo aprobado y extraiga el launcher directamente del objeto Git:
+
+```bash
+cd /opt/apps/dentia
+TARGET_SHA=<SHA_APROBADO_DE_40_CARACTERES>
+git fetch origin master
+test "$(git rev-parse FETCH_HEAD)" = "$TARGET_SHA"
+
+LAUNCHER="$(mktemp /tmp/dentia-launcher.XXXXXX)"
+git show "$TARGET_SHA:scripts/production/launch_maintenance_deploy.sh" >"$LAUNCHER"
+test "$(git hash-object "$LAUNCHER")" = \
+  "$(git rev-parse "$TARGET_SHA:scripts/production/launch_maintenance_deploy.sh")"
+chmod 700 "$LAUNCHER"
+"$LAUNCHER" "$TARGET_SHA"
+rm -f "$LAUNCHER"
+```
+
+El launcher vuelve a comprobar `origin/master`, fast-forward y SHA, extrae el
+directorio `scripts/` del mismo objeto Git en un directorio temporal y ejecuta
+ese runner inmutable. No usa un script parcialmente actualizado.
+
 ## Comando oficial
 
 ```bash
-scripts/production/deploy_dentia.sh
+scripts/production/launch_maintenance_deploy.sh <SHA_APROBADO_DE_40_CARACTERES>
 ```
 
 ## Estado productivo

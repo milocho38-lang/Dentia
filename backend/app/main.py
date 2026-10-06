@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
@@ -42,10 +45,29 @@ from app.routers.usage_adoption_router import router as usage_adoption_router
 def create_app() -> FastAPI:
     configure_logging()
 
+    maintenance_file = Path(
+        os.environ.get("DENTIA_MAINTENANCE_FILE", "/app/storage/.dentia-maintenance")
+    )
+
     app = FastAPI(
         title=settings.app_name,
         debug=settings.app_debug,
     )
+
+    @app.middleware("http")
+    async def fail_closed_during_maintenance(request: Request, call_next):
+        if request.url.path != "/health" and maintenance_file.is_file():
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": {
+                        "code": "MAINTENANCE_ACTIVE",
+                        "message": "Dentia está temporalmente en mantenimiento.",
+                    }
+                },
+                headers={"Retry-After": "300"},
+            )
+        return await call_next(request)
 
     @app.exception_handler(RequestValidationError)
     async def safe_public_consent_validation_error(request: Request, exc: RequestValidationError):

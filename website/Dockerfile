@@ -20,6 +20,8 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
+ARG DENTIA_VCS_REF=unknown
+LABEL org.opencontainers.image.revision=$DENTIA_VCS_REF
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3010

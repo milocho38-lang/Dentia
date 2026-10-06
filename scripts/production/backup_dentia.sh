@@ -98,15 +98,31 @@ fi
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 COMMIT="$(git rev-parse --short HEAD)"
+DEPLOYED_COMMIT="${DENTIA_BACKUP_DEPLOYED_COMMIT:-$COMMIT}"
+TARGET_COMMIT="${DENTIA_BACKUP_TARGET_COMMIT:-$COMMIT}"
+BACKEND_IMAGE_ID="${DENTIA_BACKUP_BACKEND_IMAGE_ID:-unknown}"
+FRONTEND_IMAGE_ID="${DENTIA_BACKUP_FRONTEND_IMAGE_ID:-unknown}"
+WEBSITE_IMAGE_ID="${DENTIA_BACKUP_WEBSITE_IMAGE_ID:-unknown}"
+TARGET_BACKEND_IMAGE_ID="${DENTIA_BACKUP_TARGET_BACKEND_IMAGE_ID:-unknown}"
+TARGET_FRONTEND_IMAGE_ID="${DENTIA_BACKUP_TARGET_FRONTEND_IMAGE_ID:-unknown}"
+TARGET_WEBSITE_IMAGE_ID="${DENTIA_BACKUP_TARGET_WEBSITE_IMAGE_ID:-unknown}"
 SERVER="$(hostname 2>/dev/null || echo unknown)"
 LOCAL_DATE="$(date '+%Y-%m-%dT%H:%M:%S%z')"
 UTC_DATE="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-ALEMBIC_REVISION="$(
-  docker exec "$DENTIA_BACKEND_CONTAINER" alembic -c alembic.ini current 2>/dev/null |
-    awk 'NF {print $1; exit}' || true
-)"
-[ -n "$ALEMBIC_REVISION" ] || dentia_fail "Could not read Alembic revision from backend container."
+if [ "$(docker inspect -f '{{.State.Running}}' "$DENTIA_BACKEND_CONTAINER" 2>/dev/null || true)" = "true" ]; then
+  ALEMBIC_REVISION="$(
+    docker exec "$DENTIA_BACKEND_CONTAINER" alembic -c alembic.ini current 2>/dev/null |
+      awk 'NF {print $1; exit}' || true
+  )"
+else
+  ALEMBIC_REVISION="$(
+    docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d "$DENTIA_DB_NAME" \
+      -tAc 'SELECT version_num FROM alembic_version LIMIT 1;' 2>/dev/null |
+      tr -d '[:space:]' || true
+  )"
+fi
+[ -n "$ALEMBIC_REVISION" ] || dentia_fail "Could not read Alembic revision from the application or database container."
 POSTGRES_VERSION="$(
   docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d "$DENTIA_DB_NAME" -tAc 'SHOW server_version;' 2>/dev/null |
     tr -d '[:space:]' || true
@@ -130,6 +146,7 @@ dentia_info "Building semantic document inventory..."
   --metrics-output "$DOCUMENT_INVENTORY_METRICS" >/dev/null
 
 STORAGE_PATHS=()
+MAINTENANCE_RELATIVE="$DENTIA_BACKEND_STORAGE_HOST_PATH/.dentia-maintenance"
 for relative in $DENTIA_STORAGE_PATHS; do
   if [ -d "$ROOT/$relative" ]; then
     STORAGE_PATHS+=("$relative")
@@ -139,7 +156,7 @@ done
 STORAGE_FILE_COUNT=0
 STORAGE_SIZE_BYTES=0
 for relative in "${STORAGE_PATHS[@]}"; do
-  count="$(find "$ROOT/$relative" -type f | wc -l | awk '{print $1}')"
+  count="$(find "$ROOT/$relative" -type f ! -path "$ROOT/$MAINTENANCE_RELATIVE" | wc -l | awk '{print $1}')"
   size="$(dentia_dir_size_bytes "$ROOT/$relative")"
   STORAGE_FILE_COUNT=$((STORAGE_FILE_COUNT + count))
   STORAGE_SIZE_BYTES=$((STORAGE_SIZE_BYTES + size))
@@ -151,7 +168,7 @@ if [ "${#STORAGE_PATHS[@]}" -eq 0 ]; then
   mkdir -p "$TMP_PATH/empty-storage"
   tar -czf "$STORAGE_ARCHIVE" -C "$TMP_PATH" empty-storage
 else
-  tar -czf "$STORAGE_ARCHIVE" -C "$ROOT" "${STORAGE_PATHS[@]}"
+  tar --exclude="$MAINTENANCE_RELATIVE" -czf "$STORAGE_ARCHIVE" -C "$ROOT" "${STORAGE_PATHS[@]}"
 fi
 [ -s "$STORAGE_ARCHIVE" ] || dentia_fail "Storage archive is empty or invalid."
 
@@ -180,6 +197,14 @@ server=$SERVER
 environment=production
 branch=$BRANCH
 commit=$COMMIT
+deployed_commit=$DEPLOYED_COMMIT
+target_commit=$TARGET_COMMIT
+backend_image_id=$BACKEND_IMAGE_ID
+frontend_image_id=$FRONTEND_IMAGE_ID
+website_image_id=$WEBSITE_IMAGE_ID
+target_backend_image_id=$TARGET_BACKEND_IMAGE_ID
+target_frontend_image_id=$TARGET_FRONTEND_IMAGE_ID
+target_website_image_id=$TARGET_WEBSITE_IMAGE_ID
 alembic_revision=${ALEMBIC_REVISION:-unknown}
 postgres_version=${POSTGRES_VERSION:-unknown}
 database_dump=database.dump
@@ -206,6 +231,18 @@ data = {
     "environment": "production",
     "branch": "$BRANCH",
     "commit": "$COMMIT",
+    "deployed_commit": "$DEPLOYED_COMMIT",
+    "target_commit": "$TARGET_COMMIT",
+    "runtime_images": {
+        "backend": "$BACKEND_IMAGE_ID",
+        "frontend": "$FRONTEND_IMAGE_ID",
+        "website": "$WEBSITE_IMAGE_ID",
+    },
+    "target_images": {
+        "backend": "$TARGET_BACKEND_IMAGE_ID",
+        "frontend": "$TARGET_FRONTEND_IMAGE_ID",
+        "website": "$TARGET_WEBSITE_IMAGE_ID",
+    },
     "alembic_revision": "${ALEMBIC_REVISION:-unknown}",
     "postgres_version": "${POSTGRES_VERSION:-unknown}",
     "database": {

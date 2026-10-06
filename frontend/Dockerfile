@@ -13,6 +13,8 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
+ARG DENTIA_VCS_REF=unknown
+LABEL org.opencontainers.image.revision=$DENTIA_VCS_REF
 ENV NODE_ENV=production
 ENV API_PROXY_TARGET=http://dentia-backend:8000
 RUN addgroup -S dentia && adduser -S dentia -G dentia
