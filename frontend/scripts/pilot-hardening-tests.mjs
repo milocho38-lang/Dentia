@@ -112,8 +112,28 @@ const validateIndex = indexOfOrThrow(
   "validate_dentia_production_config.sh",
   "deploy validates production config first",
 );
-const backupIndex = indexOfOrThrow(deploy, "Creating mandatory backup", "deploy creates mandatory backup");
+const gitFetchIndex = indexOfOrThrow(deploy, "git fetch origin", "deploy fetches the approved code");
+const fastForwardIndex = indexOfOrThrow(
+  deploy,
+  'git merge --ff-only "$TARGET_SHA"',
+  "deploy fast-forwards to the approved target SHA",
+);
 const buildIndex = indexOfOrThrow(deploy, "dentia_compose build", "deploy builds before migration");
+const backupIndex = indexOfOrThrow(
+  deploy,
+  '"$SCRIPT_DIR/backup_dentia.sh" --no-prune',
+  "deploy creates mandatory backup",
+);
+const verifyBackupIndex = indexOfOrThrow(
+  deploy,
+  '"$SCRIPT_DIR/verify_dentia_backup.sh" "$BACKUP_PATH"',
+  "deploy verifies mandatory backup",
+);
+const restoreBackupIndex = indexOfOrThrow(
+  deploy,
+  '"$SCRIPT_DIR/restore_dentia_backup.sh" --backup "$BACKUP_PATH" --temporary',
+  "deploy tests restoration of the verified backup",
+);
 const migrationIndex = indexOfOrThrow(
   deploy,
   "dentia_compose run --rm --no-deps",
@@ -124,18 +144,18 @@ const recreateIndex = indexOfOrThrow(
   "dentia_compose up -d --no-deps",
   "deploy recreates application containers after migration",
 );
-const verifyBackupIndex = indexOfOrThrow(deploy, "Verifying mandatory backup", "deploy verifies mandatory backup");
-const gitPullIndex = indexOfOrThrow(deploy, "git pull --ff-only", "deploy fast-forwards code");
 const migrationVerifyIndex = indexOfOrThrow(deploy, "Verifying Alembic head", "deploy verifies Alembic after migration");
 const backendHealthIndex = indexOfOrThrow(deploy, "Backend healthcheck failed after backend recreate", "deploy checks backend health");
 const frontendHealthIndex = indexOfOrThrow(deploy, "Frontend check failed", "deploy checks frontend health");
 const websiteHealthIndex = indexOfOrThrow(deploy, "Website check failed", "deploy checks public website health");
 
-assert.ok(validateIndex < backupIndex, "config validation happens before backup");
+assert.ok(validateIndex < gitFetchIndex, "config validation happens before code fetch");
+assert.ok(gitFetchIndex < fastForwardIndex, "approved code is fetched before fast-forward");
+assert.ok(fastForwardIndex < buildIndex, "fast-forward happens before build");
+assert.ok(buildIndex < backupIndex, "images are built before entering the backup window");
 assert.ok(backupIndex < verifyBackupIndex, "backup happens before verification");
-assert.ok(verifyBackupIndex < gitPullIndex, "backup verification happens before code update");
-assert.ok(gitPullIndex < buildIndex, "code update happens before build");
-assert.ok(buildIndex < migrationIndex, "build happens before migration");
+assert.ok(verifyBackupIndex < restoreBackupIndex, "backup verification happens before restore test");
+assert.ok(restoreBackupIndex < migrationIndex, "restore test happens before migration");
 assert.ok(migrationIndex < migrationVerifyIndex, "migration happens before Alembic verification");
 assert.ok(migrationVerifyIndex < recreateIndex, "Alembic verification happens before recreate");
 assert.ok(recreateIndex < backendHealthIndex, "backend healthcheck happens after recreate");
