@@ -16,11 +16,16 @@ DENTIA_COMMON_DIR="$(dentia_script_dir)"
 DENTIA_SCRIPTS_DIR="$(cd "$DENTIA_COMMON_DIR/.." >/dev/null 2>&1 && pwd)"
 DENTIA_REPO_ROOT="$(cd "$DENTIA_SCRIPTS_DIR/.." >/dev/null 2>&1 && pwd)"
 
-DENTIA_ENV_FILE="${DENTIA_ENV_FILE:-$DENTIA_SCRIPTS_DIR/dentia.env}"
-
-# Explicit invocation values take precedence over the optional shared env file.
+# Explicit launcher paths take precedence over the optional shared env file.
+_DENTIA_PROJECT_DIR_OVERRIDE="${DENTIA_PROJECT_DIR-}"
+_DENTIA_PRODUCTION_DIR_OVERRIDE="${DENTIA_PRODUCTION_DIR-}"
+_DENTIA_ENV_FILE_OVERRIDE="${DENTIA_ENV_FILE-}"
 _DENTIA_FRONTEND_PORT_OVERRIDE="${DENTIA_FRONTEND_PORT-}"
 _DENTIA_BACKEND_PORT_OVERRIDE="${DENTIA_BACKEND_PORT-}"
+
+DENTIA_PROJECT_DIR="${DENTIA_PROJECT_DIR:-$DENTIA_REPO_ROOT}"
+DENTIA_PRODUCTION_DIR="${DENTIA_PRODUCTION_DIR:-/opt/apps/dentia}"
+DENTIA_ENV_FILE="${DENTIA_ENV_FILE:-$DENTIA_PROJECT_DIR/scripts/dentia.env}"
 
 if [ -f "$DENTIA_ENV_FILE" ]; then
   # shellcheck source=/dev/null
@@ -29,10 +34,13 @@ fi
 
 [ -z "$_DENTIA_FRONTEND_PORT_OVERRIDE" ] || DENTIA_FRONTEND_PORT="$_DENTIA_FRONTEND_PORT_OVERRIDE"
 [ -z "$_DENTIA_BACKEND_PORT_OVERRIDE" ] || DENTIA_BACKEND_PORT="$_DENTIA_BACKEND_PORT_OVERRIDE"
-unset _DENTIA_FRONTEND_PORT_OVERRIDE _DENTIA_BACKEND_PORT_OVERRIDE
+[ -z "$_DENTIA_PROJECT_DIR_OVERRIDE" ] || DENTIA_PROJECT_DIR="$_DENTIA_PROJECT_DIR_OVERRIDE"
+[ -z "$_DENTIA_PRODUCTION_DIR_OVERRIDE" ] || DENTIA_PRODUCTION_DIR="$_DENTIA_PRODUCTION_DIR_OVERRIDE"
+[ -z "$_DENTIA_ENV_FILE_OVERRIDE" ] || DENTIA_ENV_FILE="$_DENTIA_ENV_FILE_OVERRIDE"
+export DENTIA_PROJECT_DIR DENTIA_PRODUCTION_DIR DENTIA_ENV_FILE
+unset _DENTIA_FRONTEND_PORT_OVERRIDE _DENTIA_BACKEND_PORT_OVERRIDE \
+  _DENTIA_PROJECT_DIR_OVERRIDE _DENTIA_PRODUCTION_DIR_OVERRIDE _DENTIA_ENV_FILE_OVERRIDE
 
-DENTIA_PROJECT_DIR="${DENTIA_PROJECT_DIR:-$DENTIA_REPO_ROOT}"
-DENTIA_PRODUCTION_DIR="${DENTIA_PRODUCTION_DIR:-/opt/apps/dentia}"
 DENTIA_BACKUP_DIR="${DENTIA_BACKUP_DIR:-/opt/backups/dentia}"
 DENTIA_BACKUP_RETENTION="${DENTIA_BACKUP_RETENTION:-30}"
 DENTIA_FRONTEND_PORT="${DENTIA_FRONTEND_PORT:-3000}"
@@ -77,17 +85,19 @@ dentia_require_cmd() {
 }
 
 dentia_compose() {
+  local compose_file="$DENTIA_PROJECT_DIR/docker-compose.yml"
+  [ -f "$compose_file" ] || dentia_fail "Docker Compose file not found: $compose_file"
   if docker compose version >/dev/null 2>&1; then
     if [ -f "$DENTIA_ENV_FILE" ]; then
-      docker compose --env-file "$DENTIA_ENV_FILE" "$@"
+      docker compose --env-file "$DENTIA_ENV_FILE" -f "$compose_file" "$@"
     else
-      docker compose "$@"
+      docker compose -f "$compose_file" "$@"
     fi
   elif command -v docker-compose >/dev/null 2>&1; then
     if [ -f "$DENTIA_ENV_FILE" ]; then
-      docker-compose --env-file "$DENTIA_ENV_FILE" "$@"
+      docker-compose --env-file "$DENTIA_ENV_FILE" -f "$compose_file" "$@"
     else
-      docker-compose "$@"
+      docker-compose -f "$compose_file" "$@"
     fi
   else
     dentia_fail "docker compose is not available."

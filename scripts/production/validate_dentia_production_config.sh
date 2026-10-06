@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." >/dev/null 2>&1 && pwd)"
+PROJECT_DIR="${DENTIA_PROJECT_DIR:-$REPO_ROOT}"
+COMPOSE_FILE="$PROJECT_DIR/docker-compose.yml"
 
 usage() {
   cat <<'EOF'
@@ -223,9 +225,9 @@ print("[dentia] OK consent production guardrails are configured")
 print(f"[dentia] OK database URL parsed for host={parsed.hostname} db={db_name} user={db_user}")
 PY
 
-if case "$ENV_FILE" in "$REPO_ROOT"/*) true ;; *) false ;; esac; then
+if case "$ENV_FILE" in "$PROJECT_DIR"/*) true ;; *) false ;; esac; then
   require_cmd git
-  if git -C "$REPO_ROOT" check-ignore -q "$ENV_FILE"; then
+  if git -C "$PROJECT_DIR" check-ignore -q "$ENV_FILE"; then
     ok "environment file is ignored by Git"
   else
     fail "Environment file is inside the repository but is not ignored by Git."
@@ -235,11 +237,10 @@ else
 fi
 
 require_cmd docker
+[ -d "$PROJECT_DIR/.git" ] || fail "Dentia project repository not found: $PROJECT_DIR"
+[ -f "$COMPOSE_FILE" ] || fail "Docker Compose file not found: $COMPOSE_FILE"
 info "Validating Docker Compose resolution..."
-(
-  cd "$REPO_ROOT"
-  DENTIA_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" config --quiet
-)
+DENTIA_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
 ok "Docker Compose config resolves without starting services"
 
 info "Production configuration validation completed."

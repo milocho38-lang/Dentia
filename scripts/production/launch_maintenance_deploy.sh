@@ -35,4 +35,7 @@ git archive "$TARGET_SHA" scripts | tar -x -C "$RUNNER_ROOT"
 RUNNER="$RUNNER_ROOT/scripts/production/deploy_dentia.sh"
 [ -x "$RUNNER" ] || { printf '[dentia][ERROR] Approved deploy runner is missing or not executable.\n' >&2; exit 1; }
 
-DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" "$RUNNER" --maintenance --target-sha "$TARGET_SHA"
+DENTIA_PRODUCTION_DIR="$ROOT" \
+DENTIA_PROJECT_DIR="$ROOT" \
+DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
+  "$RUNNER" --maintenance --target-sha "$TARGET_SHA"

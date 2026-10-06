@@ -36,6 +36,7 @@ make_harness() {
   mkdir -p "$harness/scripts/production" "$harness/scripts/lib" "$harness/bin" \
     "$harness/root/.git" "$harness/root/backend/storage" "$harness/backup"
   mkdir -p "$harness/root/.run"
+  printf 'services: {}\n' >"$harness/root/docker-compose.yml"
   printf '%s\n' "$OLD_SHA" >"$harness/root/.run/last_deploy_commit"
   cp "$DEPLOY_SOURCE" "$harness/scripts/production/deploy_dentia.sh"
   cp "$COMMON_SOURCE" "$harness/scripts/lib/dentia_common.sh"
@@ -69,14 +70,17 @@ MOCK
   cat >"$harness/bin/git" <<'MOCK'
 #!/usr/bin/env bash
 case "$1 ${2:-}" in
+  '-C '*) exit 0 ;;
   'rev-parse --abbrev-ref') printf 'master\n' ;;
   'rev-parse HEAD')
     if [ -f "$DEPLOY_TEST_HARNESS/pulled" ]; then printf '%s\n' "$DEPLOY_TEST_TARGET_SHA"; else printf '%s\n' "$DEPLOY_TEST_OLD_SHA"; fi ;;
+  'rev-parse FETCH_HEAD') printf '%s\n' "$DEPLOY_TEST_TARGET_SHA" ;;
   'rev-parse refs/remotes/origin/master') printf '%s\n' "$DEPLOY_TEST_TARGET_SHA" ;;
   'status --porcelain'|'status --short') ;;
   'fetch origin') printf 'fetch\n' >>"$DEPLOY_TEST_LOG" ;;
   'merge-base --is-ancestor') exit 0 ;;
   'merge --ff-only') printf 'merge\n' >>"$DEPLOY_TEST_LOG"; touch "$DEPLOY_TEST_HARNESS/pulled" ;;
+  'archive '*) tar -c -C "$DEPLOY_TEST_APPROVED_ROOT" scripts ;;
   *)
     if [ "$1" = rev-parse ] && [[ "${2:-}" == *'^{commit}' ]]; then
       printf '%s\n' "$DEPLOY_TEST_OLD_SHA"
@@ -97,8 +101,11 @@ done
 
 if [ "$1" = compose ] && [ "${2:-}" = version ]; then exit 0; fi
 if [ "$1" = compose ]; then
+  printf 'compose-command:%s\n' "$*" >>"$log"
   shift
+  while [ "${1:-}" = --env-file ] || [ "${1:-}" = -f ]; do shift 2; done
   case "$1" in
+    config) printf 'config\n' >>"$log" ;;
     build)
       [ "${DENTIA_BUILD_REVISION:-}" = "$DEPLOY_TEST_TARGET_SHA" ] || exit 97
       printf 'build-with-target-label\n' >>"$log" ;;
@@ -189,6 +196,15 @@ MOCK
 #!/usr/bin/env bash
 exit 0
 MOCK
+  cat >"$harness/bin/python3" <<'MOCK'
+#!/usr/bin/env bash
+cat >/dev/null
+if [ "${2:-}" = /app/storage ]; then
+  printf 'yes\n'
+else
+  printf '[dentia] OK mocked configuration parser\n'
+fi
+MOCK
   cat >"$harness/bin/rm" <<'MOCK'
 #!/usr/bin/env bash
 if [ "${DEPLOY_TEST_SCENARIO:-success}" = barrier_remove_fail ] && [[ "$*" == *'.dentia-maintenance'* ]]; then
@@ -213,6 +229,7 @@ run_case() {
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" \
   DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
   DENTIA_PRODUCTION_DIR="$harness/root" \
+  DENTIA_PROJECT_DIR="$harness/root" \
   DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" \
   PATH="$harness/bin:$PATH" \
@@ -264,14 +281,14 @@ run_retry_case() {
   local log="$harness/commands.log" first_status=0 second_status=0
   DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_SCENARIO=backup_fail \
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
+  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || first_status=$?
   [ "$first_status" -ne 0 ] || fail "retry setup unexpectedly succeeded"
 
   DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_SCENARIO=success \
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
+  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || second_status=$?
   [ "$second_status" -eq 0 ] || fail "safe pre-migration retry failed with $second_status"
@@ -287,7 +304,7 @@ run_signal_case() {
   local log="$harness/commands.log" status=0
   DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_SCENARIO=signal_wait \
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
+  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 &
   local pid=$!
@@ -312,9 +329,14 @@ run_launcher_case() {
   local harness
   harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-launcher-test.XXXXXX")"
   mkdir -p "$harness/root/.git" "$harness/bin" "$harness/approved/scripts/production"
+  printf 'services: {}\n' >"$harness/root/docker-compose.yml"
   cat >"$harness/approved/scripts/production/deploy_dentia.sh" <<'MOCK'
 #!/usr/bin/env bash
-printf 'runner:%s:%s:%s\n' "$DENTIA_DEPLOY_TARGET_SHA" "$2" "$3" >"$DEPLOY_TEST_LOG"
+[ "$DENTIA_PRODUCTION_DIR" = "$DEPLOY_TEST_HARNESS/root" ] || exit 81
+[ "$DENTIA_PROJECT_DIR" = "$DEPLOY_TEST_HARNESS/root" ] || exit 82
+[ -f "$DENTIA_PROJECT_DIR/docker-compose.yml" ] || exit 83
+[ ! -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/docker-compose.yml" ] || exit 84
+printf 'runner:%s:%s:%s:%s\n' "$DENTIA_DEPLOY_TARGET_SHA" "$2" "$3" "$DENTIA_PROJECT_DIR" >"$DEPLOY_TEST_LOG"
 MOCK
   chmod +x "$harness/approved/scripts/production/deploy_dentia.sh"
   cat >"$harness/bin/git" <<'MOCK'
@@ -330,18 +352,53 @@ esac
 MOCK
   chmod +x "$harness/bin/git"
 
-  DEPLOY_TEST_LOG="$harness/launcher.log" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
+  DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$harness/launcher.log" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
   DEPLOY_TEST_APPROVED_ROOT="$harness/approved" DENTIA_PRODUCTION_DIR="$harness/root" \
   PATH="$harness/bin:$PATH" "$LAUNCHER_SOURCE" "$TARGET_SHA"
-  grep -Fq "runner:$TARGET_SHA:--target-sha:$TARGET_SHA" "$harness/launcher.log" || fail "launcher did not execute the immutable runner with the exact SHA"
+  grep -Fq "runner:$TARGET_SHA:--target-sha:$TARGET_SHA:$harness/root" "$harness/launcher.log" || fail "launcher did not execute the immutable runner with the exact SHA and production project path"
 
   local mismatch_status=0
-  DEPLOY_TEST_LOG="$harness/mismatch.log" DEPLOY_TEST_TARGET_SHA="$OLD_SHA" \
+  DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$harness/mismatch.log" DEPLOY_TEST_TARGET_SHA="$OLD_SHA" \
   DEPLOY_TEST_APPROVED_ROOT="$harness/approved" DENTIA_PRODUCTION_DIR="$harness/root" \
   PATH="$harness/bin:$PATH" "$LAUNCHER_SOURCE" "$TARGET_SHA" >/dev/null 2>&1 || mismatch_status=$?
   [ "$mismatch_status" -ne 0 ] || fail "launcher accepted a SHA different from fetched origin/master"
   [ ! -e "$harness/mismatch.log" ] || fail "launcher executed runner after SHA mismatch"
   printf 'immutable_sha_launcher OK\n'
+  rm -rf "$harness"
+}
+
+run_real_extracted_launcher_case() {
+  local harness
+  harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-real-launcher-test.XXXXXX")"
+  make_harness "$harness"
+  cp "$REPO_ROOT/scripts/production/validate_dentia_production_config.sh" \
+    "$harness/scripts/production/validate_dentia_production_config.sh"
+  mkdir -p "$harness/root/scripts"
+  cat >"$harness/root/scripts/dentia.env" <<EOF
+DENTIA_PROJECT_DIR=/must/not/override/verified/project
+DENTIA_PRODUCTION_DIR=/must/not/override/verified/production
+DENTIA_BACKUP_DIR=$harness/backup
+EOF
+  chmod 600 "$harness/root/scripts/dentia.env"
+
+  DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$harness/commands.log" \
+  DEPLOY_TEST_SCENARIO=success DEPLOY_TEST_OLD_SHA="$OLD_SHA" \
+  DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" DEPLOY_TEST_APPROVED_ROOT="$harness" \
+  DENTIA_PRODUCTION_DIR="$harness/root" PATH="$harness/bin:$PATH" \
+    env -u DENTIA_PROJECT_DIR -u DENTIA_ENV_FILE \
+    "$LAUNCHER_SOURCE" "$TARGET_SHA" >"$harness/output.log" 2>&1
+
+  local compose="$harness/root/docker-compose.yml"
+  local env_file="$harness/root/scripts/dentia.env"
+  grep -Fq "compose-command:compose --env-file $env_file -f $compose config --quiet" "$harness/commands.log" || \
+    fail "real extracted validator did not resolve production compose/default env"
+  for command in build images run up; do
+    grep -F "compose-command:compose --env-file $env_file -f $compose" "$harness/commands.log" | \
+      grep -Fq " $command" || fail "real extracted runner did not use production compose for $command"
+  done
+  [ ! -e "$harness/root/.run/maintenance_active" ] || fail "real extracted launcher retained maintenance"
+  [ ! -e "$harness/root/backend/storage/.dentia-maintenance" ] || fail "real extracted launcher retained barrier"
+  printf 'real_extracted_launcher_paths OK\n'
   rm -rf "$harness"
 }
 
@@ -376,5 +433,6 @@ run_case barrier_remove_fail false
 run_retry_case
 run_signal_case
 run_launcher_case
+run_real_extracted_launcher_case
 test_storage_archive_excludes_barrier
 printf 'maintenance deploy command-mock tests OK\n'
