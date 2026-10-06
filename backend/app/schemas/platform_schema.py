@@ -31,6 +31,7 @@ class PlatformCompanyCreateRequest(BaseModel):
     country: str
     timezone: str
     admin_name: str = Field(min_length=2, max_length=200)
+    admin_username: str = Field(min_length=3, max_length=100)
     admin_email: str = Field(min_length=3, max_length=320)
     admin_password: str | None = Field(default=None, min_length=12, max_length=256)
 
@@ -42,6 +43,7 @@ class PlatformCompanyCreateRequest(BaseModel):
         "country",
         "timezone",
         "admin_name",
+        "admin_username",
         "admin_email",
     )
     @classmethod
@@ -148,6 +150,7 @@ class PlatformDentistProfileSummary(BaseModel):
 class PlatformUserSummary(BaseModel):
     id: UUID
     name: str
+    username: str
     email: str
     status: str
     is_active: bool

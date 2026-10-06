@@ -39,6 +39,7 @@ class UserSiteResponse(BaseModel):
 class UserSummaryResponse(BaseModel):
     id: UUID
     name: str
+    username: str
     email: str
     phone: str | None
     status: str
@@ -66,13 +67,14 @@ class UserListResponse(BaseModel):
 
 class UserCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=200)
+    username: str = Field(min_length=3, max_length=100)
     email: str = Field(min_length=3, max_length=320)
     phone: str | None = Field(default=None, max_length=50)
     role_ids: list[UUID] = Field(min_length=1)
     site_ids: list[UUID] = Field(min_length=1)
     default_site_id: UUID
 
-    @field_validator("name", "email")
+    @field_validator("name", "username", "email")
     @classmethod
     def strip_required(cls, value: str) -> str:
         return value.strip()
@@ -93,10 +95,14 @@ class UserCreateRequest(BaseModel):
 
 class UserUpdateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=200)
+    # Existing accounts are backfilled from emails, whose historical maximum is
+    # 320 characters. The service only permits values over 100 when their
+    # normalized username is unchanged; new usernames remain capped at 100.
+    username: str = Field(min_length=3, max_length=320)
     email: str = Field(min_length=3, max_length=320)
     phone: str | None = Field(default=None, max_length=50)
 
-    @field_validator("name", "email")
+    @field_validator("name", "username", "email")
     @classmethod
     def strip_required(cls, value: str) -> str:
         return value.strip()

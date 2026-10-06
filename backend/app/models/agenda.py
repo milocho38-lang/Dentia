@@ -8,10 +8,10 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    UniqueConstraint,
     Integer,
     String,
     Text,
-    UniqueConstraint,
     false,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -36,6 +36,7 @@ class Patient(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
             ),
         ),
         Index("ix_pacientes_empresa_busqueda", "empresa_id", "texto_busqueda"),
+        UniqueConstraint("id", "empresa_id", name="uq_pacientes_id_empresa"),
     )
 
     company_id: Mapped[UUID] = mapped_column(

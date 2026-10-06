@@ -24,6 +24,7 @@ def _role(db_session, company_id, code: str) -> Role:
 def _payload(tenant, role_ids: list[str], suffix: str) -> dict:
     return {
         "name": f"Usuario Cupo {suffix}",
+        "username": f"usuario-cupo-{suffix}",
         "email": f"usuario-cupo-{suffix}@example.test",
         "phone": None,
         "role_ids": role_ids,

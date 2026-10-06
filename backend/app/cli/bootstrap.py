@@ -19,6 +19,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--company-slug", help="Slug técnico de la empresa.")
     parser.add_argument("--site-name", help="Nombre de la sede principal.")
     parser.add_argument("--admin-name", help="Nombre del administrador inicial.")
+    parser.add_argument("--admin-username", help="Nombre de usuario del administrador inicial.")
     parser.add_argument("--admin-email", help="Correo del administrador inicial.")
     return parser
 
@@ -60,6 +61,10 @@ def main() -> int:
             admin_name=prompt_if_missing(
                 args.admin_name,
                 "Nombre del administrador",
+            ),
+            admin_username=prompt_if_missing(
+                args.admin_username,
+                "Nombre de usuario del administrador",
             ),
             admin_email=prompt_if_missing(
                 args.admin_email,

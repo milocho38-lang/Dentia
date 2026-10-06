@@ -71,7 +71,7 @@ def login_endpoint(
     try:
         token_response, refresh_token, max_age = login(
             session,
-            email=str(payload.email),
+            identifier=payload.login_identifier,
             password=payload.password,
             metadata=get_request_metadata(request),
         )
@@ -148,6 +148,7 @@ def me_endpoint(
     return MeResponse(
         id=context.user.id,
         name=context.user.name,
+        username=context.user.username,
         email=context.user.email,
         company_id=context.user.company_id,
         active_site_id=context.auth_session.active_site_id,

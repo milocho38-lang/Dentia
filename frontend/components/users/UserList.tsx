@@ -132,7 +132,7 @@ export function UserList() {
                   <tr key={user.id} className="hover:bg-slate-50/70">
                     <td className="px-5 py-4">
                       <p className="font-bold text-slate-900">{user.name}</p>
-                      <p className="mt-1 text-sm text-slate-500">{user.email}</p>
+                      <p className="mt-1 text-sm text-slate-500">@{user.username} · {user.email}</p>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex max-w-xs flex-wrap gap-1">

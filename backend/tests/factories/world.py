@@ -10,7 +10,13 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.security import create_access_token, hash_password, normalize_email, utc_now
+from app.core.security import (
+    create_access_token,
+    hash_password,
+    normalize_email,
+    normalize_username,
+    utc_now,
+)
 from app.core.security_catalog import PERMISSIONS, ROLES
 from app.models.agenda import Appointment, AppointmentType, Dentist, DentistSite, Patient
 from app.models.associations import RolePermission, UserRole, UserSite
@@ -169,6 +175,8 @@ def _user(session: Session, company: Company, default_site: Site, label: str, *,
         auth_version=1,
     )
     user.normalized_email = normalize_email(user.email)
+    user.username = user.email
+    user.normalized_username = normalize_username(user.email)
     session.add(user)
     session.flush()
     return user
@@ -643,6 +651,8 @@ def build_security_world(session: Session, storage_root: Path) -> SecurityWorld:
         is_active=True,
     )
     no_company_user.normalized_email = normalize_email(no_company_user.email)
+    no_company_user.username = no_company_user.email
+    no_company_user.normalized_username = normalize_username(no_company_user.email)
     session.add(no_company_user)
     session.commit()
     return SecurityWorld(tenant_a=tenant_a, tenant_b=tenant_b, platform_admin=platform_admin, no_company_user=no_company_user)

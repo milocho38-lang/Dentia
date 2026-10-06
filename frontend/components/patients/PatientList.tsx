@@ -67,6 +67,15 @@ export function PatientList() {
             Consulta datos administrativos, responsables e historial de citas.
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        {hasPermission("patients.import") && (
+          <Link
+            href="/pacientes/importar"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-green-700 px-5 font-bold text-green-700 hover:bg-green-50"
+          >
+            Importar Dentalink
+          </Link>
+        )}
         {hasPermission("patients.create") && (
           <Link
             href="/pacientes/nuevo"
@@ -75,6 +84,7 @@ export function PatientList() {
             Crear paciente
           </Link>
         )}
+        </div>
       </header>
 
       <form

@@ -8,7 +8,12 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password, normalize_email
+from app.core.security import (
+    hash_password,
+    is_valid_new_username,
+    normalize_email,
+    normalize_username,
+)
 from app.core.config import settings
 from app.core.security_catalog import PERMISSIONS, PLATFORM_PERMISSION_CODES, ROLES
 from app.models.agenda import Dentist, DentistSite
@@ -260,6 +265,7 @@ def _user_summary(session: Session, user: User) -> PlatformUserSummary:
     return PlatformUserSummary(
         id=user.id,
         name=user.name,
+        username=user.username,
         email=user.email,
         status=user.status,
         is_active=user.is_active,
@@ -904,9 +910,14 @@ def create_platform_company(
         text("SELECT pg_advisory_xact_lock(:lock_id)"),
         {"lock_id": PLATFORM_COMPANY_LOCK_ID},
     )
+    normalized_admin_username = normalize_username(payload.admin_username)
+    if not is_valid_new_username(payload.admin_username):
+        raise PlatformError("Nombre de usuario no válido.")
+    if session.scalar(
+        select(User.id).where(User.normalized_username == normalized_admin_username)
+    ):
+        raise PlatformError("Ya existe un usuario con ese nombre de usuario.", 409)
     normalized_admin_email = normalize_email(payload.admin_email)
-    if session.scalar(select(User.id).where(User.normalized_email == normalized_admin_email)):
-        raise PlatformError("Ya existe un usuario con ese correo.", 409)
     normalized_tax_id = normalize_tax_id(payload.tax_id)
     if normalized_tax_id and session.scalar(
         select(Company.id).where(Company.normalized_tax_id == normalized_tax_id)
@@ -955,6 +966,8 @@ def create_platform_company(
         company_id=company.id,
         default_site_id=site.id,
         name=payload.admin_name,
+        username=payload.admin_username,
+        normalized_username=normalized_admin_username,
         email=payload.admin_email,
         normalized_email=normalized_admin_email,
         password_hash=hash_password(password),

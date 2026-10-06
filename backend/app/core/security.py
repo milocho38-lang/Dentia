@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,7 @@ from app.core.config import settings
 
 PASSWORD_HASH = PasswordHash.recommended()
 DUMMY_PASSWORD_HASH = PASSWORD_HASH.hash("Dentia dummy password 2026")
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@+-]{2,99}$")
 
 
 class AccessTokenError(ValueError):
@@ -37,6 +39,14 @@ def utc_now() -> datetime:
 
 def normalize_email(email: str) -> str:
     return email.strip().casefold()
+
+
+def normalize_username(username: str) -> str:
+    return username.strip().casefold()
+
+
+def is_valid_new_username(username: str) -> bool:
+    return bool(USERNAME_PATTERN.fullmatch(username.strip()))
 
 
 def hash_password(password: str) -> str:

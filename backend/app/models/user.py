@@ -24,8 +24,13 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
     __tablename__ = "usuarios"
     __table_args__ = (
         UniqueConstraint(
+            "username_normalizado",
+            name="uq_usuarios_username_normalizado",
+        ),
+        UniqueConstraint(
+            "empresa_id",
             "correo_normalizado",
-            name="uq_usuarios_correo_normalizado",
+            name="uq_usuarios_empresa_correo_normalizado",
         ),
         CheckConstraint(
             "failed_login_attempts >= 0",
@@ -49,6 +54,12 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
         index=True,
     )
     name: Mapped[str] = mapped_column("nombre", String(200), nullable=False)
+    username: Mapped[str] = mapped_column(String(320), nullable=False)
+    normalized_username: Mapped[str] = mapped_column(
+        "username_normalizado",
+        String(320),
+        nullable=False,
+    )
     email: Mapped[str] = mapped_column("correo", String(320), nullable=False)
     normalized_email: Mapped[str] = mapped_column(
         "correo_normalizado",

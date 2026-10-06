@@ -30,6 +30,7 @@ export interface UserSite {
 export interface ManagedUser {
   id: string;
   name: string;
+  username: string;
   email: string;
   phone: string | null;
   status: string;
@@ -57,6 +58,7 @@ export interface UserListResponse {
 
 export interface UserCreateInput {
   name: string;
+  username: string;
   email: string;
   phone: string | null;
   role_ids: string[];
@@ -66,6 +68,7 @@ export interface UserCreateInput {
 
 export interface UserUpdateInput {
   name: string;
+  username: string;
   email: string;
   phone: string | null;
 }

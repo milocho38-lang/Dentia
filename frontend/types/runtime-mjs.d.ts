@@ -52,6 +52,12 @@ declare module "@/services/refreshConcurrency.mjs" {
   ): Promise<T>;
 }
 
+declare module "@/lib/patientImportCsv.mjs" {
+  export function sanitizeSpreadsheetCell(value: unknown): string;
+  export function quoteCsvCell(value: unknown): string;
+  export function buildPatientImportCsv(rows: unknown[][]): string;
+}
+
 declare module "@/services/authBootstrap.mjs" {
   export const AUTH_REDIRECT_ONLY_PATHS: readonly string[];
 

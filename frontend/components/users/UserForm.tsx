@@ -24,6 +24,7 @@ export function UserForm({
   const editing = Boolean(user);
   const [options, setOptions] = useState<AccessOptions | null>(null);
   const [name, setName] = useState(user?.name ?? "");
+  const [username, setUsername] = useState(user?.username ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [roleIds, setRoleIds] = useState(user?.roles.map((role) => role.id) ?? []);
@@ -46,8 +47,8 @@ export function UserForm({
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    if (!name.trim() || !email.trim()) {
-      setError("Completa nombre y correo.");
+    if (!name.trim() || !username.trim() || !email.trim()) {
+      setError("Completa nombre, nombre de usuario y correo.");
       return;
     }
     if (!editing && (!roleIds.length || !siteIds.length || !defaultSiteId)) {
@@ -58,9 +59,10 @@ export function UserForm({
     try {
       await onSubmit(
         editing
-          ? { name: name.trim(), email: email.trim(), phone: phone.trim() || null }
+          ? { name: name.trim(), username: username.trim(), email: email.trim(), phone: phone.trim() || null }
           : {
               name: name.trim(),
+              username: username.trim(),
               email: email.trim(),
               phone: phone.trim() || null,
               role_ids: roleIds,
@@ -107,7 +109,20 @@ export function UserForm({
           </label>
           <label>
             <span className="mb-2 block text-sm font-bold text-slate-700">
-              Correo electrónico
+              Nombre de usuario
+            </span>
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              minLength={3}
+              maxLength={editing && user && username === user.username && username.length > 100 ? 320 : 100}
+              autoComplete="username"
+              className="min-h-12 w-full rounded-xl border border-slate-300 px-4 focus:border-dentia-primary focus:outline-none focus:ring-4 focus:ring-green-100"
+            />
+          </label>
+          <label>
+            <span className="mb-2 block text-sm font-bold text-slate-700">
+              Correo electrónico de contacto
             </span>
             <input
               type="email"

@@ -29,6 +29,7 @@ from app.routers.odontogram_router import (
     router as patient_odontogram_router,
 )
 from app.routers.patient_router import router as patient_router
+from app.routers.patient_import_router import router as patient_import_router
 from app.routers.periodontogram_router import router as periodontogram_router
 from app.routers.platform_router import router as platform_router
 from app.routers.prescription_router import router as prescription_router
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(orthodontic_record_router)
     app.include_router(agenda_router)
     app.include_router(patient_router)
+    app.include_router(patient_import_router)
     app.include_router(periodontogram_router)
     app.include_router(patient_odontogram_router)
     app.include_router(odontogram_router)

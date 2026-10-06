@@ -446,15 +446,16 @@ def _reconcile_base(
 
     def ensure_user(name: str, email: str, role_codes: list[str]) -> User:
         normalized = email.casefold()
-        user = session.scalar(select(User).where(User.normalized_email == normalized))
+        user = session.scalar(select(User).where(User.normalized_username == normalized))
         if user is not None and user.company_id != company.id:
-            raise DemoTenantError("Un correo demo ya pertenece a otra empresa.")
+            raise DemoTenantError("Un nombre de usuario demo ya pertenece a otra empresa.")
         if user is None:
             response = create_user(
                 session,
                 tenant_context,
                 UserCreateRequest(
                     name=name,
+                    username=email,
                     email=email,
                     role_ids=[roles[code].id for code in role_codes],
                     site_ids=[site.id],
@@ -1579,6 +1580,7 @@ class DemoTenantOrchestrator:
                 country="Colombia",
                 timezone="America/Bogota",
                 admin_name="Dra. Valentina Ríos",
+                admin_username=admin_email,
                 admin_email=admin_email,
                 admin_password=admin_password,
             ),

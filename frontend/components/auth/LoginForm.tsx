@@ -10,7 +10,7 @@ import { getLoginErrorMessage } from "@/utils/apiErrors";
 import { getSafeReturnUrl } from "@/utils/safeReturnUrl";
 
 export function LoginForm() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -37,19 +37,15 @@ export function LoginForm() {
     }
 
     setError(null);
-    if (!email.trim() || !password) {
-      setError("Ingresa tu correo electrónico y contraseña.");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError("Ingresa un correo electrónico válido.");
+    if (!identifier.trim() || !password) {
+      setError("Ingresa tu nombre de usuario y contraseña.");
       return;
     }
 
     setSubmitting(true);
     try {
       const authenticatedUser = await login({
-        email: email.trim(),
+        identifier: identifier.trim(),
         password,
       });
       router.replace(
@@ -96,21 +92,21 @@ export function LoginForm() {
         <form className="space-y-5" onSubmit={handleSubmit} noValidate>
           <div>
             <label
-              htmlFor="email"
+              htmlFor="identifier"
               className="mb-2 block text-sm font-bold text-slate-700"
             >
-              Correo electrónico
+              Nombre de usuario
             </label>
             <input
-              id="email"
-              name="email"
-              type="email"
+              id="identifier"
+              name="identifier"
+              type="text"
               autoComplete="username"
               required
               maxLength={320}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="nombre@consultorio.com"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              placeholder="tu.usuario"
               className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-900 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-dentia-primary focus:outline-none focus:ring-4 focus:ring-green-100"
             />
           </div>

@@ -19,6 +19,7 @@ const DOCUMENT_TYPES = [
   "Pasaporte",
   "Otro",
   "Sin documento",
+  "RUT",
 ];
 
 const EMPTY_RESPONSIBLE: ResponsibleInput = {

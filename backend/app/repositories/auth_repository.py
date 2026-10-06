@@ -13,10 +13,10 @@ from app.models.site import Site
 from app.models.user import User
 
 
-def get_user_for_login(session: Session, normalized_email: str) -> User | None:
+def get_user_for_login(session: Session, normalized_username: str) -> User | None:
     statement = (
         select(User)
-        .where(User.normalized_email == normalized_email)
+        .where(User.normalized_username == normalized_username)
         .with_for_update()
     )
     return session.scalar(statement)

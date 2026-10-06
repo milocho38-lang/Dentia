@@ -168,7 +168,7 @@ export function UserDetail({ userId }: { userId: string }) {
               {user.is_locked ? "Bloqueado" : user.status}
             </span>
           </div>
-          <p className="mt-2 text-sm text-slate-500">{user.email}</p>
+          <p className="mt-2 text-sm text-slate-500">@{user.username} · {user.email}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {hasPermission("users.update") && (
@@ -244,7 +244,8 @@ export function UserDetail({ userId }: { userId: string }) {
             <h2 className="text-lg font-bold text-slate-900">Datos del usuario</h2>
             <dl className="mt-5 grid gap-5 sm:grid-cols-2">
               {[
-                ["Correo", user.email],
+                ["Nombre de usuario", user.username],
+                ["Correo de contacto", user.email],
                 ["Teléfono", user.phone ?? "No registrado"],
                 ["Sede predeterminada", user.default_site_name ?? "Sin sede"],
                 ["Último acceso", formatDate(user.last_login_at)],

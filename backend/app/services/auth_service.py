@@ -12,7 +12,7 @@ from app.core.security import (
     email_fingerprint,
     hash_password,
     hash_refresh_token,
-    normalize_email,
+    normalize_username,
     parse_refresh_token,
     refresh_token_matches,
     utc_now,
@@ -108,7 +108,7 @@ def _add_audit(
 def _add_attempt(
     session: Session,
     *,
-    normalized_email: str,
+    normalized_identifier: str,
     metadata: RequestMetadata,
     result: str,
     user: User | None = None,
@@ -118,7 +118,9 @@ def _add_attempt(
         AuthAttempt(
             company_id=user.company_id if user else None,
             user_id=user.id if user else None,
-            email_fingerprint=email_fingerprint(normalized_email),
+            # Column name is retained for backward-compatible audit history;
+            # new rows fingerprint the login identifier (username).
+            email_fingerprint=email_fingerprint(normalized_identifier),
             ip_address=metadata.ip_address,
             user_agent=metadata.user_agent,
             result=result,
@@ -148,6 +150,7 @@ def _build_user_response(
     return AuthUserResponse(
         id=user.id,
         name=user.name,
+        username=user.username,
         email=user.email,
         company_id=user.company_id,
         active_site_id=auth_session.active_site_id,
@@ -194,12 +197,12 @@ def _build_token_response(
 def login(
     session: Session,
     *,
-    email: str,
+    identifier: str,
     password: str,
     metadata: RequestMetadata,
 ) -> tuple[TokenResponse, str, int]:
     now = utc_now()
-    normalized_email = normalize_email(email)
+    normalized_identifier = normalize_username(identifier)
     ip_window_start = now - timedelta(minutes=settings.auth_ip_window_minutes)
     ip_failures = count_recent_failed_attempts_for_ip(
         session,
@@ -210,7 +213,7 @@ def login(
         verify_dummy_password(password)
         _add_attempt(
             session,
-            normalized_email=normalized_email,
+            normalized_identifier=normalized_identifier,
             metadata=metadata,
             result="FAILURE",
             failure_reason="IP_RATE_LIMIT",
@@ -225,12 +228,12 @@ def login(
         session.commit()
         raise AuthenticationError(status_code=429)
 
-    user = get_user_for_login(session, normalized_email)
+    user = get_user_for_login(session, normalized_identifier)
     if user is None:
         verify_dummy_password(password)
         _add_attempt(
             session,
-            normalized_email=normalized_email,
+            normalized_identifier=normalized_identifier,
             metadata=metadata,
             result="FAILURE",
             failure_reason="INVALID_CREDENTIALS",
@@ -249,7 +252,7 @@ def login(
         verify_dummy_password(password)
         _add_attempt(
             session,
-            normalized_email=normalized_email,
+            normalized_identifier=normalized_identifier,
             metadata=metadata,
             result="FAILURE",
             user=user,
@@ -293,7 +296,7 @@ def login(
             reason = "COMPANY_UNAVAILABLE"
         _add_attempt(
             session,
-            normalized_email=normalized_email,
+            normalized_identifier=normalized_identifier,
             metadata=metadata,
             result="FAILURE",
             user=user,
@@ -333,7 +336,7 @@ def login(
     if active_site_id is None:
         _add_attempt(
             session,
-            normalized_email=normalized_email,
+            normalized_identifier=normalized_identifier,
             metadata=metadata,
             result="FAILURE",
             user=user,
@@ -377,7 +380,7 @@ def login(
 
     _add_attempt(
         session,
-        normalized_email=normalized_email,
+        normalized_identifier=normalized_identifier,
         metadata=metadata,
         result="SUCCESS",
         user=user,

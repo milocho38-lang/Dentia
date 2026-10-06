@@ -96,9 +96,12 @@ from app.models.treatment import (
     TreatmentProcedure,
 )
 from app.models.user import User
+from app.models.patient_import import PatientExternalReference, PatientImportSource
 
 __all__ = [
     "AuditEvent",
+    "PatientExternalReference",
+    "PatientImportSource",
     "DemoRequest",
     "DemoRequestNote",
     "Appointment",

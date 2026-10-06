@@ -52,6 +52,7 @@ export interface PlatformDentistProfileSummary {
 export interface PlatformUserSummary {
   id: string;
   name: string;
+  username: string;
   email: string;
   status: string;
   is_active: boolean;
@@ -80,6 +81,7 @@ export interface PlatformCompanyInput {
   country: string;
   timezone: string;
   admin_name: string;
+  admin_username: string;
   admin_email: string;
   admin_password: string | null;
 }

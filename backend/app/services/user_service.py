@@ -7,7 +7,13 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password, normalize_email, utc_now
+from app.core.security import (
+    hash_password,
+    is_valid_new_username,
+    normalize_email,
+    normalize_username,
+    utc_now,
+)
 from app.core.config import settings
 from app.models.associations import RolePermission, UserRole, UserSite
 from app.models.agenda import Dentist, DentistSite
@@ -22,7 +28,8 @@ from app.repositories.user_repository import (
     get_active_roles,
     get_active_sites,
     get_company_user,
-    get_user_by_email,
+    get_company_user_by_email,
+    get_user_by_username,
     get_user_roles,
     get_user_sites,
     list_company_users,
@@ -112,6 +119,15 @@ def _validate_email(email: str) -> str:
     return normalized
 
 
+def _validate_username(username: str) -> str:
+    normalized = normalize_username(username)
+    if not is_valid_new_username(username):
+        raise UserManagementError(
+            "El nombre de usuario debe tener entre 3 y 100 caracteres y usar solo letras, números, punto, guion, guion bajo, + o @."
+        )
+    return normalized
+
+
 def _generate_temporary_password() -> str:
     return f"Dnt!{secrets.token_urlsafe(15)}"
 
@@ -144,6 +160,7 @@ def _build_user_summary(session: Session, user: User) -> UserSummaryResponse:
     return UserSummaryResponse(
         id=user.id,
         name=user.name,
+        username=user.username,
         email=user.email,
         phone=user.phone,
         status=user.status,
@@ -558,9 +575,12 @@ def create_user(
             "No tienes permiso para asignar sedes al crear usuarios.",
             403,
         )
+    normalized_username = _validate_username(data.username)
     normalized_email = _validate_email(data.email)
-    if get_user_by_email(session, normalized_email):
-        raise UserManagementError("Ya existe un usuario con ese correo.", 409)
+    if get_user_by_username(session, normalized_username):
+        raise UserManagementError("Ya existe un usuario con ese nombre de usuario.", 409)
+    if get_company_user_by_email(session, context.user.company_id, normalized_email):
+        raise UserManagementError("Ya existe un usuario con ese correo en esta clínica.", 409)
     roles = _validate_roles(session, context, data.role_ids)
     _validate_sites(
         session,
@@ -573,6 +593,8 @@ def create_user(
         company_id=context.user.company_id,
         default_site_id=data.default_site_id,
         name=data.name.strip(),
+        username=data.username.strip(),
+        normalized_username=normalized_username,
         email=data.email.strip(),
         normalized_email=normalized_email,
         phone=data.phone,
@@ -588,7 +610,7 @@ def create_user(
     except IntegrityError as exc:
         session.rollback()
         raise UserManagementError(
-            "Ya existe un usuario con ese correo.",
+            "Ya existe un usuario con ese nombre de usuario o correo en esta clínica.",
             409,
         ) from exc
     _sync_roles(
@@ -634,7 +656,7 @@ def create_user(
     except IntegrityError as exc:
         session.rollback()
         raise UserManagementError(
-            "Ya existe un usuario con ese correo.",
+            "Ya existe un usuario con ese nombre de usuario o correo en esta clínica.",
             409,
         ) from exc
     return TemporaryPasswordResponse(
@@ -651,13 +673,22 @@ def update_user(
     metadata: RequestMetadata,
 ) -> UserSummaryResponse:
     target = _get_target(session, context, user_id, lock=True)
+    normalized_username = normalize_username(data.username)
+    if normalized_username != target.normalized_username:
+        normalized_username = _validate_username(data.username)
     normalized_email = _validate_email(data.email)
-    duplicate = get_user_by_email(session, normalized_email)
-    if duplicate and duplicate.id != target.id:
-        raise UserManagementError("Ya existe un usuario con ese correo.", 409)
+    duplicate_username = get_user_by_username(session, normalized_username)
+    if duplicate_username and duplicate_username.id != target.id:
+        raise UserManagementError("Ya existe un usuario con ese nombre de usuario.", 409)
+    duplicate_email = get_company_user_by_email(
+        session, context.user.company_id, normalized_email
+    )
+    if duplicate_email and duplicate_email.id != target.id:
+        raise UserManagementError("Ya existe un usuario con ese correo en esta clínica.", 409)
     changes: dict[str, dict[str, str | None]] = {}
     for field, new_value in {
         "name": data.name.strip(),
+        "username": data.username.strip(),
         "email": data.email.strip(),
         "phone": data.phone,
     }.items():
@@ -665,13 +696,15 @@ def update_user(
         if old_value != new_value:
             changes[field] = {"before": old_value, "after": new_value}
             setattr(target, field, new_value)
-    if target.normalized_email != normalized_email:
-        target.normalized_email = normalized_email
+    username_changed = target.normalized_username != normalized_username
+    target.normalized_username = normalized_username
+    target.normalized_email = normalized_email
+    if username_changed:
         revoked = _invalidate_access(
             session,
             target=target,
             actor_id=context.user.id,
-            reason="USER_EMAIL_CHANGED",
+            reason="USER_USERNAME_CHANGED",
         )
         changes["sessions_revoked"] = {"before": None, "after": str(revoked)}
     if changes:
@@ -683,7 +716,14 @@ def update_user(
             action="USER_UPDATED",
             detail={"changes": changes},
         )
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise UserManagementError(
+            "Ya existe un usuario con ese nombre de usuario o correo en esta clínica.",
+            409,
+        ) from exc
     return _build_user_summary(session, target)
 
 

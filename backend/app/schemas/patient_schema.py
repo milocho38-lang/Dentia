@@ -12,6 +12,7 @@ DOCUMENT_TYPES = {
     "Pasaporte",
     "Otro",
     "Sin documento",
+    "RUT",
 }
 SEX_VALUES = {"femenino", "masculino", "otro", "no informa"}
 PATIENT_STATUSES = {"Activo", "Inactivo"}

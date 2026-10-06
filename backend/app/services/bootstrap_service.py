@@ -5,7 +5,12 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.core.security import hash_password, normalize_email
+from app.core.security import (
+    hash_password,
+    is_valid_new_username,
+    normalize_email,
+    normalize_username,
+)
 from app.core.security_catalog import PERMISSIONS, ROLES, validate_security_catalog
 from app.models.associations import RolePermission, UserRole, UserSite
 from app.models.audit_event import AuditEvent
@@ -31,6 +36,7 @@ class BootstrapInput:
     company_slug: str
     site_name: str
     admin_name: str
+    admin_username: str
     admin_email: str
     admin_password: str
 
@@ -49,6 +55,7 @@ def validate_bootstrap_input(data: BootstrapInput) -> BootstrapInput:
     company_slug = data.company_slug.strip().casefold()
     site_name = data.site_name.strip()
     admin_name = data.admin_name.strip()
+    admin_username = data.admin_username.strip()
     admin_email = data.admin_email.strip()
     normalized_email = normalize_email(admin_email)
 
@@ -62,6 +69,8 @@ def validate_bootstrap_input(data: BootstrapInput) -> BootstrapInput:
         raise BootstrapError("El nombre de la sede es obligatorio.")
     if not admin_name:
         raise BootstrapError("El nombre del administrador es obligatorio.")
+    if not is_valid_new_username(admin_username):
+        raise BootstrapError("El nombre de usuario del administrador no es válido.")
     if "@" not in normalized_email or normalized_email.startswith("@"):
         raise BootstrapError("El correo del administrador no es válido.")
     if len(data.admin_password) < 12:
@@ -74,6 +83,7 @@ def validate_bootstrap_input(data: BootstrapInput) -> BootstrapInput:
         company_slug=company_slug,
         site_name=site_name,
         admin_name=admin_name,
+        admin_username=admin_username,
         admin_email=admin_email,
         admin_password=data.admin_password,
     )
@@ -159,6 +169,8 @@ def bootstrap_installation(
         company_id=company.id,
         default_site_id=site.id,
         name=data.admin_name,
+        username=data.admin_username,
+        normalized_username=normalize_username(data.admin_username),
         email=data.admin_email,
         normalized_email=normalize_email(data.admin_email),
         password_hash=hash_password(data.admin_password),

@@ -10,6 +10,7 @@ export interface AuthSite {
 export interface AuthUser {
   id: string;
   name: string;
+  username: string;
   email: string;
   company_id: string;
   active_site_id: string | null;
@@ -33,6 +34,6 @@ export interface LogoutResponse {
 }
 
 export interface LoginCredentials {
-  email: string;
+  identifier: string;
   password: string;
 }

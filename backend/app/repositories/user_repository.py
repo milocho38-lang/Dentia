@@ -28,9 +28,22 @@ def get_company_user(
     return session.scalar(statement)
 
 
-def get_user_by_email(session: Session, normalized_email: str) -> User | None:
+def get_user_by_username(session: Session, normalized_username: str) -> User | None:
     return session.scalar(
-        select(User).where(User.normalized_email == normalized_email)
+        select(User).where(User.normalized_username == normalized_username)
+    )
+
+
+def get_company_user_by_email(
+    session: Session,
+    company_id: UUID,
+    normalized_email: str,
+) -> User | None:
+    return session.scalar(
+        select(User).where(
+            User.company_id == company_id,
+            User.normalized_email == normalized_email,
+        )
     )
 
 
@@ -52,6 +65,8 @@ def list_company_users(
         filters.append(
             or_(
                 User.name.ilike(pattern),
+                User.username.ilike(pattern),
+                User.normalized_username.ilike(pattern.casefold()),
                 User.email.ilike(pattern),
                 User.normalized_email.ilike(pattern.casefold()),
             )

@@ -179,6 +179,7 @@ const initialInput: PlatformCompanyInput = {
   country: "Colombia",
   timezone: "America/Bogota",
   admin_name: "",
+  admin_username: "",
   admin_email: "",
   admin_password: null,
 };
@@ -292,6 +293,7 @@ export function PlatformCompanyCreatePage() {
           <h2 className="font-black">Administrador inicial</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {input("admin_name", "Nombre administrador")}
+            {input("admin_username", "Nombre de usuario administrador")}
             {input("admin_email", "Correo administrador", "email")}
             {input("admin_password", "Contraseña temporal opcional")}
           </div>
@@ -305,6 +307,7 @@ export function PlatformCompanyCreatePage() {
               busy ||
               data.company_name.trim().length < 2 ||
               data.admin_name.trim().length < 2 ||
+              data.admin_username.trim().length < 3 ||
               data.admin_email.trim().length < 3
             }
             className="rounded-xl bg-green-700 px-5 py-3 font-bold text-white disabled:opacity-50"
@@ -562,7 +565,7 @@ export function PlatformCompanyDetailPage({ companyId }: { companyId: string }) 
                 <tr key={user.id}>
                   <td className="px-5 py-4">
                     <p className="font-bold text-slate-950">{user.name}</p>
-                    <p className="mt-1 text-sm text-slate-500">{user.email}</p>
+                    <p className="mt-1 text-sm text-slate-500">@{user.username} · {user.email}</p>
                   </td>
                   <td className="px-5 py-4">
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold">
@@ -783,7 +786,7 @@ function CompanyUserRolesModal({
               {editable ? "Editar roles" : "Ver usuario"}
             </p>
             <h2 className="mt-1 text-2xl font-black text-slate-950">{user.name}</h2>
-            <p className="mt-1 text-sm text-slate-500">{user.email}</p>
+            <p className="mt-1 text-sm text-slate-500">@{user.username} · {user.email}</p>
           </div>
           <button
             type="button"
@@ -798,7 +801,7 @@ function CompanyUserRolesModal({
           {error && <Alert tone="error">{error}</Alert>}
           <div className="grid gap-4 sm:grid-cols-2">
             <ReadOnlyField label="Empresa" value={company.name} />
-            <ReadOnlyField label="Usuario" value={`${user.name} · ${user.email}`} />
+            <ReadOnlyField label="Usuario" value={`${user.name} · @${user.username} · ${user.email}`} />
             <label>
               <span className="mb-1 block text-sm font-bold">Estado</span>
               <select
