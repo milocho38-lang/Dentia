@@ -55,7 +55,7 @@ AUTHENTICATED_ONLY_ROUTES = {
     ("POST", "/api/auth/change-password"),
 }
 
-EXPECTED_ROUTE_COUNT = 310
+EXPECTED_ROUTE_COUNT = 314
 
 
 def read(relative: str) -> str:
