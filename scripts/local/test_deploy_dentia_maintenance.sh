@@ -105,7 +105,12 @@ if [ "$1" = compose ]; then
   shift
   while [ "${1:-}" = --env-file ] || [ "${1:-}" = -f ]; do shift 2; done
   case "$1" in
-    config) printf 'config\n' >>"$log" ;;
+    config)
+      printf 'config\n' >>"$log"
+      if [[ "$*" == *'--format json'* ]]; then
+        printf '{"services":{"dentia-backend":{"image":"target-backend-ref"},"dentia-frontend":{"image":"target-frontend-ref"},"dentia-website":{"image":"target-website-ref"}}}\n'
+      fi
+      ;;
     build)
       [ "${DENTIA_BUILD_REVISION:-}" = "$DEPLOY_TEST_TARGET_SHA" ] || exit 97
       printf 'build-with-target-label\n' >>"$log" ;;
@@ -113,6 +118,10 @@ if [ "$1" = compose ]; then
       if [[ "$*" == *' alembic '* ]]; then
         printf 'migrate\n' >>"$log"
         [ "${DEPLOY_TEST_SCENARIO:-success}" != migrate_fail ] || exit 33
+        args=("$@")
+        for ((i=0; i<${#args[@]}; i++)); do
+          if [ "${args[$i]}" = --name ]; then touch "$state/target-${args[$((i+1))]}"; fi
+        done
         touch "$DEPLOY_TEST_HARNESS/migrated"
       elif [[ "$*" == *' python -'* ]]; then
         cat >/dev/null
@@ -180,6 +189,7 @@ case "$1" in
       printf 'unexpected docker exec: %s\n' "$*" >&2; exit 92
     fi ;;
   logs) printf 'logs\n' ;;
+  rm) exit 0 ;;
   image)
     if [[ "$*" == *'{{.Id}}'* ]]; then
       printf 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n'
@@ -194,6 +204,7 @@ MOCK
 
   cat >"$harness/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
+if [[ "$*" == *'%{http_code}'* ]]; then printf '503'; fi
 exit 0
 MOCK
   cat >"$harness/bin/python3" <<'MOCK'
@@ -292,7 +303,7 @@ run_retry_case() {
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || second_status=$?
   [ "$second_status" -eq 0 ] || fail "safe pre-migration retry failed with $second_status"
-  [ "$(grep -Fc migrate "$log")" -eq 1 ] || fail "retry migrated an unexpected number of times"
+  [ "$(grep -xc migrate "$log")" -eq 1 ] || fail "retry migrated an unexpected number of times"
   printf 'retry_after_backup_failure OK\n'
   rm -rf "$harness"
 }
@@ -392,10 +403,12 @@ EOF
   local env_file="$harness/root/scripts/dentia.env"
   grep -Fq "compose-command:compose --env-file $env_file -f $compose config --quiet" "$harness/commands.log" || \
     fail "real extracted validator did not resolve production compose/default env"
-  for command in build images run up; do
+  for command in build run up; do
     grep -F "compose-command:compose --env-file $env_file -f $compose" "$harness/commands.log" | \
       grep -Fq " $command" || fail "real extracted runner did not use production compose for $command"
   done
+  [ "$(grep -Fc "compose-command:compose --env-file $env_file -f $compose config --format json" "$harness/commands.log")" -eq 3 ] || \
+    fail "real extracted runner did not resolve all three configured image references"
   [ ! -e "$harness/root/.run/maintenance_active" ] || fail "real extracted launcher retained maintenance"
   [ ! -e "$harness/root/backend/storage/.dentia-maintenance" ] || fail "real extracted launcher retained barrier"
   printf 'real_extracted_launcher_paths OK\n'

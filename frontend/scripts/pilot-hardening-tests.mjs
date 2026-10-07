@@ -136,8 +136,18 @@ const restoreBackupIndex = indexOfOrThrow(
 );
 const migrationIndex = indexOfOrThrow(
   deploy,
-  "dentia_compose run --rm --no-deps",
-  "deploy runs Alembic as a one-off container",
+  'dentia_compose run --name "$MIGRATION_CONTAINER" --no-deps',
+  "deploy runs Alembic in a named one-off container",
+);
+const migrationImageVerifyIndex = indexOfOrThrow(
+  deploy,
+  'docker inspect -f \'{{.Image}}\' "$MIGRATION_CONTAINER"',
+  "deploy verifies the migration container image",
+);
+const migrationRemoveIndex = indexOfOrThrow(
+  deploy,
+  'docker rm "$MIGRATION_CONTAINER"',
+  "deploy removes the inspected migration container",
 );
 const recreateIndex = indexOfOrThrow(
   deploy,
@@ -156,7 +166,9 @@ assert.ok(buildIndex < backupIndex, "images are built before entering the backup
 assert.ok(backupIndex < verifyBackupIndex, "backup happens before verification");
 assert.ok(verifyBackupIndex < restoreBackupIndex, "backup verification happens before restore test");
 assert.ok(restoreBackupIndex < migrationIndex, "restore test happens before migration");
-assert.ok(migrationIndex < migrationVerifyIndex, "migration happens before Alembic verification");
+assert.ok(migrationIndex < migrationImageVerifyIndex, "migration happens before its image is verified");
+assert.ok(migrationImageVerifyIndex < migrationRemoveIndex, "migration image is verified before container removal");
+assert.ok(migrationRemoveIndex < migrationVerifyIndex, "migration container is removed before Alembic verification");
 assert.ok(migrationVerifyIndex < recreateIndex, "Alembic verification happens before recreate");
 assert.ok(recreateIndex < backendHealthIndex, "backend healthcheck happens after recreate");
 assert.ok(backendHealthIndex < frontendHealthIndex, "frontend healthcheck happens after backend validation");
@@ -164,7 +176,7 @@ assert.ok(frontendHealthIndex < websiteHealthIndex, "website healthcheck happens
 assert.doesNotMatch(deploy, /docker exec "\$DENTIA_BACKEND_CONTAINER" alembic/, "deploy no longer migrates inside already recreated backend");
 assert.doesNotMatch(deploy, /dentia_compose up -d\s*(?:\n|$)/, "deploy does not perform full compose recreate");
 assert.doesNotMatch(deploy, /up -d[^\n]*\$DENTIA_DB_SERVICE|up -d[^\n]*dentia-db/, "deploy does not deliberately recreate the DB service");
-assert.match(deploy, /run --rm --no-deps/, "one-off migration container is removed after execution");
+assert.match(deploy, /docker rm "\$MIGRATION_CONTAINER"/, "one-off migration container is removed after inspection");
 assert.match(deploy, /dentia_assert_storage_path_safe/, "deploy performs storage safety preflight");
 assert.match(deploy, /Persistent storage directory is missing/, "deploy aborts when storage preflight fails");
 assert.match(status, /config_validation=/, "production status reports config validation");

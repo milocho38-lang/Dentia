@@ -39,6 +39,7 @@ TARGET_SHA="$3"
 [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || dentia_fail "A full 40-character target SHA is required."
 [ -z "${DENTIA_DEPLOY_TARGET_SHA:-}" ] || [ "$DENTIA_DEPLOY_TARGET_SHA" = "$TARGET_SHA" ] || \
   dentia_fail "Launcher SHA and runner SHA do not match."
+export DENTIA_IMAGE_TAG="$TARGET_SHA"
 
 deploy_db_scalar() {
   local sql="$1"
@@ -75,7 +76,10 @@ deploy_disable_write_barrier() {
 
 deploy_resolve_target_image() {
   local service="$1" image_ref image_id revision
-  image_ref="$(dentia_compose images -q "$service")"
+  image_ref="$(
+    dentia_compose config --format json |
+      python3 -c 'import json, sys; print(json.load(sys.stdin)["services"][sys.argv[1]]["image"])' "$service"
+  )"
   [ -n "$image_ref" ] || dentia_fail "Built image is missing for service: $service"
   image_id="$(docker image inspect -f '{{.Id}}' "$image_ref")"
   revision="$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image_ref")"
@@ -86,7 +90,7 @@ deploy_resolve_target_image() {
 
 deploy_snapshot_stable_data() {
   local output="$1"
-  docker exec "$DENTIA_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DENTIA_DB_USER" \
+  docker exec -i "$DENTIA_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DENTIA_DB_USER" \
     -d "$DENTIA_DB_NAME" -At -F '|' <<'SQL' >"$output"
 SELECT 'usuarios', count(*), md5(coalesce(string_agg(id::text || ':' || password_hash, ',' ORDER BY id), '')) FROM usuarios
 UNION ALL
@@ -137,6 +141,9 @@ deploy_stop_application_writers() {
 }
 
 deploy_cleanup_temporary_restore() {
+  if [ -n "${MIGRATION_CONTAINER:-}" ] && [[ "$MIGRATION_CONTAINER" == dentia-migrate-[0-9a-f]* ]]; then
+    docker rm -f "$MIGRATION_CONTAINER" >/dev/null 2>&1 || true
+  fi
   if [ -n "${RESTORE_DB:-}" ]; then
     docker exec "$DENTIA_DB_CONTAINER" dropdb -U "$DENTIA_DB_USER" --if-exists "$RESTORE_DB" >/dev/null 2>&1 || true
   fi
@@ -202,6 +209,7 @@ MAINTENANCE_ACTIVE=false
 MIGRATION_STARTED=false
 RESTORE_DB=""
 RESTORE_STORAGE=""
+MIGRATION_CONTAINER=""
 
 if ! mkdir "$DEPLOY_LOCK_DIR" 2>/dev/null; then
   dentia_fail "Deploy lock exists: $DEPLOY_LOCK_DIR. Inspect its pid and maintenance state manually; stale locks are never removed automatically."
@@ -324,6 +332,10 @@ dentia_info "Testing backup restoration in an isolated database and storage path
 RESTORE_OUTPUT="$("$SCRIPT_DIR/restore_dentia_backup.sh" --backup "$BACKUP_PATH" --temporary \
   --database-name "$RESTORE_DB" --storage-dir "$RESTORE_STORAGE")"
 printf '%s\n' "$RESTORE_OUTPUT" | grep -qx 'RESTORE_VALID' || dentia_fail "Temporary restore did not report RESTORE_VALID."
+LIVE_SYNTHETIC_COUNTS="$(deploy_db_scalar "SELECT (SELECT count(*) FROM usuarios)::text || ':' || (SELECT count(*) FROM pacientes)::text;")"
+RESTORED_SYNTHETIC_COUNTS="$(docker exec "$DENTIA_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DENTIA_DB_USER" -d "$RESTORE_DB" -tAc "SELECT (SELECT count(*) FROM usuarios)::text || ':' || (SELECT count(*) FROM pacientes)::text;" | tr -d '[:space:]')"
+[ "$RESTORED_SYNTHETIC_COUNTS" = "$LIVE_SYNTHETIC_COUNTS" ] || \
+  dentia_fail "Temporary restore did not preserve user and patient row counts."
 deploy_cleanup_temporary_restore
 RESTORE_DB=""
 RESTORE_STORAGE=""
@@ -331,7 +343,12 @@ RESTORE_STORAGE=""
 deploy_assert_no_unknown_writers
 MIGRATION_STARTED=true
 dentia_info "Applying migrations with the newly built backend image while maintenance is active..."
-dentia_compose run --rm --no-deps "$DENTIA_BACKEND_SERVICE" alembic -c alembic.ini upgrade head
+MIGRATION_CONTAINER="dentia-migrate-${TARGET_SHA:0:12}-$$"
+dentia_compose run --name "$MIGRATION_CONTAINER" --no-deps "$DENTIA_BACKEND_SERVICE" alembic -c alembic.ini upgrade head
+[ "$(docker inspect -f '{{.Image}}' "$MIGRATION_CONTAINER")" = "$TARGET_BACKEND_IMAGE_ID" ] || \
+  dentia_fail "Migration container did not run the approved target backend image."
+docker rm "$MIGRATION_CONTAINER" >/dev/null
+MIGRATION_CONTAINER=""
 
 dentia_info "Verifying Alembic head and rollout invariants..."
 deploy_assert_post_migration_invariants
@@ -341,6 +358,7 @@ cmp -s "$BEFORE_SNAPSHOT" "$AFTER_SNAPSHOT" || \
 
 dentia_info "Starting the new backend..."
 dentia_compose up -d --no-deps "$DENTIA_BACKEND_SERVICE"
+[ "$(docker inspect -f '{{.Image}}' "$DENTIA_BACKEND_CONTAINER")" = "$TARGET_BACKEND_IMAGE_ID" ] || dentia_fail "Backend container is not running the approved target image."
 if ! dentia_wait_http "$DENTIA_PRODUCTION_BACKEND_HEALTH_URL" 30 2; then
   dentia_warn "Backend healthcheck failed after backend recreate. Recent backend logs:"
   docker logs --tail 120 "$DENTIA_BACKEND_CONTAINER" || true
@@ -349,7 +367,6 @@ fi
 dentia_info "Starting the frontend and public website..."
 dentia_compose up -d --no-deps "$DENTIA_FRONTEND_SERVICE"
 dentia_compose up -d --no-deps "$DENTIA_WEBSITE_SERVICE"
-[ "$(docker inspect -f '{{.Image}}' "$DENTIA_BACKEND_CONTAINER")" = "$TARGET_BACKEND_IMAGE_ID" ] || dentia_fail "Backend container is not running the approved target image."
 [ "$(docker inspect -f '{{.Image}}' "$DENTIA_FRONTEND_CONTAINER")" = "$TARGET_FRONTEND_IMAGE_ID" ] || dentia_fail "Frontend container is not running the approved target image."
 [ "$(docker inspect -f '{{.Image}}' "$DENTIA_WEBSITE_CONTAINER")" = "$TARGET_WEBSITE_IMAGE_ID" ] || dentia_fail "Website container is not running the approved target image."
 
@@ -399,6 +416,11 @@ if found != expected:
     raise SystemExit(f"missing importer routes: {sorted(expected - found)}")
 print("INTERNAL_IMPORTER_ROUTE_SMOKE_OK")
 PY
+
+BARRIER_PROBE_URL="${DENTIA_PRODUCTION_BACKEND_HEALTH_URL%/health}/"
+BARRIER_HTTP_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$BARRIER_PROBE_URL")"
+[ "$BARRIER_HTTP_STATUS" = "503" ] || \
+  dentia_fail "Public maintenance barrier probe did not return HTTP 503 (got $BARRIER_HTTP_STATUS)."
 
 printf '%s\n' "$OLD_COMMIT" >"$STATE_DIR/last_deploy_previous_commit"
 printf '%s\n' "$NEW_COMMIT" >"$STATE_DIR/last_deploy_commit"

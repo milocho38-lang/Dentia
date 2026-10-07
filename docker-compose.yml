@@ -20,6 +20,7 @@ services:
       retries: 5
 
   dentia-backend:
+    image: ${DENTIA_BACKEND_IMAGE_REPOSITORY:-dentia-dentia-backend}:${DENTIA_IMAGE_TAG:-latest}
     build:
       context: ./backend
       args:
@@ -50,6 +51,7 @@ services:
       retries: 5
 
   dentia-frontend:
+    image: ${DENTIA_FRONTEND_IMAGE_REPOSITORY:-dentia-dentia-frontend}:${DENTIA_IMAGE_TAG:-latest}
     build:
       context: ./frontend
       args:
@@ -69,6 +71,7 @@ services:
       - dentia-network
 
   dentia-website:
+    image: ${DENTIA_WEBSITE_IMAGE_REPOSITORY:-dentia-dentia-website}:${DENTIA_IMAGE_TAG:-latest}
     build:
       context: ./website
       args:
