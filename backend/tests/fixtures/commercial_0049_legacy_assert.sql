@@ -11,6 +11,13 @@ BEGIN
   IF EXISTS (SELECT 1 FROM platform_commercial_obligations WHERE transfer_id = '20000000-0000-4000-8000-000000000481')
   THEN RAISE EXCEPTION 'partial legacy payment gained coverage'; END IF;
   IF NOT EXISTS (
+    SELECT 1 FROM platform_commercial_reconciliations
+    WHERE trigger_transfer_id = '20000000-0000-4000-8000-000000000481'
+      AND action = 'LEGACY_PARTIAL_REVIEW'
+      AND pending_balance = 50
+      AND detail LIKE 'Pago heredado insuficiente:%'
+  ) THEN RAISE EXCEPTION 'partial legacy payment lacks an explicit review trace'; END IF;
+  IF NOT EXISTS (
     SELECT 1 FROM platform_commercial_transfers
     WHERE id = '20000000-0000-4000-8000-000000000482'
       AND status = 'VERIFIED' AND credit_applied = 0 AND credit_generated = 50

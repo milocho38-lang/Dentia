@@ -51,7 +51,12 @@ La pantalla está en `/administracion/control-comercial`. Verificar al menos:
 La revisión `20261012_0048` es inmutable. `20261012_0049` admite tanto una base
 limpia como una base que ya estaba en la `0048` original. Los pagos heredados
 insuficientes vuelven conservadoramente a `PENDING`: se conserva el importe
-recibido, pero no se inventa crédito ni cobertura. Las claves de idempotencia de
+recibido, la referencia y la fila histórica, pero no se inventa crédito ni
+cobertura. La migración añade una conciliación `LEGACY_PARTIAL_REVIEW` con el
+déficit y el motivo de la revisión. El administrador puede completar el faltante
+como un abono verificado y volver a verificar el movimiento pendiente; en ese
+momento el importe recibido original y el saldo a favor completan juntos el
+acuerdo. Las claves de idempotencia de
 `0048` no incluían la carga canónica; por eso un reintento heredado se trata como
 conflicto conservador y debe revisarse manualmente.
 

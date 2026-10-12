@@ -38,6 +38,7 @@ def upgrade() -> None:
     # Rebuild the legacy credit ledger in verification order. 0048 did not store
     # credit attribution, so an underfunded VERIFIED row cannot safely be treated
     # as paid: return it to PENDING and preserve its received cash for review.
+    op.execute("CREATE TEMP TABLE commercial_legacy_partial_review (transfer_id uuid PRIMARY KEY) ON COMMIT DROP")
     op.execute("""
       DO $$
       DECLARE
@@ -65,6 +66,7 @@ def upgrade() -> None:
               SET credit_applied = applied, credit_generated = generated
               WHERE id = row.id;
           ELSE
+            INSERT INTO commercial_legacy_partial_review (transfer_id) VALUES (row.id);
             UPDATE platform_commercial_transfers
               SET status = 'PENDING', verified_at = NULL, verified_by = NULL,
                   coverage_start = NULL, coverage_end = NULL,
@@ -97,6 +99,20 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["company_id"],["empresas.id"],ondelete="RESTRICT"), sa.ForeignKeyConstraint(["account_id"],["platform_commercial_accounts.id"],ondelete="RESTRICT"), sa.ForeignKeyConstraint(["trigger_transfer_id"],["platform_commercial_transfers.id"],ondelete="RESTRICT"), sa.ForeignKeyConstraint(["created_by"],["usuarios.id"],ondelete="SET NULL"), sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_platform_commercial_reconciliations_company_id","platform_commercial_reconciliations",["company_id"])
+    op.execute("""
+      INSERT INTO platform_commercial_reconciliations
+        (id, company_id, account_id, trigger_transfer_id, action,
+         coverage_through, credit_balance, pending_balance, detail,
+         created_by, created_at, updated_at)
+      SELECT gen_random_uuid(), t.company_id, t.account_id, t.id,
+        'LEGACY_PARTIAL_REVIEW', a.coverage_through, 0,
+        GREATEST(t.agreed_amount - t.received_amount, 0),
+        'Pago heredado insuficiente: importe recibido preservado y cobertura pendiente de verificación.',
+        NULL, now(), now()
+      FROM commercial_legacy_partial_review p
+      JOIN platform_commercial_transfers t ON t.id = p.transfer_id
+      JOIN platform_commercial_accounts a ON a.id = t.account_id
+    """)
     op.create_table(
         "platform_commercial_rates",
         sa.Column("company_id",postgresql.UUID(as_uuid=True),nullable=False), sa.Column("account_id",postgresql.UUID(as_uuid=True),nullable=False), sa.Column("effective_period_index",sa.Integer(),nullable=False), sa.Column("monthly_fee",sa.Numeric(14,2),nullable=False), sa.Column("currency",sa.String(3),nullable=False), sa.Column("created_by",postgresql.UUID(as_uuid=True)), sa.Column("id",postgresql.UUID(as_uuid=True),nullable=False), sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.text("now()"),nullable=False), sa.Column("updated_at",sa.DateTime(timezone=True),server_default=sa.text("now()"),nullable=False), sa.Column("is_active",sa.Boolean(),server_default=sa.true(),nullable=False),
