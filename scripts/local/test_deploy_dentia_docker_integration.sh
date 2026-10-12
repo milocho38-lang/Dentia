@@ -8,6 +8,7 @@ case "$SCENARIO" in
 esac
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." >/dev/null 2>&1 && pwd)"
+SOURCE_SHA="$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
 OLD_SHA="bac136e167a886bc2b7b995443df1196a3423744"
 HARNESS="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-docker.XXXXXX")"
 ROOT="$HARNESS/repo"
@@ -25,6 +26,27 @@ ENV_BACKUP_DIR="$BACKUPS"
 [ "$SCENARIO" != pre_failure ] || ENV_BACKUP_DIR="/dev/null/dentia-integration-backups"
 ENV_HEALTH_URL="http://127.0.0.1:$BACKEND_PORT/health"
 [ "$SCENARIO" != post_failure_recovery ] || ENV_HEALTH_URL="http://127.0.0.1:1/health"
+EVIDENCE_DIR="${DENTIA_INTEGRATION_EVIDENCE_DIR:-}"
+
+export_evidence() {
+  local outcome="$1" revision="unavailable" evidence_file
+  [ -n "$EVIDENCE_DIR" ] || return 0
+  mkdir -p "$EVIDENCE_DIR"
+  chmod 700 "$EVIDENCE_DIR"
+  if docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
+    revision="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version' 2>/dev/null || printf unavailable)"
+  fi
+  evidence_file="$EVIDENCE_DIR/docker-${SCENARIO}-${TARGET_SHA:-unknown}.txt"
+  umask 077
+  {
+    printf 'scenario=%s\n' "$SCENARIO"
+    printf 'outcome=%s\n' "$outcome"
+    printf 'source_base_sha=%s\n' "$OLD_SHA"
+    printf 'source_worktree_sha=%s\n' "$SOURCE_SHA"
+    printf 'target_sha=%s\n' "${TARGET_SHA:-unknown}"
+    printf 'alembic_revision=%s\n' "$revision"
+  } >"$evidence_file"
+}
 
 cleanup() {
   if [ -d "$ROOT" ]; then
@@ -171,6 +193,7 @@ if [ "$SCENARIO" = pre_failure ]; then
   curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
   curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
   printf 'docker_integration_pre_failure_recovered old_images_exact db=20261006_0047\n'
+  export_evidence passed
   exit 0
 fi
 
@@ -215,6 +238,7 @@ PY
   rm -f "$ROOT/.run/maintenance_active" "$ROOT/backend/storage/.dentia-maintenance"
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
   printf 'docker_integration_post_failure_fail_closed_and_recovered db=20261012_0049 backup=%s\n' "$BACKUP_PATH"
+  export_evidence passed
   exit 0
 fi
 
@@ -239,3 +263,4 @@ BACKUP_PATH="$(find "$BACKUPS" -mindepth 1 -maxdepth 1 -type d -print -quit)"
 ! tar -tzf "$BACKUPS"/*/storage.tar.gz | grep -q '.dentia-maintenance'
 
 printf 'docker_integration_success target=%s backup=%s\n' "$TARGET_SHA" "$BACKUP_PATH"
+export_evidence passed

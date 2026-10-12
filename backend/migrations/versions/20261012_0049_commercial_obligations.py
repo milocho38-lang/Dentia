@@ -99,20 +99,6 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["company_id"],["empresas.id"],ondelete="RESTRICT"), sa.ForeignKeyConstraint(["account_id"],["platform_commercial_accounts.id"],ondelete="RESTRICT"), sa.ForeignKeyConstraint(["trigger_transfer_id"],["platform_commercial_transfers.id"],ondelete="RESTRICT"), sa.ForeignKeyConstraint(["created_by"],["usuarios.id"],ondelete="SET NULL"), sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_platform_commercial_reconciliations_company_id","platform_commercial_reconciliations",["company_id"])
-    op.execute("""
-      INSERT INTO platform_commercial_reconciliations
-        (id, company_id, account_id, trigger_transfer_id, action,
-         coverage_through, credit_balance, pending_balance, detail,
-         created_by, created_at, updated_at)
-      SELECT gen_random_uuid(), t.company_id, t.account_id, t.id,
-        'LEGACY_PARTIAL_REVIEW', a.coverage_through, 0,
-        GREATEST(t.agreed_amount - t.received_amount, 0),
-        'Pago heredado insuficiente: importe recibido preservado y cobertura pendiente de verificación.',
-        NULL, now(), now()
-      FROM commercial_legacy_partial_review p
-      JOIN platform_commercial_transfers t ON t.id = p.transfer_id
-      JOIN platform_commercial_accounts a ON a.id = t.account_id
-    """)
     op.create_table(
         "platform_commercial_rates",
         sa.Column("company_id",postgresql.UUID(as_uuid=True),nullable=False), sa.Column("account_id",postgresql.UUID(as_uuid=True),nullable=False), sa.Column("effective_period_index",sa.Integer(),nullable=False), sa.Column("monthly_fee",sa.Numeric(14,2),nullable=False), sa.Column("currency",sa.String(3),nullable=False), sa.Column("created_by",postgresql.UUID(as_uuid=True)), sa.Column("id",postgresql.UUID(as_uuid=True),nullable=False), sa.Column("created_at",sa.DateTime(timezone=True),server_default=sa.text("now()"),nullable=False), sa.Column("updated_at",sa.DateTime(timezone=True),server_default=sa.text("now()"),nullable=False), sa.Column("is_active",sa.Boolean(),server_default=sa.true(),nullable=False),
@@ -132,6 +118,31 @@ def upgrade() -> None:
         o.currency_snapshot,o.monthly_fee_snapshot,o.discount_amount/o.months_covered,o.agreed_amount/o.months_covered,'PAID',o.verified_by,true,now(),now()
       FROM ordered o JOIN platform_commercial_accounts a ON a.id=o.account_id CROSS JOIN LATERAL generate_series(1,o.months_covered) g
       WHERE a.service_start_date IS NOT NULL
+    """)
+    # coverage_through in 0048 was a mutable cache. Rebuild it from the paid
+    # obligations that survived reconciliation so a legacy partial/reversed
+    # transfer cannot leave stale coverage behind.
+    op.execute("""
+      UPDATE platform_commercial_accounts a
+      SET coverage_through = (
+        SELECT max(o.period_end)
+        FROM platform_commercial_obligations o
+        WHERE o.account_id = a.id AND o.status = 'PAID' AND o.is_active
+      )
+    """)
+    op.execute("""
+      INSERT INTO platform_commercial_reconciliations
+        (id, company_id, account_id, trigger_transfer_id, action,
+         coverage_through, credit_balance, pending_balance, detail,
+         created_by, created_at, updated_at)
+      SELECT gen_random_uuid(), t.company_id, t.account_id, t.id,
+        'LEGACY_PARTIAL_REVIEW', a.coverage_through, a.credit_balance,
+        GREATEST(t.agreed_amount - t.received_amount, 0),
+        'Pago heredado insuficiente: importe recibido preservado y cobertura pendiente de verificación.',
+        NULL, now(), now()
+      FROM commercial_legacy_partial_review p
+      JOIN platform_commercial_transfers t ON t.id = p.transfer_id
+      JOIN platform_commercial_accounts a ON a.id = t.account_id
     """)
 
 
