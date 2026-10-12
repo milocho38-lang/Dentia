@@ -1,179 +1,166 @@
-import calendar
+import calendar, hashlib, json
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from uuid import UUID
-
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
+from app.core.security import utc_now
 from app.models.audit_event import AuditEvent
-from app.models.commercial_control import CommercialAccount, CommercialTransfer
+from app.models.commercial_control import CommercialAccount, CommercialObligation, CommercialReconciliation, CommercialTransfer
 from app.models.company import Company
 from app.schemas.commercial_control_schema import CommercialAccountSummary, CommercialAccountUpdate, TransferCreate, TransferSummary
 from app.services.auth_service import AuthContext, RequestMetadata
-from app.core.security import utc_now
 
+ZERO = Decimal("0.00")
 
 class CommercialControlError(RuntimeError):
     def __init__(self, message: str, status_code: int = 400):
-        super().__init__(message)
-        self.status_code = status_code
-
+        super().__init__(message); self.status_code = status_code
 
 def add_months(value: date, months: int) -> date:
-    index = value.month - 1 + months
-    year = value.year + index // 12
-    month = index % 12 + 1
+    index = value.month - 1 + months; year = value.year + index // 12; month = index % 12 + 1
     return date(year, month, min(value.day, calendar.monthrange(year, month)[1]))
 
+def anchored_period(start: date, period_index: int) -> tuple[date, date]:
+    return add_months(start, period_index - 1), add_months(start, period_index) - timedelta(days=1)
 
 def coverage_end(start: date, months: int) -> date:
-    if months <= 0:
-        raise ValueError("months must be positive")
+    if months <= 0: raise ValueError("months must be positive")
     return add_months(start, months) - timedelta(days=1)
 
-
-def _account(session: Session, company_id: UUID, *, create: bool = False, actor: UUID | None = None) -> tuple[Company, CommercialAccount]:
+def _account(session: Session, company_id: UUID, *, create=False, actor=None):
     company = session.get(Company, company_id)
-    if company is None:
-        raise CommercialControlError("Clínica no encontrada.", 404)
-    account = session.scalar(select(CommercialAccount).where(CommercialAccount.company_id == company_id))
+    if company is None: raise CommercialControlError("Clínica no encontrada.", 404)
+    account = session.scalar(select(CommercialAccount).where(CommercialAccount.company_id == company_id).with_for_update())
     if account is None and create:
-        account = CommercialAccount(company_id=company_id, created_by=actor)
-        session.add(account)
-        session.flush()
-    if account is None:
-        raise CommercialControlError("Configura primero la tarifa comercial.", 409)
+        account = CommercialAccount(company_id=company_id, plan_type="STANDARD", monthly_fee=ZERO, currency="COP", credit_balance=ZERO, created_by=actor); session.add(account); session.flush()
+    if account is None: raise CommercialControlError("Configura primero la tarifa comercial.", 409)
     return company, account
 
+def _verified(session, account):
+    return list(session.scalars(select(CommercialTransfer).where(CommercialTransfer.account_id == account.id, CommercialTransfer.status == "VERIFIED").order_by(CommercialTransfer.verified_at, CommercialTransfer.created_at)))
 
-def _active_verified(session: Session, account: CommercialAccount) -> list[CommercialTransfer]:
-    return list(session.scalars(select(CommercialTransfer).where(
-        CommercialTransfer.account_id == account.id,
-        CommercialTransfer.status == "VERIFIED",
-    ).order_by(CommercialTransfer.verified_at, CommercialTransfer.created_at)))
+def _obligations(session, account):
+    return list(session.scalars(select(CommercialObligation).where(CommercialObligation.account_id == account.id, CommercialObligation.status == "PAID").order_by(CommercialObligation.period_index)))
 
+def _consecutive(items):
+    expected = 1
+    for item in items:
+        if item.period_index != expected: break
+        expected += 1
+    return expected - 1
 
-def _recalculate(session: Session, account: CommercialAccount) -> None:
-    transfers = _active_verified(session, account)
-    total_months = sum(item.months_covered for item in transfers)
-    account.credit_balance = sum((item.received_amount - item.agreed_amount for item in transfers), Decimal("0"))
-    if account.plan_type == "FREE":
-        account.coverage_through = None
-    elif account.service_start_date and total_months:
-        account.coverage_through = coverage_end(account.service_start_date, total_months)
-    else:
-        account.coverage_through = None
+def _months_due(start, through):
+    if not start or through < start: return 0
+    count = 0
+    while add_months(start, count) <= through: count += 1
+    return count
 
+def _state(session, account):
+    paid = _consecutive(_obligations(session, account)); coverage = coverage_end(account.service_start_date, paid) if account.service_start_date and paid else None
+    next_due = None if account.plan_type == "FREE" else (add_months(account.service_start_date, paid) if account.service_start_date else None)
+    credit = sum((item.credit_generated - item.credit_applied for item in _verified(session, account)), ZERO)
+    if credit < ZERO: raise CommercialControlError("La conciliación produciría saldo a favor negativo.", 409)
+    due_months = 0 if account.plan_type == "FREE" else max(_months_due(account.service_start_date, date.today()) - paid, 0)
+    return paid, coverage, next_due, credit, max(account.monthly_fee * due_months - credit, ZERO)
 
-def _summary(session: Session, company: Company, account: CommercialAccount, *, with_transfers: bool) -> CommercialAccountSummary:
-    verified = _active_verified(session, account)
-    all_transfers = list(session.scalars(select(CommercialTransfer).where(CommercialTransfer.account_id == account.id).order_by(CommercialTransfer.created_at.desc()))) if with_transfers else []
-    next_due = None if account.plan_type == "FREE" else ((account.coverage_through + timedelta(days=1)) if account.coverage_through else account.service_start_date)
-    pending = Decimal("0")
-    if next_due and next_due <= date.today():
-        pending = max(account.monthly_fee - account.credit_balance, Decimal("0"))
-    return CommercialAccountSummary(
-        company_id=company.id, company_name=company.name, plan_type=account.plan_type,
-        monthly_fee=account.monthly_fee, currency=account.currency,
-        service_start_date=account.service_start_date,
-        last_verified_payment_date=max((item.transfer_date for item in verified), default=None),
-        total_months_covered=sum(item.months_covered for item in verified), coverage_through=account.coverage_through,
-        next_due_date=next_due, pending_balance=pending, credit_balance=account.credit_balance,
-        last_contact_at=account.last_contact_at, agreement=account.agreement, owner=account.owner,
-        next_contact_date=account.next_contact_date,
-        transfers=[TransferSummary.model_validate(item, from_attributes=True) for item in all_transfers],
-    )
+def _reconcile(session, account, *, action, actor, transfer_id=None, detail=None):
+    state = _state(session, account); account.coverage_through = state[1]; account.credit_balance = state[3]
+    session.add(CommercialReconciliation(company_id=account.company_id, account_id=account.id, trigger_transfer_id=transfer_id, action=action, coverage_through=state[1], credit_balance=state[3], pending_balance=state[4], detail=detail, created_by=actor)); return state
 
+def _summary(session, company, account, *, with_transfers):
+    paid, coverage, next_due, credit, pending = _state(session, account)
+    verified = _verified(session, account)
+    transfers = list(session.scalars(select(CommercialTransfer).where(CommercialTransfer.account_id == account.id).order_by(CommercialTransfer.created_at.desc()))) if with_transfers and account.id else []
+    return CommercialAccountSummary(company_id=company.id, company_name=company.name, plan_type=account.plan_type, monthly_fee=account.monthly_fee, currency=account.currency, service_start_date=account.service_start_date, last_verified_payment_date=max((x.transfer_date for x in verified), default=None), total_months_covered=paid, coverage_through=coverage, next_due_date=next_due, pending_balance=pending, credit_balance=credit, last_contact_at=account.last_contact_at, agreement=account.agreement, owner=account.owner, next_contact_date=account.next_contact_date, transfers=[TransferSummary.model_validate(x, from_attributes=True) for x in transfers])
 
-def list_accounts(session: Session) -> list[CommercialAccountSummary]:
+def _transient(company): return CommercialAccount(company_id=company.id, plan_type="STANDARD", monthly_fee=ZERO, currency="COP", credit_balance=ZERO)
+
+def list_accounts(session):
     rows = session.execute(select(Company, CommercialAccount).join(CommercialAccount, CommercialAccount.company_id == Company.id, isouter=True).order_by(Company.name))
-    result = []
-    for company, account in rows:
-        if account is None:
-            account = CommercialAccount(company_id=company.id, plan_type="STANDARD", monthly_fee=Decimal("0"), currency="COP", credit_balance=Decimal("0"))
-        result.append(_summary(session, company, account, with_transfers=False))
-    return result
+    return [_summary(session, c, a or _transient(c), with_transfers=False) for c, a in rows]
 
-
-def get_account(session: Session, company_id: UUID) -> CommercialAccountSummary:
+def get_account(session, company_id):
     company = session.get(Company, company_id)
-    if company is None:
-        raise CommercialControlError("Clínica no encontrada.", 404)
+    if company is None: raise CommercialControlError("Clínica no encontrada.", 404)
     account = session.scalar(select(CommercialAccount).where(CommercialAccount.company_id == company_id))
-    if account is None:
-        account = CommercialAccount(company_id=company.id, plan_type="STANDARD", monthly_fee=Decimal("0"), currency="COP", credit_balance=Decimal("0"))
-    return _summary(session, company, account, with_transfers=True)
+    return _summary(session, company, account or _transient(company), with_transfers=True)
 
-
-def _audit(session: Session, context: AuthContext, metadata: RequestMetadata, company_id: UUID, entity_id: UUID, action: str, detail: dict | None = None) -> None:
+def _audit(session, context, metadata, company_id, entity_id, action, detail):
     session.add(AuditEvent(company_id=company_id, user_id=context.user.id, session_id=context.auth_session.id, entity="platform_commercial", entity_id=entity_id, action=action, result="SUCCESS", detail=detail, ip_address=metadata.ip_address, user_agent=metadata.user_agent))
 
-
-def update_account(session: Session, context: AuthContext, company_id: UUID, payload: CommercialAccountUpdate, metadata: RequestMetadata) -> CommercialAccountSummary:
+def update_account(session, context, company_id, payload, metadata):
     company, account = _account(session, company_id, create=True, actor=context.user.id)
-    for key, value in payload.model_dump().items():
-        setattr(account, key, value)
-    _recalculate(session, account)
-    _audit(session, context, metadata, company_id, account.id, "COMMERCIAL_ACCOUNT_UPDATED", payload.model_dump(mode="json"))
-    session.commit()
+    has_history = bool(session.scalar(select(func.count()).select_from(CommercialTransfer).where(CommercialTransfer.account_id == account.id)))
+    if has_history and payload.currency != account.currency: raise CommercialControlError("No se puede cambiar la moneda de una cuenta con historial.", 409)
+    if has_history and payload.service_start_date != account.service_start_date: raise CommercialControlError("No se puede cambiar la fecha inicial de una cuenta con historial.", 409)
+    before = {"plan_type": account.plan_type, "monthly_fee": str(account.monthly_fee), "currency": account.currency, "service_start_date": account.service_start_date.isoformat() if account.service_start_date else None}
+    for key, value in payload.model_dump().items(): setattr(account, key, value)
+    session.flush(); state = _reconcile(session, account, action="ACCOUNT_UPDATED", actor=context.user.id, detail=json.dumps({"before": before, "after": payload.model_dump(mode="json")}, ensure_ascii=False))
+    _audit(session, context, metadata, company_id, account.id, "COMMERCIAL_ACCOUNT_UPDATED", {"before": before, "after": payload.model_dump(mode="json"), "coverage_through": str(state[1]), "credit_balance": str(state[3]), "pending_balance": str(state[4])}); session.commit()
     return _summary(session, company, account, with_transfers=True)
 
+def _payload_hash(payload):
+    raw = json.dumps(payload.model_dump(mode="json", exclude={"idempotency_key"}), sort_keys=True, separators=(",", ":")); return hashlib.sha256(raw.encode()).hexdigest()
 
-def create_transfer(session: Session, context: AuthContext, company_id: UUID, payload: TransferCreate, metadata: RequestMetadata) -> CommercialAccountSummary:
-    company, account = _account(session, company_id)
+def create_transfer(session, context, company_id, payload, metadata):
+    company, account = _account(session, company_id); digest = _payload_hash(payload)
     existing = session.scalar(select(CommercialTransfer).where(CommercialTransfer.company_id == company_id, CommercialTransfer.idempotency_key == payload.idempotency_key))
     if existing:
+        if existing.payload_hash != digest: raise CommercialControlError("La clave de idempotencia ya fue usada con otros datos.", 409)
         return _summary(session, company, account, with_transfers=True)
-    transfer = CommercialTransfer(company_id=company_id, account_id=account.id, created_by=context.user.id, **payload.model_dump())
-    session.add(transfer)
-    _audit(session, context, metadata, company_id, transfer.id, "COMMERCIAL_TRANSFER_RECORDED")
-    try:
-        session.commit()
+    list_amount = (account.monthly_fee * payload.months_covered).quantize(Decimal("0.01"))
+    if payload.months_covered and payload.agreed_amount + payload.discount_amount != list_amount: raise CommercialControlError("Importe acordado más descuento debe coincidir con la tarifa de los meses.", 422)
+    transfer = CommercialTransfer(company_id=company_id, account_id=account.id, created_by=context.user.id, transfer_date=payload.transfer_date, received_amount=payload.received_amount, agreed_amount=payload.agreed_amount, list_amount=list_amount, discount_amount=payload.discount_amount, currency_snapshot=account.currency, monthly_fee_snapshot=account.monthly_fee, months_covered=payload.months_covered, reference=payload.reference, receipt_reference=payload.receipt_reference, idempotency_key=payload.idempotency_key, payload_hash=digest, credit_applied=ZERO, credit_generated=ZERO)
+    session.add(transfer); session.flush()
+    snap = {"received_amount": str(transfer.received_amount), "agreed_amount": str(transfer.agreed_amount), "list_amount": str(transfer.list_amount), "discount_amount": str(transfer.discount_amount), "currency": transfer.currency_snapshot, "monthly_fee": str(transfer.monthly_fee_snapshot), "months": transfer.months_covered, "reference": transfer.reference, "receipt_reference": transfer.receipt_reference}
+    _audit(session, context, metadata, company_id, transfer.id, "COMMERCIAL_TRANSFER_RECORDED", snap)
+    try: session.commit()
     except IntegrityError:
-        session.rollback()
+        session.rollback(); existing = session.scalar(select(CommercialTransfer).where(CommercialTransfer.company_id == company_id, CommercialTransfer.idempotency_key == payload.idempotency_key))
+        if existing is None or existing.payload_hash != digest: raise CommercialControlError("Conflicto de idempotencia.", 409)
     return _summary(session, company, account, with_transfers=True)
 
+def _split(total, count):
+    if not count: return []
+    base = (total / count).quantize(Decimal("0.01"), rounding=ROUND_DOWN); values = [base] * count; values[-1] += total - sum(values, ZERO); return values
 
-def verify_transfer(session: Session, context: AuthContext, company_id: UUID, transfer_id: UUID, metadata: RequestMetadata) -> CommercialAccountSummary:
-    company, account = _account(session, company_id)
-    transfer = session.scalar(select(CommercialTransfer).where(CommercialTransfer.id == transfer_id, CommercialTransfer.company_id == company_id).with_for_update())
-    if transfer is None:
-        raise CommercialControlError("Transferencia no encontrada.", 404)
-    if transfer.status == "REVERSED":
-        raise CommercialControlError("Una transferencia reversada no puede verificarse.", 409)
-    if transfer.status == "VERIFIED":
-        return _summary(session, company, account, with_transfers=True)
-    if transfer.months_covered and not account.service_start_date:
-        raise CommercialControlError("Define la fecha de inicio del servicio antes de verificar.", 409)
-    prior_months = sum(item.months_covered for item in _active_verified(session, account))
+def verify_transfer(session, context, company_id, transfer_id, metadata):
+    company, account = _account(session, company_id); transfer = session.scalar(select(CommercialTransfer).where(CommercialTransfer.id == transfer_id, CommercialTransfer.company_id == company_id).with_for_update())
+    if transfer is None: raise CommercialControlError("Transferencia no encontrada.", 404)
+    if transfer.status == "REVERSED": raise CommercialControlError("Una transferencia reversada no puede verificarse.", 409)
+    if transfer.status == "VERIFIED": return _summary(session, company, account, with_transfers=True)
+    if transfer.months_covered and not account.service_start_date: raise CommercialControlError("Define la fecha de inicio del servicio antes de verificar.", 409)
+    credit = _state(session, account)[3]
+    if transfer.received_amount + credit < transfer.agreed_amount: raise CommercialControlError("El importe recibido y el saldo a favor no cubren el importe acordado.", 409)
+    transfer.credit_applied = min(credit, transfer.agreed_amount); cash_applied = transfer.agreed_amount - transfer.credit_applied; transfer.credit_generated = transfer.received_amount - cash_applied
+    occupied = {item.period_index for item in _obligations(session, account)}
+    period_indexes = []
+    candidate = 1
+    while len(period_indexes) < transfer.months_covered:
+        if candidate not in occupied: period_indexes.append(candidate)
+        candidate += 1
     if transfer.months_covered:
-        transfer.coverage_start = add_months(account.service_start_date, prior_months)
-        transfer.coverage_end = coverage_end(transfer.coverage_start, transfer.months_covered)
-    transfer.status = "VERIFIED"
-    transfer.verified_at = utc_now()
-    transfer.verified_by = context.user.id
-    session.flush()
-    _recalculate(session, account)
-    _audit(session, context, metadata, company_id, transfer.id, "COMMERCIAL_TRANSFER_VERIFIED")
-    session.commit()
-    return _summary(session, company, account, with_transfers=True)
+        transfer.coverage_start = anchored_period(account.service_start_date, period_indexes[0])[0]; transfer.coverage_end = anchored_period(account.service_start_date, period_indexes[-1])[1]
+        discounts, dues = _split(transfer.discount_amount, transfer.months_covered), _split(transfer.agreed_amount, transfer.months_covered)
+        for offset, index in enumerate(period_indexes):
+            start, end = anchored_period(account.service_start_date, index)
+            session.add(CommercialObligation(company_id=company_id, account_id=account.id, transfer_id=transfer.id, period_index=index, period_start=start, period_end=end, currency=transfer.currency_snapshot, list_amount=transfer.monthly_fee_snapshot, discount_amount=discounts[offset], amount_due=dues[offset], status="PAID", created_by=context.user.id))
+    transfer.status = "VERIFIED"; transfer.verified_at = utc_now(); transfer.verified_by = context.user.id; session.flush()
+    state = _reconcile(session, account, action="TRANSFER_VERIFIED", actor=context.user.id, transfer_id=transfer.id)
+    snap = {"received_amount": str(transfer.received_amount), "agreed_amount": str(transfer.agreed_amount), "list_amount": str(transfer.list_amount), "discount_amount": str(transfer.discount_amount), "currency": transfer.currency_snapshot, "monthly_fee": str(transfer.monthly_fee_snapshot), "months": transfer.months_covered, "reference": transfer.reference, "credit_applied": str(transfer.credit_applied), "credit_generated": str(transfer.credit_generated), "coverage_start": str(transfer.coverage_start), "coverage_end": str(transfer.coverage_end), "account_coverage_through": str(state[1])}
+    _audit(session, context, metadata, company_id, transfer.id, "COMMERCIAL_TRANSFER_VERIFIED", snap); session.commit(); return _summary(session, company, account, with_transfers=True)
 
-
-def reverse_transfer(session: Session, context: AuthContext, company_id: UUID, transfer_id: UUID, reason: str, metadata: RequestMetadata) -> CommercialAccountSummary:
-    company, account = _account(session, company_id)
-    transfer = session.scalar(select(CommercialTransfer).where(CommercialTransfer.id == transfer_id, CommercialTransfer.company_id == company_id).with_for_update())
-    if transfer is None:
-        raise CommercialControlError("Transferencia no encontrada.", 404)
-    if transfer.status == "REVERSED":
-        return _summary(session, company, account, with_transfers=True)
-    transfer.status = "REVERSED"
-    transfer.reversed_at = utc_now()
-    transfer.reversed_by = context.user.id
-    transfer.reversal_reason = reason.strip()
-    session.flush()
-    _recalculate(session, account)
-    _audit(session, context, metadata, company_id, transfer.id, "COMMERCIAL_TRANSFER_REVERSED", {"reason": transfer.reversal_reason})
-    session.commit()
-    return _summary(session, company, account, with_transfers=True)
+def reverse_transfer(session, context, company_id, transfer_id, reason, metadata):
+    company, account = _account(session, company_id); transfer = session.scalar(select(CommercialTransfer).where(CommercialTransfer.id == transfer_id, CommercialTransfer.company_id == company_id).with_for_update())
+    if transfer is None: raise CommercialControlError("Transferencia no encontrada.", 404)
+    if transfer.status == "REVERSED": return _summary(session, company, account, with_transfers=True)
+    if transfer.status == "VERIFIED":
+        later_use = session.scalar(select(func.count()).select_from(CommercialTransfer).where(CommercialTransfer.account_id == account.id, CommercialTransfer.status == "VERIFIED", CommercialTransfer.verified_at > transfer.verified_at, CommercialTransfer.credit_applied > ZERO)) or 0
+        if transfer.credit_generated and later_use: raise CommercialControlError("Reversa primero los movimientos posteriores que consumieron este saldo a favor.", 409)
+        for obligation in session.scalars(select(CommercialObligation).where(CommercialObligation.transfer_id == transfer.id, CommercialObligation.status == "PAID")):
+            obligation.status = "VOID"; obligation.is_active = False; obligation.voided_at = utc_now(); obligation.void_reason = reason.strip()
+    transfer.status = "REVERSED"; transfer.reversed_at = utc_now(); transfer.reversed_by = context.user.id; transfer.reversal_reason = reason.strip(); session.flush()
+    state = _reconcile(session, account, action="TRANSFER_REVERSED", actor=context.user.id, transfer_id=transfer.id, detail=transfer.reversal_reason)
+    _audit(session, context, metadata, company_id, transfer.id, "COMMERCIAL_TRANSFER_REVERSED", {"reason": transfer.reversal_reason, "received_amount": str(transfer.received_amount), "agreed_amount": str(transfer.agreed_amount), "discount_amount": str(transfer.discount_amount), "currency": transfer.currency_snapshot, "months": transfer.months_covered, "reference": transfer.reference, "coverage_through": str(state[1]), "credit_balance": str(state[3]), "pending_balance": str(state[4])}); session.commit(); return _summary(session, company, account, with_transfers=True)

@@ -44,6 +44,7 @@ class TransferCreate(BaseModel):
     transfer_date: date
     received_amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
     agreed_amount: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0, max_digits=14, decimal_places=2)
     months_covered: int = Field(ge=0, le=120)
     reference: str | None = Field(default=None, max_length=200)
     receipt_reference: str | None = Field(default=None, max_length=500)
@@ -53,8 +54,12 @@ class TransferCreate(BaseModel):
     def has_reference_and_allocation(self):
         if not (self.reference and self.reference.strip()) and not (self.receipt_reference and self.receipt_reference.strip()):
             raise ValueError("Registra referencia o comprobante.")
-        if self.months_covered == 0 and self.agreed_amount != 0:
-            raise ValueError("Un abono sin meses debe tener importe acordado cero.")
+        if self.transfer_date > date.today():
+            raise ValueError("La fecha de transferencia no puede ser futura.")
+        if self.months_covered == 0 and (self.agreed_amount != 0 or self.discount_amount != 0):
+            raise ValueError("Un abono sin meses no puede declarar importe acordado ni descuento.")
+        if self.months_covered > 0 and self.agreed_amount <= 0:
+            raise ValueError("Los meses cubiertos requieren un importe acordado positivo.")
         return self
 
 
@@ -67,6 +72,12 @@ class TransferSummary(BaseModel):
     transfer_date: date
     received_amount: Decimal
     agreed_amount: Decimal
+    list_amount: Decimal
+    discount_amount: Decimal
+    currency_snapshot: str
+    monthly_fee_snapshot: Decimal
+    credit_applied: Decimal
+    credit_generated: Decimal
     months_covered: int
     reference: str | None
     receipt_reference: str | None
