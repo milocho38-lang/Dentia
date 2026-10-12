@@ -101,3 +101,17 @@ class CommercialReconciliation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     pending_balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+
+
+class CommercialRate(UUIDPrimaryKeyMixin, TimestampMixin, ActiveMixin, Base):
+    __tablename__ = "platform_commercial_rates"
+    __table_args__ = (
+        UniqueConstraint("account_id", "effective_period_index", name="uq_commercial_rate_effective_period"),
+        CheckConstraint("effective_period_index > 0 AND monthly_fee >= 0", name="commercial_rate_valid"),
+    )
+    company_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("empresas.id", ondelete="RESTRICT"), nullable=False, index=True)
+    account_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("platform_commercial_accounts.id", ondelete="RESTRICT"), nullable=False)
+    effective_period_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    monthly_fee: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    created_by: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)

@@ -25,7 +25,7 @@ from app.models.clinical_record import (
 )
 from app.models.clinical_document import ClinicalDocument
 from app.models.company import Company
-from app.models.commercial_control import CommercialAccount, CommercialObligation, CommercialReconciliation, CommercialTransfer
+from app.models.commercial_control import CommercialAccount, CommercialObligation, CommercialRate, CommercialReconciliation, CommercialTransfer
 from app.models.consent_acceptance import (
     ConsentAcceptance,
     ConsentAcceptanceDeclaration,
@@ -124,6 +124,7 @@ __all__ = [
     "CommercialAccount",
     "CommercialObligation",
     "CommercialReconciliation",
+    "CommercialRate",
     "CommercialTransfer",
     "ConsentAcceptance",
     "ConsentAcceptanceDeclaration",

@@ -67,6 +67,13 @@ class ReversalRequest(BaseModel):
     reason: str = Field(min_length=5, max_length=1000)
 
 
+class CoveredPeriod(BaseModel):
+    period_index: int
+    period_start: date
+    period_end: date
+    status: str
+
+
 class TransferSummary(BaseModel):
     id: UUID
     transfer_date: date
@@ -88,6 +95,7 @@ class TransferSummary(BaseModel):
     verified_at: datetime | None
     reversed_at: datetime | None
     reversal_reason: str | None
+    covered_periods: list[CoveredPeriod] = Field(default_factory=list)
 
 
 class CommercialAccountSummary(BaseModel):

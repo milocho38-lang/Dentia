@@ -126,8 +126,34 @@ def test_reversing_earlier_period_creates_traced_gap_without_rewriting_later_fac
     reversed_response = api_client.post(f"{base}/{ids[0]}/reverse", token=security_world.platform_admin.token, json={"reason":"Corrección del primer período"})
     db_session.expire_all()
     assert reversed_response.json()["coverage_through"] is None
+    assert Decimal(reversed_response.json()["pending_balance"]) == Decimal("100")
     assert db_session.get(CommercialTransfer, ids[1]).coverage_end == later_before
     assert db_session.scalar(select(CommercialReconciliation).where(CommercialReconciliation.action == "TRANSFER_REVERSED")) is not None
+
+
+def test_gap_payment_reports_non_contiguous_periods_without_revaluing_old_debt(api_client, security_world) -> None:
+    assert _configure(api_client, security_world, start="2026-07-01").status_code == 200
+    company_id = security_world.tenant_a.company.id
+    base = f"/api/platform/commercial/accounts/{company_id}/transfers"
+    ids = []
+    for index in (1, 2):
+        created = api_client.post(base, token=security_world.platform_admin.token, json={"transfer_date":"2026-10-12","received_amount":"100","agreed_amount":"100","months_covered":1,"reference":f"OLD-{index}","idempotency_key":f"old-rate-{index}"})
+        transfer_id = created.json()["transfers"][0]["id"]
+        ids.append(transfer_id)
+        assert api_client.post(f"{base}/{transfer_id}/verify", token=security_world.platform_admin.token).status_code == 200
+    assert api_client.post(f"{base}/{ids[0]}/reverse", token=security_world.platform_admin.token, json={"reason":"Abrir hueco inicial"}).status_code == 200
+    changed = api_client.put(f"/api/platform/commercial/accounts/{company_id}", token=security_world.platform_admin.token, json={"plan_type":"FOUNDER","monthly_fee":"200","currency":"USD","service_start_date":"2026-07-01","last_contact_at":None,"agreement":None,"owner":None,"next_contact_date":None})
+    assert changed.status_code == 200
+    # July, September and October remain unpaid at their historical USD 100 rate.
+    assert Decimal(changed.json()["pending_balance"]) == Decimal("300")
+    created = api_client.post(base, token=security_world.platform_admin.token, json={"transfer_date":"2026-10-12","received_amount":"200","agreed_amount":"200","months_covered":2,"reference":"FILL-1-3","idempotency_key":"fill-non-contiguous"})
+    transfer_id = created.json()["transfers"][0]["id"]
+    verified = api_client.post(f"{base}/{transfer_id}/verify", token=security_world.platform_admin.token)
+    assert verified.status_code == 200
+    transfer = next(item for item in verified.json()["transfers"] if item["id"] == transfer_id)
+    assert [item["period_index"] for item in transfer["covered_periods"]] == [1, 3]
+    assert [(item["period_start"], item["period_end"]) for item in transfer["covered_periods"]] == [("2026-07-01", "2026-07-31"), ("2026-09-01", "2026-09-30")]
+    assert Decimal(verified.json()["pending_balance"]) == Decimal("100")
 
 
 def test_concurrent_duplicate_submission_creates_one_transfer_and_audit_snapshot(api_client, security_world, db_session) -> None:
