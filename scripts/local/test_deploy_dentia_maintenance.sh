@@ -177,7 +177,7 @@ case "$1" in
         cat >/dev/null
         printf 'auditoria_eventos|1|a\nauth_sessions|1|b\npacientes|1|c\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
       elif [[ "$sql" == *'SELECT version_num'* ]]; then
-        if [ -f "$DEPLOY_TEST_HARNESS/migrated" ]; then printf '20261006_0047\n'; else printf '20260926_0045\n'; fi
+        if [ -f "$DEPLOY_TEST_HARNESS/migrated" ]; then printf '20261012_0049\n'; else printf '20261006_0047\n'; fi
       elif [[ "$sql" == *'pg_stat_activity'* ]]; then
         if [ "${DEPLOY_TEST_SCENARIO:-success}" = unknown_writers ]; then printf '1\n'; else printf '0\n'; fi
       elif [[ "$sql" == *"permisos WHERE code = 'patients.import'"* ]]; then

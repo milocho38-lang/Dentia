@@ -109,7 +109,7 @@ SQL
 }
 
 deploy_assert_pre_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20260926_0045}"
+  local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261006_0047}"
   local revision duplicate_emails
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected pre-deploy Alembic revision: $revision (expected $expected)."
@@ -118,17 +118,21 @@ deploy_assert_pre_migration_invariants() {
 }
 
 deploy_assert_post_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261006_0047}"
+  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261012_0049}"
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected post-deploy Alembic revision: $revision (expected $expected)."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM usuarios WHERE username IS DISTINCT FROM correo_normalizado OR username_normalizado IS DISTINCT FROM correo_normalizado;")" = "0" ] || dentia_fail "Legacy login backfill invariant failed."
   [ "$(deploy_db_scalar "SELECT count(*) FROM (SELECT username_normalizado FROM usuarios GROUP BY username_normalizado HAVING count(*) > 1) duplicates;")" = "0" ] || dentia_fail "Username uniqueness invariant failed."
   [ "$(deploy_db_scalar "SELECT count(*) FROM patient_import_sources;")" = "0" ] || dentia_fail "Patient import sources must be empty immediately after rollout."
   [ "$(deploy_db_scalar "SELECT count(*) FROM patient_external_references;")" = "0" ] || dentia_fail "Patient external references must be empty immediately after rollout."
   [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code = 'patients.import' AND is_active;")" = "1" ] || dentia_fail "Active patients.import permission was not created exactly once."
   [ "$(deploy_db_scalar "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id = rp.permiso_id JOIN roles r ON r.id = rp.rol_id WHERE p.code = 'patients.import' AND rp.is_active AND r.code NOT IN ('ADMINISTRATOR', 'DENTIST_ADMIN');")" = "0" ] || dentia_fail "patients.import was actively assigned to an unauthorized role."
   [ "$(deploy_db_scalar "SELECT count(*) FROM roles r WHERE r.code IN ('ADMINISTRATOR', 'DENTIST_ADMIN') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id = rp.permiso_id WHERE rp.rol_id = r.id AND p.code = 'patients.import' AND p.is_active AND rp.is_active);")" = "0" ] || dentia_fail "Active patients.import is missing from an active authorized role."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_accounts;")" = "0" ] || dentia_fail "Commercial accounts must be empty immediately after rollout."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_transfers;")" = "0" ] || dentia_fail "Commercial transfers must be empty immediately after rollout."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_obligations;")" = "0" ] || dentia_fail "Commercial obligations must be empty immediately after rollout."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_reconciliations;")" = "0" ] || dentia_fail "Commercial reconciliations must be empty immediately after rollout."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_rates;")" = "0" ] || dentia_fail "Commercial rates must be empty immediately after rollout."
 }
 
 deploy_stop_application_writers() {
