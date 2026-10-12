@@ -73,8 +73,10 @@ cp "$SOURCE_ROOT/scripts/production/deploy_dentia.sh" "$ROOT/scripts/production/
 git -C "$ROOT" config user.name "Dentia Integration"
 git -C "$ROOT" config user.email "integration@dentia.invalid"
 git -C "$ROOT" add docker-compose.yml scripts/lib/dentia_common.sh scripts/production/deploy_dentia.sh
-GIT_AUTHOR_DATE=2026-10-07T00:00:00Z GIT_COMMITTER_DATE=2026-10-07T00:00:00Z \
-  git -C "$ROOT" commit -m "integration target" >/dev/null
+if ! git -C "$ROOT" diff --cached --quiet; then
+  GIT_AUTHOR_DATE=2026-10-07T00:00:00Z GIT_COMMITTER_DATE=2026-10-07T00:00:00Z \
+    git -C "$ROOT" commit -m "integration target" >/dev/null
+fi
 TARGET_SHA="$(git -C "$ROOT" rev-parse HEAD)"
 git -C "$ROOT" branch -M master
 git -C "$ROOT" remote set-url origin "$ROOT"
