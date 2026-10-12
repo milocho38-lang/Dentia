@@ -30,10 +30,49 @@ def upgrade() -> None:
         discount_amount = GREATEST(a.monthly_fee * t.months_covered - t.agreed_amount, 0),
         currency_snapshot = a.currency,
         monthly_fee_snapshot = a.monthly_fee,
-        credit_applied = GREATEST(t.agreed_amount - t.received_amount, 0),
-        credit_generated = GREATEST(t.received_amount - t.agreed_amount, 0),
+        credit_applied = 0,
+        credit_generated = 0,
         payload_hash = md5(t.id::text) || md5(t.id::text || '-legacy')
       FROM platform_commercial_accounts a WHERE a.id = t.account_id
+    """)
+    # Rebuild the legacy credit ledger in verification order. 0048 did not store
+    # credit attribution, so an underfunded VERIFIED row cannot safely be treated
+    # as paid: return it to PENDING and preserve its received cash for review.
+    op.execute("""
+      DO $$
+      DECLARE
+        row RECORD;
+        current_account uuid := NULL;
+        available numeric(14,2) := 0;
+        applied numeric(14,2);
+        generated numeric(14,2);
+      BEGIN
+        FOR row IN
+          SELECT id, account_id, received_amount, agreed_amount
+          FROM platform_commercial_transfers
+          WHERE status = 'VERIFIED'
+          ORDER BY account_id, verified_at NULLS LAST, created_at, id
+        LOOP
+          IF current_account IS DISTINCT FROM row.account_id THEN
+            current_account := row.account_id;
+            available := 0;
+          END IF;
+          IF row.received_amount + available >= row.agreed_amount THEN
+            applied := LEAST(available, row.agreed_amount);
+            generated := row.received_amount - (row.agreed_amount - applied);
+            available := available - applied + generated;
+            UPDATE platform_commercial_transfers
+              SET credit_applied = applied, credit_generated = generated
+              WHERE id = row.id;
+          ELSE
+            UPDATE platform_commercial_transfers
+              SET status = 'PENDING', verified_at = NULL, verified_by = NULL,
+                  coverage_start = NULL, coverage_end = NULL,
+                  credit_applied = 0, credit_generated = 0
+              WHERE id = row.id;
+          END IF;
+        END LOOP;
+      END $$
     """)
     op.create_check_constraint("commercial_transfer_received_positive", "platform_commercial_transfers", "received_amount > 0")
     op.create_check_constraint("commercial_transfer_agreed_nonnegative", "platform_commercial_transfers", "agreed_amount >= 0")

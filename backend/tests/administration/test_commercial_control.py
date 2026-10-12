@@ -156,6 +156,49 @@ def test_gap_payment_reports_non_contiguous_periods_without_revaluing_old_debt(a
     assert Decimal(verified.json()["pending_balance"]) == Decimal("100")
 
 
+def test_pending_transfer_blocks_rate_change_and_keeps_explicit_price(api_client, security_world, db_session) -> None:
+    assert _configure(api_client, security_world).status_code == 200
+    company_id = security_world.tenant_a.company.id
+    base = f"/api/platform/commercial/accounts/{company_id}/transfers"
+    created = api_client.post(base, token=security_world.platform_admin.token, json={"transfer_date":"2026-10-12","received_amount":"100","agreed_amount":"100","discount_amount":"0","months_covered":1,"reference":"PRICE-100","idempotency_key":"reserved-price-100"})
+    transfer_id = created.json()["transfers"][0]["id"]
+    changed = api_client.put(f"/api/platform/commercial/accounts/{company_id}", token=security_world.platform_admin.token, json={"plan_type":"FOUNDER","monthly_fee":"200","currency":"USD","service_start_date":"2026-11-01","last_contact_at":None,"agreement":None,"owner":None,"next_contact_date":None})
+    assert changed.status_code == 409
+    assert "pendientes" in changed.json()["detail"]
+    verified = api_client.post(f"{base}/{transfer_id}/verify", token=security_world.platform_admin.token)
+    assert verified.status_code == 200
+    db_session.expire_all()
+    obligation = db_session.scalar(select(CommercialObligation).where(CommercialObligation.transfer_id == transfer_id))
+    assert (obligation.list_amount, obligation.amount_due, obligation.discount_amount) == (Decimal("100"), Decimal("100"), Decimal("0"))
+    assert db_session.get(CommercialTransfer, transfer_id).monthly_fee_snapshot == Decimal("100")
+    assert api_client.put(f"/api/platform/commercial/accounts/{company_id}", token=security_world.platform_admin.token, json={"plan_type":"FOUNDER","monthly_fee":"200","currency":"USD","service_start_date":"2026-11-01","last_contact_at":None,"agreement":None,"owner":None,"next_contact_date":None}).status_code == 200
+
+
+def test_rate_change_and_pending_creation_serialize_consistently(api_client, security_world, db_session) -> None:
+    company_id = security_world.tenant_b.company.id
+    configure = api_client.put(f"/api/platform/commercial/accounts/{company_id}", token=security_world.platform_admin.token, json={"plan_type":"STANDARD","monthly_fee":"100","currency":"USD","service_start_date":"2026-11-01","last_contact_at":None,"agreement":None,"owner":None,"next_contact_date":None})
+    assert configure.status_code == 200
+    base = f"/api/platform/commercial/accounts/{company_id}/transfers"
+    payload = {"transfer_date":"2026-10-12","received_amount":"100","agreed_amount":"100","discount_amount":"0","months_covered":1,"reference":"RATE-RACE","idempotency_key":"rate-create-race"}
+    update = {"plan_type":"STANDARD","monthly_fee":"200","currency":"USD","service_start_date":"2026-11-01","last_contact_at":None,"agreement":None,"owner":None,"next_contact_date":None}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        create_future = pool.submit(api_client.post, base, token=security_world.platform_admin.token, json=payload)
+        update_future = pool.submit(api_client.put, f"/api/platform/commercial/accounts/{company_id}", token=security_world.platform_admin.token, json=update)
+        create_response, update_response = create_future.result(), update_future.result()
+    assert create_response.status_code in {201, 422}
+    assert update_response.status_code in {200, 409}
+    # The only valid successful creation uses the price that won the account lock;
+    # no transfer may retain 100 while its obligation is later priced at 200.
+    rows = list(db_session.scalars(select(CommercialTransfer).where(CommercialTransfer.company_id == company_id)))
+    if rows:
+        row = rows[0]
+        assert row.list_amount == row.monthly_fee_snapshot * row.months_covered
+        if update_response.status_code == 200:
+            assert row.list_amount == Decimal("200")
+        else:
+            assert row.list_amount == Decimal("100")
+
+
 def test_concurrent_duplicate_submission_creates_one_transfer_and_audit_snapshot(api_client, security_world, db_session) -> None:
     assert _configure(api_client, security_world).status_code == 200
     url = f"/api/platform/commercial/accounts/{security_world.tenant_a.company.id}/transfers"

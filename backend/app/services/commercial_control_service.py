@@ -116,6 +116,9 @@ def update_account(session, context, company_id, payload, metadata):
     if has_history and payload.service_start_date != account.service_start_date: raise CommercialControlError("No se puede cambiar la fecha inicial de una cuenta con historial.", 409)
     before = {"plan_type": account.plan_type, "monthly_fee": str(account.monthly_fee), "currency": account.currency, "service_start_date": account.service_start_date.isoformat() if account.service_start_date else None}
     fee_changed = payload.monthly_fee != account.monthly_fee
+    pending_months = session.scalar(select(func.count()).select_from(CommercialTransfer).where(CommercialTransfer.account_id == account.id, CommercialTransfer.status == "PENDING", CommercialTransfer.months_covered > 0)) or 0
+    if fee_changed and pending_months:
+        raise CommercialControlError("Verifica o reversa las transferencias pendientes antes de cambiar la tarifa.", 409)
     for key, value in payload.model_dump().items(): setattr(account, key, value)
     session.flush()
     existing_rate = session.scalar(select(CommercialRate.id).where(CommercialRate.account_id == account.id))

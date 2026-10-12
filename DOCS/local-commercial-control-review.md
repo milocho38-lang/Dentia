@@ -45,3 +45,19 @@ La pantalla está en `/administracion/control-comercial`. Verificar al menos:
 - reintento del mismo envío;
 - cancelación y confirmación de reversión;
 - bloqueo de cambio de moneda con historial.
+
+## Compatibilidad de migraciones locales
+
+La revisión `20261012_0048` es inmutable. `20261012_0049` admite tanto una base
+limpia como una base que ya estaba en la `0048` original. Los pagos heredados
+insuficientes vuelven conservadoramente a `PENDING`: se conserva el importe
+recibido, pero no se inventa crédito ni cobertura. Las claves de idempotencia de
+`0048` no incluían la carga canónica; por eso un reintento heredado se trata como
+conflicto conservador y debe revisarse manualmente.
+
+El commit local intermedio `2f0a8b7` llegó a reutilizar el identificador `0048`
+con un esquema distinto. Solo las bases locales conocidas con datos ficticios
+pueden reconstruirse desde cero para salir de ese estado. Para cualquier base
+desconocida, detenerse, respaldar e identificar exactamente el esquema y los
+datos antes de diseñar una migración especial; nunca borrar ni reconstruirlos
+automáticamente.
