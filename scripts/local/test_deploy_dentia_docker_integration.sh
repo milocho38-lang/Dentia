@@ -48,6 +48,13 @@ export_evidence() {
   } >"$evidence_file"
 }
 
+completed_backup_path() {
+  local manifest
+  manifest="$(find "$BACKUPS" -mindepth 2 -maxdepth 2 -type f -name manifest.json -print -quit)"
+  [ -n "$manifest" ]
+  dirname "$manifest"
+}
+
 cleanup() {
   if [ -d "$ROOT" ]; then
     DENTIA_BACKEND_ENV_FILE="$ROOT/.env.production" \
@@ -207,7 +214,7 @@ if [ "$SCENARIO" = post_failure_recovery ]; then
   done
   [ -f "$ROOT/.run/maintenance_active" ]
   [ -f "$ROOT/backend/storage/.dentia-maintenance" ]
-  BACKUP_PATH="$(find "$BACKUPS" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+  BACKUP_PATH="$(completed_backup_path)"
   "$ROOT/scripts/production/verify_dentia_backup.sh" "$BACKUP_PATH" >/dev/null
   [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM patient_import_sources')" = 0 ]
   [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM patient_external_references')" = 0 ]
@@ -260,7 +267,7 @@ fi
 curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
 curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
 curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
-BACKUP_PATH="$(find "$BACKUPS" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+BACKUP_PATH="$(completed_backup_path)"
 "$ROOT/scripts/production/verify_dentia_backup.sh" "$BACKUP_PATH" >/dev/null
 ! tar -tzf "$BACKUPS"/*/storage.tar.gz | grep -q '.dentia-maintenance'
 
