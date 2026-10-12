@@ -7,6 +7,12 @@ export interface NavigationItem {
 
 export const navigationItems: NavigationItem[] = [
   {
+    label: "Control comercial",
+    href: "/administracion/control-comercial",
+    permission: "platform.commercial.view",
+    section: "Administración",
+  },
+  {
     label: "Solicitudes de demo",
     href: "/administracion/solicitudes-demo",
     permission: "platform.demo_requests.view",

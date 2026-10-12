@@ -168,6 +168,8 @@ PERMISSIONS = (
     PermissionDefinition("platform.demo_requests.view", "Ver solicitudes de demo", "platform", "Consultar solicitudes comerciales recibidas desde la website."),
     PermissionDefinition("platform.demo_requests.manage", "Gestionar solicitudes de demo", "platform", "Asignar, agendar y registrar el seguimiento de solicitudes de demo."),
     PermissionDefinition("platform.usage.view", "Ver métricas de adopción", "platform", "Consultar métricas agregadas de uso y adopción sin contenido clínico ni identificadores de pacientes."),
+    PermissionDefinition("platform.commercial.view", "Ver control comercial", "platform", "Consultar cartera comercial de clínicas."),
+    PermissionDefinition("platform.commercial.manage", "Gestionar control comercial", "platform", "Registrar, verificar y reversar movimientos comerciales."),
 )
 
 ALL_PERMISSION_CODES = frozenset(permission.code for permission in PERMISSIONS)
@@ -178,6 +180,8 @@ PLATFORM_PERMISSION_CODES = frozenset(
         "platform.demo_requests.view",
         "platform.demo_requests.manage",
         "platform.usage.view",
+        "platform.commercial.view",
+        "platform.commercial.manage",
         "consent.library.manage",
         "orthodontics.entitlement.manage",
         "periodontogram.pilot.view",
