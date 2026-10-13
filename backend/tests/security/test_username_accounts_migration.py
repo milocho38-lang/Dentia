@@ -178,4 +178,4 @@ def test_username_migration_preserves_security_identity_and_downgrade_fails_clos
 
     # Leave the shared test database at the actual application head for tests
     # that run after this focused historical migration assertion.
-    command.upgrade(config, IMPORT_REVISION)
+    command.upgrade(config, "head")

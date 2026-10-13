@@ -47,6 +47,7 @@ def test_import_migration_assigns_permission_only_to_clinic_admin_roles(
     assert assigned == {"ADMINISTRATOR", "DENTIST_ADMIN"}
     assert version == IMPORT_REVISION
     assert table_exists == "patient_external_references"
+    command.upgrade(config, "head")
 
 
 def test_import_migration_downgrade_fails_closed_before_any_mutation(
@@ -101,6 +102,9 @@ def test_import_migration_downgrade_fails_closed_before_any_mutation(
             """
         )
     ).scalar_one()
+    revision_before = db_session.execute(
+        text("SELECT version_num FROM alembic_version")
+    ).scalar_one()
     db_session.close()
 
     with pytest.raises(RuntimeError, match="Downgrade bloqueado"):
@@ -110,7 +114,7 @@ def test_import_migration_downgrade_fails_closed_before_any_mutation(
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == IMPORT_REVISION
+        ).scalar_one() == revision_before
         assert connection.execute(
             text("SELECT count(*) FROM patient_external_references WHERE id = :id"),
             {"id": reference_id},
@@ -132,3 +136,4 @@ def test_import_migration_downgrade_fails_closed_before_any_mutation(
                 """
             )
         ).scalar_one() == permission_links_before
+    command.upgrade(_config(), "head")
