@@ -110,11 +110,20 @@ SQL
 
 deploy_assert_pre_migration_invariants() {
   local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261006_0047}"
-  local revision duplicate_emails
+  local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected pre-deploy Alembic revision: $revision (expected $expected)."
-  duplicate_emails="$(deploy_db_scalar "SELECT count(*) FROM (SELECT correo_normalizado FROM usuarios GROUP BY correo_normalizado HAVING count(*) > 1) duplicates;")"
-  [ "$duplicate_emails" = "0" ] || dentia_fail "Existing normalized email duplicates block migration 0046."
+  if [ "$revision" = "20260926_0045" ]; then
+    [ "$(deploy_db_scalar "SELECT count(*) FROM (SELECT correo_normalizado FROM usuarios GROUP BY correo_normalizado HAVING count(*) > 1) duplicates;")" = "0" ] || dentia_fail "Existing normalized email duplicates block migration 0046."
+    return
+  fi
+  deploy_assert_current_account_identity_invariants
+}
+
+deploy_assert_current_account_identity_invariants() {
+  [ "$(deploy_db_scalar "SELECT count(*) FROM usuarios WHERE username_normalizado IS NULL OR btrim(username_normalizado) = '';")" = "0" ] || dentia_fail "Username completeness invariant failed."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM (SELECT username_normalizado FROM usuarios GROUP BY username_normalizado HAVING count(*) > 1) duplicates;")" = "0" ] || dentia_fail "Username uniqueness invariant failed."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM (SELECT empresa_id, correo_normalizado FROM usuarios GROUP BY empresa_id, correo_normalizado HAVING count(*) > 1) duplicates;")" = "0" ] || dentia_fail "Per-clinic normalized email uniqueness invariant failed."
 }
 
 deploy_assert_post_migration_invariants() {
@@ -122,7 +131,7 @@ deploy_assert_post_migration_invariants() {
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected post-deploy Alembic revision: $revision (expected $expected)."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM (SELECT username_normalizado FROM usuarios GROUP BY username_normalizado HAVING count(*) > 1) duplicates;")" = "0" ] || dentia_fail "Username uniqueness invariant failed."
+  deploy_assert_current_account_identity_invariants
   [ "$(deploy_db_scalar "SELECT count(*) FROM patient_import_sources;")" = "0" ] || dentia_fail "Patient import sources must be empty immediately after rollout."
   [ "$(deploy_db_scalar "SELECT count(*) FROM patient_external_references;")" = "0" ] || dentia_fail "Patient external references must be empty immediately after rollout."
   [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code = 'patients.import' AND is_active;")" = "1" ] || dentia_fail "Active patients.import permission was not created exactly once."

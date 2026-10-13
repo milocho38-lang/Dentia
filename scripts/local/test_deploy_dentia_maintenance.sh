@@ -180,6 +180,14 @@ case "$1" in
         if [ -f "$DEPLOY_TEST_HARNESS/migrated" ]; then printf '20261012_0049\n'; else printf '20261006_0047\n'; fi
       elif [[ "$sql" == *'pg_stat_activity'* ]]; then
         if [ "${DEPLOY_TEST_SCENARIO:-success}" = unknown_writers ]; then printf '1\n'; else printf '0\n'; fi
+      elif [[ "$sql" == *"username_normalizado IS NULL"* ]]; then
+        if [ "${DEPLOY_TEST_SCENARIO:-success}" = invalid_username_blank ]; then printf '1\n'; else printf '0\n'; fi
+      elif [[ "$sql" == *'GROUP BY username_normalizado'* ]]; then
+        if [ "${DEPLOY_TEST_SCENARIO:-success}" = invalid_username_duplicate ]; then printf '1\n'; else printf '0\n'; fi
+      elif [[ "$sql" == *'GROUP BY empresa_id, correo_normalizado'* ]]; then
+        if [ "${DEPLOY_TEST_SCENARIO:-success}" = invalid_tenant_email_duplicate ]; then printf '1\n'; else printf '0\n'; fi
+      elif [[ "$sql" == *'GROUP BY correo_normalizado'* ]]; then
+        printf '2\n'
       elif [[ "$sql" == *"permisos WHERE code = 'patients.import'"* ]]; then
         printf '1\n'
       else
@@ -269,6 +277,12 @@ run_case() {
       grep -Fq 'start:dentia-backend' "$log" || fail "$scenario did not restart old backend"
       grep -Fq 'start:dentia-frontend dentia-website' "$log" || fail "$scenario did not restart old frontend/website"
       [ ! -e "$harness/root/.run/maintenance_active" ] || fail "$scenario retained maintenance after safe recovery"
+      ;;
+    invalid_username_blank|invalid_username_duplicate|invalid_tenant_email_duplicate)
+      assert_absent "$log" fetch
+      assert_absent "$log" build-with-target-label
+      assert_absent "$log" backup
+      [ ! -e "$harness/root/.run/maintenance_active" ] || fail "$scenario entered maintenance"
       ;;
     migrate_fail|internal_smoke_fail|barrier_remove_fail)
       grep -Fq migrate "$log" || fail "migration was not attempted"
@@ -437,6 +451,9 @@ test_storage_archive_excludes_barrier() {
 
 bash -n "$DEPLOY_SOURCE"
 run_case success true
+run_case invalid_username_blank false
+run_case invalid_username_duplicate false
+run_case invalid_tenant_email_duplicate false
 run_case backup_fail false
 run_case restore_fail false
 run_case unknown_writers false

@@ -163,7 +163,7 @@ def test_username_migration_preserves_security_identity_and_downgrade_fails_clos
         rows = connection.execute(
             text(
                 """
-                SELECT id, empresa_id, correo_normalizado
+                SELECT id, empresa_id, correo_normalizado, username_normalizado
                 FROM usuarios
                 WHERE id IN (:user_id, :other_user_id)
                 ORDER BY id
@@ -175,6 +175,8 @@ def test_username_migration_preserves_security_identity_and_downgrade_fails_clos
         assert rows[0]["id"] != rows[1]["id"]
         assert rows[0]["empresa_id"] != rows[1]["empresa_id"]
         assert {row["correo_normalizado"] for row in rows} == {shared_email}
+        assert all(row["username_normalizado"] for row in rows)
+        assert len({row["username_normalizado"] for row in rows}) == 2
 
     # Leave the shared test database at the actual application head for tests
     # that run after this focused historical migration assertion.
