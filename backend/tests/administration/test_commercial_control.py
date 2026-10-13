@@ -1,5 +1,6 @@
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 
 from sqlalchemy import select, text
 
@@ -217,7 +218,7 @@ def test_concurrent_duplicate_submission_creates_one_transfer_and_audit_snapshot
 
 def test_future_transfer_rejected_and_database_checks_are_installed(api_client, security_world, db_session) -> None:
     assert _configure(api_client, security_world).status_code == 200
-    response = api_client.post(f"/api/platform/commercial/accounts/{security_world.tenant_a.company.id}/transfers", token=security_world.platform_admin.token, json={"transfer_date":"2026-10-13","received_amount":"100","agreed_amount":"100","months_covered":1,"reference":"FUTURE","idempotency_key":"future-transfer"})
+    response = api_client.post(f"/api/platform/commercial/accounts/{security_world.tenant_a.company.id}/transfers", token=security_world.platform_admin.token, json={"transfer_date":(date.today() + timedelta(days=1)).isoformat(),"received_amount":"100","agreed_amount":"100","months_covered":1,"reference":"FUTURE","idempotency_key":"future-transfer"})
     assert response.status_code == 422
     constraints = " ".join(db_session.execute(text("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'platform_commercial_transfers'::regclass")).scalars())
     assert "received_amount >" in constraints
