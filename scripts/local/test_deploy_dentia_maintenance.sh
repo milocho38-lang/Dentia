@@ -63,6 +63,13 @@ MOCK
 #!/usr/bin/env bash
 printf 'restore:%s\n' "$*" >>"$DEPLOY_TEST_LOG"
 [ "${DEPLOY_TEST_SCENARIO:-success}" != "restore_fail" ] || exit 32
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+  if [ "${args[$i]}" = --storage-dir ]; then
+    mkdir -p "${args[$((i+1))]}"
+    printf 'clinical-sentinel\n' >"${args[$((i+1))]}/sentinel"
+  fi
+done
 printf 'RESTORE_VALID\n'
 MOCK
   chmod +x "$harness/scripts/production/"*.sh
@@ -175,7 +182,11 @@ case "$1" in
       sql="${@: -1}"
       if [[ "$*" == *" -At -F "* ]]; then
         cat >/dev/null
-        printf 'auditoria_eventos|1|a\nauth_sessions|1|b\npacientes|1|c\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
+        if [ "${DEPLOY_TEST_SCENARIO:-success}" = recovery_hash_mismatch ] && [[ "$*" == *" -d dentia "* ]]; then
+          printf 'auditoria_eventos|1|changed\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
+        else
+          printf 'auditoria_eventos|1|a\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
+        fi
       elif [[ "$sql" == *'SELECT version_num'* ]]; then
         if [ -f "$DEPLOY_TEST_HARNESS/migrated" ]; then printf '20261012_0049\n'; else printf '20261006_0047\n'; fi
       elif [[ "$sql" == *'pg_stat_activity'* ]]; then
@@ -322,6 +333,76 @@ run_retry_case() {
   rm -rf "$harness"
 }
 
+prepare_recovery_harness() {
+  local harness="$1"
+  make_harness "$harness"
+  touch "$harness/migrated"
+  printf 'failed\n' >"$harness/root/.run/maintenance_active"
+  printf 'barrier\n' >"$harness/root/backend/storage/.dentia-maintenance"
+  mkdir -p "$harness/state"
+  printf 'false\n' >"$harness/state/dentia-backend"
+  printf 'false\n' >"$harness/state/dentia-frontend"
+  printf 'false\n' >"$harness/state/dentia-website"
+  mkdir -p "$harness/recovery-backup"
+  printf '{"alembic_revision":"20261006_0047"}\n' >"$harness/recovery-backup/manifest.json"
+}
+
+run_recovery_case() {
+  local scenario="$1" expect_success="$2"
+  local harness status=0 log
+  harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-recovery.XXXXXX")"
+  prepare_recovery_harness "$harness"
+  log="$harness/commands.log"
+  DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_SCENARIO="$scenario" \
+  DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
+  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
+  DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261012_0049 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
+    "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
+  if [ "$expect_success" = true ]; then
+    [ "$status" -eq 0 ] || fail "recovery $scenario failed with $status"
+    [ ! -e "$harness/root/.run/maintenance_active" ] || fail "successful recovery retained maintenance"
+    [ ! -e "$harness/root/backend/storage/.dentia-maintenance" ] || fail "successful recovery retained barrier"
+  else
+    [ "$status" -ne 0 ] || fail "recovery $scenario unexpectedly succeeded"
+    assert_absent "$log" 'start:dentia-backend'
+    [ -f "$harness/root/.run/maintenance_active" ] || fail "recovery $scenario cleared maintenance"
+    [ -f "$harness/root/backend/storage/.dentia-maintenance" ] || fail "recovery $scenario cleared barrier"
+  fi
+  if [ "$scenario" = success ] || [ "$scenario" = backup_fail ] || [ "$scenario" = recovery_hash_mismatch ]; then
+    [ -f "$harness/root/.run/deploy_recovery_baseline_${TARGET_SHA}.tsv" ] || fail "recovery $scenario did not preserve baseline"
+  fi
+  while IFS= read -r storage_path; do
+    [ ! -e "$storage_path" ] || fail "recovery $scenario retained temporary clinical storage: $storage_path"
+  done < <(awk '{for (i=1; i<=NF; i++) if ($i == "--storage-dir") print $(i+1)}' "$log")
+  printf 'recovery_%s OK\n' "$scenario"
+  rm -rf "$harness"
+}
+
+run_recovery_guard_case() {
+  local guard="$1"
+  local harness status=0 log
+  harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-recovery-guard.XXXXXX")"
+  prepare_recovery_harness "$harness"
+  log="$harness/commands.log"
+  case "$guard" in
+    marker) rm -f "$harness/root/.run/maintenance_active" ;;
+    barrier) rm -f "$harness/root/backend/storage/.dentia-maintenance" ;;
+    revision) rm -f "$harness/migrated" ;;
+    active) printf 'true\n' >"$harness/state/dentia-backend" ;;
+  esac
+  DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_SCENARIO=success \
+  DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
+  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
+  DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261012_0049 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
+    "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail "recovery guard $guard unexpectedly succeeded"
+  assert_absent "$log" 'start:dentia-backend'
+  printf 'recovery_guard_%s OK\n' "$guard"
+  rm -rf "$harness"
+}
+
 run_signal_case() {
   local harness
   harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-signal.XXXXXX")"
@@ -449,6 +530,32 @@ test_storage_archive_excludes_barrier() {
   rm -rf "$harness"
 }
 
+test_existing_import_data_is_preserved() {
+  grep -Fq "SELECT 'patient_import_sources', count(*)" "$DEPLOY_SOURCE" || \
+    fail "patient import sources are missing from the stable-data snapshot"
+  grep -Fq "SELECT 'patient_external_references', count(*)" "$DEPLOY_SOURCE" || \
+    fail "patient external references are missing from the stable-data snapshot"
+  ! grep -Fq 'Patient import sources must be empty immediately after rollout.' "$DEPLOY_SOURCE" || \
+    fail "deploy still rejects legitimate existing patient import sources"
+  ! grep -Fq 'Patient external references must be empty immediately after rollout.' "$DEPLOY_SOURCE" || \
+    fail "deploy still rejects legitimate existing patient external references"
+  printf 'existing_import_data_preservation OK\n'
+}
+
+test_intermediate_checkout_recovery_is_fail_closed() {
+  for required in \
+    'Recovery requires the explicit migrated revision guard.' \
+    'Recovery requires the already migrated 0049 database.' \
+    'Recovery checkout requires the maintenance marker.' \
+    'Recovery checkout requires the persistent write barrier.' \
+    'Recovery checkout requires all application containers stopped:'; do
+    grep -Fq "$required" "$DEPLOY_SOURCE" || fail "missing recovery guard: $required"
+  done
+  grep -Fq 'MAINTENANCE_ACTIVE=true' "$DEPLOY_SOURCE" || fail "recovery does not retain maintenance on failure"
+  grep -Fq 'MIGRATION_STARTED=true' "$DEPLOY_SOURCE" || fail "recovery could restart old containers on failure"
+  printf 'intermediate_checkout_recovery_fail_closed OK\n'
+}
+
 bash -n "$DEPLOY_SOURCE"
 run_case success true
 run_case invalid_username_blank false
@@ -461,8 +568,17 @@ run_case migrate_fail false
 run_case internal_smoke_fail false
 run_case barrier_remove_fail false
 run_retry_case
+run_recovery_case success true
+run_recovery_case backup_fail false
+run_recovery_case recovery_hash_mismatch false
+run_recovery_guard_case marker
+run_recovery_guard_case barrier
+run_recovery_guard_case revision
+run_recovery_guard_case active
 run_signal_case
 run_launcher_case
 run_real_extracted_launcher_case
 test_storage_archive_excludes_barrier
+test_existing_import_data_is_preserved
+test_intermediate_checkout_recovery_is_fail_closed
 printf 'maintenance deploy command-mock tests OK\n'

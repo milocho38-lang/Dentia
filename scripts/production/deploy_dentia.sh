@@ -90,8 +90,9 @@ deploy_resolve_target_image() {
 
 deploy_snapshot_stable_data() {
   local output="$1"
+  local database="${2:-$DENTIA_DB_NAME}"
   docker exec -i "$DENTIA_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DENTIA_DB_USER" \
-    -d "$DENTIA_DB_NAME" -At -F '|' <<'SQL' >"$output"
+    -d "$database" -At -F '|' <<'SQL' >"$output"
 SELECT 'usuarios', count(*), md5(coalesce(string_agg(id::text || ':' || password_hash, ',' ORDER BY id), '')) FROM usuarios
 UNION ALL
 SELECT 'usuario_roles', count(*), md5(coalesce(string_agg(id::text || ':' || usuario_id::text || ':' || rol_id::text, ',' ORDER BY id), '')) FROM usuario_roles
@@ -103,6 +104,10 @@ UNION ALL
 SELECT 'auditoria_eventos', count(*), md5(coalesce(string_agg(id::text, ',' ORDER BY id), '')) FROM auditoria_eventos
 UNION ALL
 SELECT 'pacientes', count(*), md5(coalesce(string_agg(id::text || ':' || empresa_id::text, ',' ORDER BY id), '')) FROM pacientes
+UNION ALL
+SELECT 'patient_import_sources', count(*), md5(coalesce(string_agg(row_to_json(source_row)::text, ',' ORDER BY source_row.id), '')) FROM patient_import_sources source_row
+UNION ALL
+SELECT 'patient_external_references', count(*), md5(coalesce(string_agg(row_to_json(reference_row)::text, ',' ORDER BY reference_row.id), '')) FROM patient_external_references reference_row
 ORDER BY 1;
 SQL
   [ -s "$output" ] || dentia_fail "Stable data snapshot is empty."
@@ -132,8 +137,6 @@ deploy_assert_post_migration_invariants() {
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected post-deploy Alembic revision: $revision (expected $expected)."
   deploy_assert_current_account_identity_invariants
-  [ "$(deploy_db_scalar "SELECT count(*) FROM patient_import_sources;")" = "0" ] || dentia_fail "Patient import sources must be empty immediately after rollout."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM patient_external_references;")" = "0" ] || dentia_fail "Patient external references must be empty immediately after rollout."
   [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code = 'patients.import' AND is_active;")" = "1" ] || dentia_fail "Active patients.import permission was not created exactly once."
   [ "$(deploy_db_scalar "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id = rp.permiso_id JOIN roles r ON r.id = rp.rol_id WHERE p.code = 'patients.import' AND rp.is_active AND r.code NOT IN ('ADMINISTRATOR', 'DENTIST_ADMIN');")" = "0" ] || dentia_fail "patients.import was actively assigned to an unauthorized role."
   [ "$(deploy_db_scalar "SELECT count(*) FROM roles r WHERE r.code IN ('ADMINISTRATOR', 'DENTIST_ADMIN') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id = rp.permiso_id WHERE rp.rol_id = r.id AND p.code = 'patients.import' AND p.is_active AND rp.is_active);")" = "0" ] || dentia_fail "Active patients.import is missing from an active authorized role."
@@ -163,6 +166,41 @@ deploy_cleanup_temporary_restore() {
   if [ -n "${RESTORE_STORAGE:-}" ] && [[ "$RESTORE_STORAGE" == /tmp/dentia_restore_deploy_* ]]; then
     rm -rf "$RESTORE_STORAGE"
   fi
+}
+
+deploy_validate_recovery_baseline() {
+  local backup="$1"
+  local baseline="$STATE_DIR/deploy_recovery_baseline_${TARGET_SHA}.tsv"
+  local candidate="$STATE_DIR/deploy_recovery_candidate_${TARGET_SHA}.tsv"
+  local live="$STATE_DIR/deploy_recovery_live_${TARGET_SHA}.tsv"
+  [ -d "$backup" ] || dentia_fail "Recovery backup directory is missing: $backup"
+  "$SCRIPT_DIR/verify_dentia_backup.sh" "$backup" >/dev/null
+  grep -Eq '"alembic_revision"[[:space:]]*:[[:space:]]*"20261006_0047"' "$backup/manifest.json" || \
+    dentia_fail "Recovery backup is not from the required pre-migration revision 0047."
+  RESTORE_SUFFIX="$(date -u +%Y%m%d_%H%M%S)_$$"
+  RESTORE_DB="dentia_restore_recovery_$RESTORE_SUFFIX"
+  RESTORE_STORAGE="/tmp/dentia_restore_deploy_$RESTORE_SUFFIX/storage"
+  dentia_info "Restoring the immutable pre-migration backup for recovery baseline verification..."
+  local restore_output
+  restore_output="$("$SCRIPT_DIR/restore_dentia_backup.sh" --backup "$backup" --temporary \
+    --database-name "$RESTORE_DB" --storage-dir "$RESTORE_STORAGE")"
+  printf '%s\n' "$restore_output" | grep -qx 'RESTORE_VALID' || \
+    dentia_fail "Recovery baseline restore did not report RESTORE_VALID."
+  deploy_snapshot_stable_data "$candidate" "$RESTORE_DB"
+  if [ -e "$baseline" ]; then
+    cmp -s "$baseline" "$candidate" || dentia_fail "Persisted recovery baseline differs from the immutable backup."
+    rm -f "$candidate"
+  else
+    mv "$candidate" "$baseline"
+    chmod 400 "$baseline" 2>/dev/null || true
+  fi
+  deploy_snapshot_stable_data "$live"
+  cmp -s "$baseline" "$live" || dentia_fail "Migrated stable data differs from the immutable pre-migration backup."
+  rm -f "$live"
+  deploy_cleanup_temporary_restore
+  RESTORE_DB=""
+  RESTORE_STORAGE=""
+  RECOVERY_BASELINE="$baseline"
 }
 
 deploy_restart_old_containers() {
@@ -249,8 +287,15 @@ DEPLOYED_COMMIT_REF="$(tr -d '[:space:]' <"$DEPLOYED_COMMIT_FILE")"
 OLD_COMMIT="$(git rev-parse "$DEPLOYED_COMMIT_REF^{commit}" 2>/dev/null || true)"
 [ -n "$OLD_COMMIT" ] || dentia_fail "Deployed commit record does not resolve to a local commit."
 CHECKOUT_COMMIT="$(git rev-parse HEAD)"
-if [ "$CHECKOUT_COMMIT" != "$OLD_COMMIT" ] && [ "$CHECKOUT_COMMIT" != "$TARGET_SHA" ]; then
-  dentia_fail "Clean checkout matches neither the verified deployed commit nor the approved retry target."
+RECOVERY_BACKUP="${DENTIA_RECOVERY_BACKUP_PATH:-}"
+RECOVERY_BASELINE=""
+if [ -n "$RECOVERY_BACKUP" ]; then
+  git merge-base --is-ancestor "$OLD_COMMIT" "$CHECKOUT_COMMIT" || \
+    dentia_fail "Recovery checkout is not descended from the verified deployed commit."
+  git merge-base --is-ancestor "$CHECKOUT_COMMIT" "$TARGET_SHA" || \
+    dentia_fail "Recovery checkout is not an ancestor of the approved target SHA."
+elif [ "$CHECKOUT_COMMIT" != "$OLD_COMMIT" ] && [ "$CHECKOUT_COMMIT" != "$TARGET_SHA" ]; then
+  dentia_fail "Normal deploy checkout matches neither the verified deployed commit nor the approved target."
 fi
 OLD_BACKEND_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$DENTIA_BACKEND_CONTAINER")"
 OLD_FRONTEND_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$DENTIA_FRONTEND_CONTAINER")"
@@ -269,6 +314,23 @@ WRITE_BARRIER_FILE="$HOST_STORAGE_ROOT/.dentia-maintenance"
 dentia_assert_storage_path_safe "$HOST_STORAGE_ROOT"
 [ -d "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is missing: $HOST_STORAGE_ROOT. Run prepare_dentia_persistent_storage.sh before deploy."
 [ -w "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is not writable: $HOST_STORAGE_ROOT"
+
+if [ -n "$RECOVERY_BACKUP" ]; then
+  [ "${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-}" = "20261012_0049" ] || \
+    dentia_fail "Recovery requires the explicit migrated revision guard."
+  [ "$(deploy_current_revision)" = "20261012_0049" ] || \
+    dentia_fail "Recovery requires the already migrated 0049 database."
+  [ -f "$MAINTENANCE_MARKER" ] || dentia_fail "Recovery checkout requires the maintenance marker."
+  [ -f "$WRITE_BARRIER_FILE" ] || dentia_fail "Recovery checkout requires the persistent write barrier."
+  for container in "$DENTIA_BACKEND_CONTAINER" "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_WEBSITE_CONTAINER"; do
+    [ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null || true)" = "false" ] || \
+      dentia_fail "Recovery checkout requires all application containers stopped: $container"
+  done
+  MAINTENANCE_ACTIVE=true
+  MIGRATION_STARTED=true
+  dentia_info "Verified fail-closed recovery state from an intermediate checkout."
+  deploy_validate_recovery_baseline "$RECOVERY_BACKUP"
+fi
 
 if docker inspect "$DENTIA_BACKEND_CONTAINER" >/dev/null 2>&1; then
   MOUNTS_JSON="$(docker inspect "$DENTIA_BACKEND_CONTAINER" --format '{{json .Mounts}}')"
@@ -321,7 +383,11 @@ deploy_assert_no_unknown_writers
 BEFORE_SNAPSHOT="$STATE_DIR/deploy_before_stable.tsv"
 AFTER_SNAPSHOT="$STATE_DIR/deploy_after_stable.tsv"
 umask 077
-deploy_snapshot_stable_data "$BEFORE_SNAPSHOT"
+if [ -n "$RECOVERY_BASELINE" ]; then
+  BEFORE_SNAPSHOT="$RECOVERY_BASELINE"
+else
+  deploy_snapshot_stable_data "$BEFORE_SNAPSHOT"
+fi
 
 dentia_info "Creating and verifying a consistent backup with writers stopped..."
 BACKUP_PATH="$(
