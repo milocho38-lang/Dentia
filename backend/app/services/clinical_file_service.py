@@ -51,7 +51,16 @@ def configured_max_size() -> int:
 
 def _root() -> Path:
     configured = os.getenv("CLINICAL_FILE_STORAGE_DIR")
-    return Path(configured).resolve() if configured else (Path(settings.branding_storage_dir).resolve().parent / "clinical_files")
+    if configured:
+        declared = Path(configured)
+        resolved = declared.resolve()
+        if os.getenv("APP_ENV", settings.app_env).casefold() == "production":
+            if declared != Path("/app/storage/clinical_files"):
+                raise RuntimeError("CLINICAL_FILE_STORAGE_DIR must be exactly /app/storage/clinical_files in production.")
+            if resolved != declared:
+                raise RuntimeError("CLINICAL_FILE_STORAGE_DIR must not traverse symlinks in production.")
+        return resolved
+    return Path(settings.branding_storage_dir).resolve().parent / "clinical_files"
 
 
 def resolve_storage_key(storage_key: str) -> Path:

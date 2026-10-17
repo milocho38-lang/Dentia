@@ -76,7 +76,7 @@ def test_rejects_invalid_empty_and_oversized_content(api_client, monkeypatch, se
     structural_fake = b"%PDF-1.7 /Type /Pages /Type /Page startxref\n10\n%%EOF"
     assert upload(api_client, tenant, content=structural_fake, idempotency_key="72345678-1234-4234-9234-123456789abc").status_code == 415
     assert upload(api_client, tenant, content=b"").status_code == 422
-    monkeypatch.setattr(clinical_file_service, "MAX_SIZE", 16)
+    monkeypatch.setenv("CLINICAL_FILE_MAX_BYTES", "16")
     oversized = upload(api_client, tenant, content=b"%PDF-1.7" + b"x" * 20)
     assert oversized.status_code == 413
 

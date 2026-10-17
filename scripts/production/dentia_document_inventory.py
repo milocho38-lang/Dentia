@@ -118,7 +118,6 @@ SELECT
   COALESCE(sha256, '') AS expected_sha256,
   COALESCE(fecha_carga::text, '') AS finalized_at
 FROM archivos_clinicos
-WHERE storage_status = 'AVAILABLE'
 ORDER BY empresa_id, id;
 """
 
@@ -175,6 +174,37 @@ def storage_relative_path(expected_storage_path: str) -> Path:
     prefix = PurePosixPath("backend/storage")
     relative = PurePosixPath(expected_storage_path).relative_to(prefix)
     return Path(*relative.parts)
+
+
+def include_interrupted_temporaries(rows: list[InventoryRow], storage_root: Path) -> list[InventoryRow]:
+    """Record .uploading bytes without making their absence an error.
+
+    PENDING/FAILED database rows are durable recovery metadata. Their final
+    binary may validly be absent, while any temporary binary that does exist
+    must be included and hash-verified by the backup.
+    """
+    storage_root = storage_root.resolve()
+    expanded: list[InventoryRow] = []
+    for row in rows:
+        expanded.append(row)
+        if row.entity_type != "clinical_file" or row.status not in {"PENDING", "FAILED"}:
+            continue
+        temporary_expected = str(PurePosixPath(row.expected_storage_path).with_suffix(".uploading"))
+        temporary_path = storage_root / storage_relative_path(temporary_expected)
+        if temporary_path.is_symlink() or temporary_path.is_file():
+            expanded.append(
+                InventoryRow(
+                    entity_type="clinical_file_temporary",
+                    record_id=row.record_id,
+                    empresa_id=row.empresa_id,
+                    status=f"{row.status}_UPLOADING",
+                    stored_path=str(PurePosixPath(row.stored_path).with_suffix(".uploading")),
+                    expected_storage_path=temporary_expected,
+                    expected_sha256=row.expected_sha256,
+                    finalized_at=row.finalized_at,
+                )
+            )
+    return expanded
 
 
 def query_documents(args: argparse.Namespace) -> list[InventoryRow]:
@@ -293,6 +323,10 @@ def validate_against_storage(rows: list[InventoryRow], storage_root: Path) -> di
             metrics["invalid_paths"] += 1
             continue
         if not file_path.is_file():
+            if row.entity_type == "clinical_file" and row.status in {"PENDING", "FAILED"}:
+                row.validation_result = "OK"
+                row.validation_detail = "binary_absence_allowed_for_interrupted_status"
+                continue
             row.validation_result = "ERROR"
             row.validation_detail = "missing_file"
             metrics["missing"] += 1
@@ -340,8 +374,9 @@ def print_metrics(metrics: dict[str, int]) -> None:
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
-    rows = query_documents(args)
-    metrics = validate_against_storage(rows, Path(args.storage_root))
+    storage_root = Path(args.storage_root)
+    rows = include_interrupted_temporaries(query_documents(args), storage_root)
+    metrics = validate_against_storage(rows, storage_root)
     write_inventory(Path(args.output), rows)
     Path(args.metrics_output).write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print_metrics(metrics)

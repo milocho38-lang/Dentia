@@ -215,10 +215,8 @@ if not env["CONSENT_FINAL_STORAGE_DIR"].startswith("/"):
 clinical_storage = Path(env["CLINICAL_FILE_STORAGE_DIR"])
 if not clinical_storage.is_absolute():
     raise SystemExit("[dentia][ERROR] CLINICAL_FILE_STORAGE_DIR must be absolute.")
-try:
-    clinical_storage.relative_to(Path("/app/storage"))
-except ValueError:
-    raise SystemExit("[dentia][ERROR] CLINICAL_FILE_STORAGE_DIR must be inside the persistent /app/storage mount.")
+if clinical_storage != Path("/app/storage/clinical_files"):
+    raise SystemExit("[dentia][ERROR] CLINICAL_FILE_STORAGE_DIR must be exactly /app/storage/clinical_files.")
 try:
     clinical_max_bytes = int(env["CLINICAL_FILE_MAX_BYTES"])
 except ValueError:

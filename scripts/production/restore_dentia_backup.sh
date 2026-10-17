@@ -98,18 +98,6 @@ dentia_assert_safe_restore_path "$STORAGE_DIR"
 
 docker inspect "$DENTIA_DB_CONTAINER" >/dev/null 2>&1 || dentia_fail "Database container not found: $DENTIA_DB_CONTAINER"
 
-dentia_info "Restoring database into: $DATABASE_NAME"
-if [ "$MODE" = "temporary" ]; then
-  docker exec "$DENTIA_DB_CONTAINER" dropdb -U "$DENTIA_DB_USER" --if-exists "$DATABASE_NAME"
-  docker exec "$DENTIA_DB_CONTAINER" createdb -U "$DENTIA_DB_USER" "$DATABASE_NAME"
-else
-  docker exec "$DENTIA_DB_CONTAINER" dropdb -U "$DENTIA_DB_USER" --if-exists "$DATABASE_NAME"
-  docker exec "$DENTIA_DB_CONTAINER" createdb -U "$DENTIA_DB_USER" "$DATABASE_NAME"
-fi
-docker exec -i "$DENTIA_DB_CONTAINER" pg_restore --no-owner --no-privileges -U "$DENTIA_DB_USER" -d "$DATABASE_NAME" <"$BACKUP_PATH/database.dump"
-
-dentia_info "Restoring storage into: $STORAGE_DIR"
-mkdir -p "$STORAGE_DIR"
 EXTRACT_DIR="$(mktemp -d "/tmp/dentia_restore_extract_${TIMESTAMP}.XXXXXX")"
 cleanup_extract() {
   rm -rf "$EXTRACT_DIR"
@@ -142,6 +130,90 @@ with tarfile.open(archive, "r:gz") as tar:
             raise SystemExit(f"links are not allowed in storage archive: {name}")
     tar.extractall(destination, members=members)
 PY
+
+dentia_info "Preflighting storage collisions before changing database or destination bytes..."
+python3 - "$EXTRACT_DIR/backend/storage" "$STORAGE_DIR" "$EXTRACT_DIR/storage" "$STORAGE_DIR/legacy-storage" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+def digest(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
+
+for index in range(1, len(sys.argv), 2):
+    source = Path(sys.argv[index]).resolve()
+    destination = Path(sys.argv[index + 1]).resolve()
+    if not source.is_dir() or not destination.exists():
+        continue
+    if destination.is_symlink() or not destination.is_dir():
+        raise SystemExit(f"storage destination is not a safe directory: {destination}")
+    for item in sorted(source.rglob("*")):
+        if item.is_symlink():
+            raise SystemExit(f"source storage link is not allowed: {item}")
+        target = destination / item.relative_to(source)
+        if item.is_dir():
+            if target.exists() and (target.is_symlink() or not target.is_dir()):
+                raise SystemExit(f"storage directory collision: {target}")
+            continue
+        if target.exists():
+            if target.is_symlink() or not target.is_file():
+                raise SystemExit(f"storage file collision: {target}")
+            if item.stat().st_size != target.stat().st_size or digest(item) != digest(target):
+                raise SystemExit(f"storage collision has different content: {target}")
+PY
+
+BACKUP_REVISION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("alembic_revision", ""))' "$BACKUP_PATH/manifest.json")"
+TARGET_DB_EXISTS=f
+if docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d postgres -X -tAc \
+  "SELECT datname FROM pg_database;" | grep -Fqx -- "$DATABASE_NAME"; then
+  TARGET_DB_EXISTS=t
+fi
+if [ "$TARGET_DB_EXISTS" = t ]; then
+  TARGET_HAS_CLINICAL_TABLE="$(docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d "$DATABASE_NAME" -X -tAc \
+    "SELECT to_regclass('public.archivos_clinicos') IS NOT NULL;" | tr -d '[:space:]')"
+  if [ "$TARGET_HAS_CLINICAL_TABLE" = t ]; then
+    TARGET_CLINICAL_IDS="$EXTRACT_DIR/target_clinical_ids.txt"
+    docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d "$DATABASE_NAME" -X -tAc \
+      "SELECT id::text FROM archivos_clinicos ORDER BY id;" >"$TARGET_CLINICAL_IDS"
+    if [ -s "$TARGET_CLINICAL_IDS" ]; then
+      [ "$BACKUP_REVISION" = 20261017_0050 ] || \
+        dentia_fail "Refusing restore: target has clinical-file records but backup revision is $BACKUP_REVISION, not 20261017_0050."
+      python3 - "$TARGET_CLINICAL_IDS" "$BACKUP_PATH/document_inventory.tsv" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+target_ids = {line.strip() for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()}
+with Path(sys.argv[2]).open(encoding="utf-8", newline="") as stream:
+    backup_ids = {
+        row["record_id"]
+        for row in csv.DictReader(stream, delimiter="\t")
+        if row["entity_type"] == "clinical_file"
+    }
+missing = sorted(target_ids - backup_ids)
+if missing:
+    raise SystemExit(
+        f"refusing restore: backup omits {len(missing)} clinical-file record(s) present in target"
+    )
+PY
+    fi
+  fi
+elif [ "$TARGET_DB_EXISTS" != f ]; then
+  dentia_fail "Unexpected target database existence result: $TARGET_DB_EXISTS"
+fi
+
+dentia_info "Restore preflight completed without mutating database or storage."
+dentia_info "Restoring database into: $DATABASE_NAME"
+docker exec "$DENTIA_DB_CONTAINER" dropdb -U "$DENTIA_DB_USER" --if-exists "$DATABASE_NAME"
+docker exec "$DENTIA_DB_CONTAINER" createdb -U "$DENTIA_DB_USER" "$DATABASE_NAME"
+docker exec -i "$DENTIA_DB_CONTAINER" pg_restore --no-owner --no-privileges -U "$DENTIA_DB_USER" -d "$DATABASE_NAME" <"$BACKUP_PATH/database.dump"
+
+dentia_info "Restoring storage into: $STORAGE_DIR"
+mkdir -p "$STORAGE_DIR"
 
 merge_storage_without_collisions() {
   local source="$1"

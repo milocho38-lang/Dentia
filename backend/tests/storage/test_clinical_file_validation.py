@@ -36,3 +36,25 @@ def test_rejects_invalid_max_size_configuration(monkeypatch, value: str):
 def test_accepts_default_max_size(monkeypatch):
     monkeypatch.delenv("CLINICAL_FILE_MAX_BYTES", raising=False)
     assert service.configured_max_size() == 25 * 1024 * 1024
+
+
+def test_production_rejects_lexical_storage_traversal(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("CLINICAL_FILE_STORAGE_DIR", "/app/storage/../tmp/clinical_files")
+    with pytest.raises(RuntimeError, match="exactly /app/storage/clinical_files"):
+        service._root()
+
+
+def test_production_rejects_symlinked_storage_root(monkeypatch):
+    original_resolve = Path.resolve
+
+    def resolve_with_symlink(self: Path, *args, **kwargs):
+        if self == Path("/app/storage/clinical_files"):
+            return Path("/tmp/escaped-clinical-files")
+        return original_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", resolve_with_symlink)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("CLINICAL_FILE_STORAGE_DIR", "/app/storage/clinical_files")
+    with pytest.raises(RuntimeError, match="must not traverse symlinks"):
+        service._root()

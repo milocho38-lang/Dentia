@@ -255,7 +255,9 @@ try {
     ["trivial-jwt.env", { JWT_SECRET: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, /JWT_SECRET is too trivial/],
     ["invalid-url.env", { DATABASE_URL: "not-a-url" }, /DATABASE_URL must use a PostgreSQL scheme/],
     ["clinical-storage-relative.env", { CLINICAL_FILE_STORAGE_DIR: "storage/clinical_files" }, /CLINICAL_FILE_STORAGE_DIR must be absolute/],
-    ["clinical-storage-unmounted.env", { CLINICAL_FILE_STORAGE_DIR: "/tmp/clinical_files" }, /must be inside the persistent \/app\/storage mount/],
+    ["clinical-storage-unmounted.env", { CLINICAL_FILE_STORAGE_DIR: "/tmp/clinical_files" }, /must be exactly \/app\/storage\/clinical_files/],
+    ["clinical-storage-traversal.env", { CLINICAL_FILE_STORAGE_DIR: "/app/storage/../tmp/clinical_files" }, /must be exactly \/app\/storage\/clinical_files/],
+    ["clinical-storage-other-subdir.env", { CLINICAL_FILE_STORAGE_DIR: "/app/storage/other" }, /must be exactly \/app\/storage\/clinical_files/],
     ["clinical-size-invalid.env", { CLINICAL_FILE_MAX_BYTES: "invalid" }, /CLINICAL_FILE_MAX_BYTES must be an integer/],
     ["clinical-size-excessive.env", { CLINICAL_FILE_MAX_BYTES: "104857601" }, /CLINICAL_FILE_MAX_BYTES must be between/],
     [
