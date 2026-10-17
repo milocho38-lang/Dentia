@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/users/ConfirmDialog";
 import { ClinicalRecordPage } from "@/components/patients/ClinicalRecordPage";
 import { OdontogramPage } from "@/components/patients/OdontogramPage";
 import { PatientWorkspaceNavigation } from "@/components/patients/PatientWorkspaceNavigation";
+import { PatientFilesWorkspace } from "@/components/patients/PatientFilesWorkspace";
 import { OrthodonticPatientWorkspace } from "@/components/orthodontics/OrthodonticPatientWorkspace";
 import { PeriodontogramWorkspace } from "@/components/periodontogram/PeriodontogramWorkspace";
 import { PatientConsentsWorkspace } from "@/components/consents/PatientConsentsWorkspace";
@@ -566,6 +567,10 @@ export function PatientDetail({ patientId }: { patientId: string }) {
             canUploadPaper={hasPermission("consent.paper.upload")}
             canFinalizePaper={hasPermission("consent.paper.finalize")}
           />
+        )}
+
+        {activeTab === "files" && (
+          <PatientFilesWorkspace patientId={patient.id} canView={hasPermission("clinical_files.view")} canCreate={hasPermission("clinical_files.create")} canManage={hasPermission("clinical_files.manage")} />
         )}
 
         {activeTab === "files" && <PatientFilesPlaceholder />}

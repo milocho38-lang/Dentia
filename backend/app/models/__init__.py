@@ -24,6 +24,7 @@ from app.models.clinical_record import (
     ClinicalTimelineEvent,
 )
 from app.models.clinical_document import ClinicalDocument
+from app.models.clinical_file import ClinicalFile
 from app.models.company import Company
 from app.models.commercial_control import CommercialAccount, CommercialObligation, CommercialRate, CommercialReconciliation, CommercialTransfer
 from app.models.consent_acceptance import (
@@ -120,6 +121,7 @@ __all__ = [
     "ClinicalRecord",
     "ClinicalTimelineEvent",
     "ClinicalDocument",
+    "ClinicalFile",
     "Company",
     "CommercialAccount",
     "CommercialObligation",

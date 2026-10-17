@@ -15,6 +15,7 @@ from app.routers.clinical_record_router import (
     router as clinical_record_router,
 )
 from app.routers.clinical_document_router import router as clinical_document_router
+from app.routers.clinical_file_router import router as clinical_file_router
 from app.routers.consent_template_router import router as consent_template_router
 from app.routers.consent_library_router import router as consent_library_router
 from app.routers.consent_instance_router import router as consent_instance_router
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(clinical_record_router)
     app.include_router(clinical_evolution_router)
     app.include_router(clinical_document_router)
+    app.include_router(clinical_file_router)
     app.include_router(consent_template_router)
     app.include_router(consent_library_router)
     app.include_router(consent_instance_router)
