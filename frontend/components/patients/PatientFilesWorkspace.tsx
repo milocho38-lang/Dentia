@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { deactivateClinicalFile, downloadClinicalFile, listClinicalFiles, uploadClinicalFile } from "@/services/clinicalFileService";
+import { deactivateClinicalFile, downloadClinicalFile, listClinicalFiles, reconcileClinicalFileUpload, uploadClinicalFile } from "@/services/clinicalFileService";
 import type { ClinicalFile } from "@/types/clinicalFile";
+import { canApplyUploadResult } from "@/lib/clinicalFileUploadState.mjs";
 
 const labels: Record<string, string> = { RADIOGRAPH: "Radiografía", EXAM: "Examen", PHOTOGRAPH: "Fotografía", DOCUMENT: "Documento", OTHER: "Otro" };
 
@@ -38,23 +39,25 @@ export function PatientFilesWorkspace({ patientId, canView, canCreate, canManage
     if (!selected || busy) return;
     const controller = new AbortController();
     const currentGeneration = generation.current;
-    const originalName = selected.name;
+    const uploadPatientId = patientId;
+    const idempotencyKey = crypto.randomUUID();
     upload.current = controller;
     setBusy(true); setMessage(null);
-    const data = new FormData(); data.set("archivo", selected); data.set("tipo", type); data.set("categoria", "GENERAL"); data.set("idempotency_key", crypto.randomUUID());
+    const data = new FormData(); data.set("archivo", selected); data.set("tipo", type); data.set("categoria", "GENERAL"); data.set("idempotency_key", idempotencyKey);
     try {
       await uploadClinicalFile(patientId, data, controller.signal);
-      if (currentGeneration !== generation.current) return;
+      if (!canApplyUploadResult(currentGeneration, generation.current, uploadPatientId, patientId)) return;
       setSelected(null); if (input.current) input.current.value = "";
       setMessage("Archivo cargado de forma segura."); await refresh();
     } catch (error) {
-      if (currentGeneration !== generation.current) return;
+      if (!canApplyUploadResult(currentGeneration, generation.current, uploadPatientId, patientId)) return;
       if (controller.signal.aborted) {
         try {
+          await reconcileClinicalFileUpload(patientId, idempotencyKey);
           const result = await listClinicalFiles(patientId);
-          setItems(result.items);
-          setMessage(result.items.some((item) => item.original_name === originalName) ? "La carga terminó en el servidor antes de cancelarse y fue reconciliada." : "La solicitud se canceló antes de confirmarse la carga.");
-        } catch { setMessage("No se pudo determinar el resultado de la carga cancelada. Actualiza la lista antes de reintentar."); }
+          if (!canApplyUploadResult(currentGeneration, generation.current, uploadPatientId, patientId)) return;
+          setItems(result.items); setMessage("La carga terminó en el servidor antes de cancelarse y fue reconciliada.");
+        } catch { if (canApplyUploadResult(currentGeneration, generation.current, uploadPatientId, patientId)) setMessage("No existe una carga confirmada para la solicitud cancelada."); }
       } else setMessage(error instanceof Error ? error.message : "No fue posible cargar el archivo.");
     } finally { if (currentGeneration === generation.current) { if (upload.current === controller) upload.current = null; setBusy(false); } }
   }

@@ -15,6 +15,8 @@ Implementa CU016 y CU017 para cargar, clasificar, listar, descargar y retirar de
 - Descarga exclusivamente autenticada por backend, con permiso y filtro de empresa, verificación SHA-256 y `no-store`.
 - Los archivos se desactivan con motivo y auditoría; no se eliminan físicamente.
 - Cada carga usa una clave idempotente por empresa; tras una interrupción el cliente reconcilia la lista antes de sugerir reintento.
+- La huella idempotente incluye contenido, nombre, clasificación, descripción y relaciones. Reutilizar la clave con otro payload produce conflicto.
+- La ruta física se deriva de empresa + clave idempotente. Si el proceso cae después de promover el archivo y antes del commit, el único candidato huérfano permanece privado y un reintento idéntico lo reconcilia; nunca se ejecuta limpieza amplia o por comodines.
 - La migración entrega permisos a administrador, odontólogo administrador y odontólogo. No se habilita para secretaría de forma implícita; esa decisión debe tomarse en la matriz de roles de cada clínica.
 
 ## Fuera de alcance

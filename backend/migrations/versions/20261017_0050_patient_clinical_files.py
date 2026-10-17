@@ -32,6 +32,7 @@ def upgrade():
         sa.Column("nombre_archivo", sa.String(300), nullable=False),
         sa.Column("ruta_archivo", sa.String(600), nullable=False, unique=True),
         sa.Column("idempotency_key", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("request_fingerprint", sa.String(64), nullable=False),
         sa.Column("mime_type", sa.String(100), nullable=False),
         sa.Column("tamano_bytes", sa.BigInteger(), nullable=False),
         sa.Column("sha256", sa.String(64), nullable=False),

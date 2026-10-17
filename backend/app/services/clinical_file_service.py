@@ -1,13 +1,15 @@
 import hashlib
+import json
 import os
 import re
 from io import BytesIO
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
 from fastapi import UploadFile
 from PIL import Image
+import pymupdf
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -62,12 +64,13 @@ def detect_mime(data: bytes) -> str | None:
 def validate_structure(data: bytes, mime: str) -> None:
     try:
         if mime == "application/pdf":
-            if not data.rstrip().endswith(b"%%EOF") or b"startxref" not in data or b"/Type /Page" not in data:
-                raise ValueError("incomplete PDF structure")
-            tail = data.rsplit(b"startxref", 1)[1].splitlines()
-            offsets = [line.strip() for line in tail if line.strip() and line.strip() != b"%%EOF"]
-            if not offsets or not offsets[0].isdigit() or int(offsets[0]) >= len(data):
-                raise ValueError("invalid PDF xref offset")
+            with pymupdf.open(stream=data, filetype="pdf") as document:
+                if document.needs_pass or document.page_count < 1 or document.page_count > 1000:
+                    raise ValueError("invalid or unsupported PDF")
+                for index in range(document.page_count):
+                    page = document.load_page(index)
+                    if page.rect.width <= 0 or page.rect.height <= 0:
+                        raise ValueError("invalid PDF page")
             return
         with Image.open(BytesIO(data)) as image:
             if image.width * image.height > MAX_IMAGE_PIXELS:
@@ -123,11 +126,6 @@ def _audit(session: Session, context: AuthContext, metadata: RequestMetadata, it
 
 async def upload_file(session: Session, context: AuthContext, patient_id: UUID, upload: UploadFile, file_type: str, category: str, description: str | None, treatment_id: UUID | None, appointment_id: UUID | None, idempotency_key: UUID, metadata: RequestMetadata) -> ClinicalFileResponse:
     _patient(session, context, patient_id)
-    existing = session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == context.user.company_id, ClinicalFile.idempotency_key == idempotency_key))
-    if existing:
-        if existing.patient_id != patient_id:
-            raise ClinicalFileError("La clave de idempotencia pertenece a otra solicitud.", 409)
-        return _response(existing)
     file_type, category = file_type.upper(), category.upper()
     if file_type not in FILE_TYPES or category not in CATEGORIES:
         raise ClinicalFileError("Tipo o categoría de archivo no válido.", 422)
@@ -144,11 +142,19 @@ async def upload_file(session: Session, context: AuthContext, patient_id: UUID, 
     if mime not in ALLOWED_MIME_TYPES:
         raise ClinicalFileError("El contenido del archivo no corresponde a un tipo permitido.", 415)
     validate_structure(data, mime)
-    item_id = uuid4()
+    normalized_name = safe_original_name(upload.filename)
+    normalized_description = (description or "").strip() or None
+    fingerprint = hashlib.sha256(json.dumps({"patient_id": str(patient_id), "treatment_id": str(treatment_id) if treatment_id else None, "appointment_id": str(appointment_id) if appointment_id else None, "file_type": file_type, "category": category, "original_name": normalized_name, "description": normalized_description, "mime_type": mime, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    existing = session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == context.user.company_id, ClinicalFile.idempotency_key == idempotency_key))
+    if existing:
+        if existing.patient_id != patient_id or existing.request_fingerprint != fingerprint:
+            raise ClinicalFileError("La clave de idempotencia ya fue usada con una solicitud diferente.", 409)
+        return _response(existing)
+    item_id = uuid5(NAMESPACE_URL, f"dentia-clinical-file:{context.user.company_id}:{idempotency_key}")
     storage_key = f"company_{context.user.company_id}/patients/patient_{patient_id}/{file_type.lower()}/{item_id}{EXTENSIONS[mime]}"
     path = resolve_storage_key(storage_key)
     _private_directory(path.parent)
-    temporary = path.with_suffix(path.suffix + ".uploading")
+    temporary = path.with_suffix(path.suffix + f".{uuid4()}.uploading")
     try:
         temporary.write_bytes(data)
         temporary.chmod(0o600)
@@ -158,21 +164,21 @@ async def upload_file(session: Session, context: AuthContext, patient_id: UUID, 
         temporary.unlink(missing_ok=True)
         path.unlink(missing_ok=True)
         raise ClinicalFileError("No fue posible almacenar el archivo.", 507)
-    item = ClinicalFile(id=item_id, company_id=context.user.company_id, patient_id=patient_id, treatment_id=treatment_id, appointment_id=appointment_id, file_type=file_type, category=category, original_name=safe_original_name(upload.filename), storage_key=storage_key, idempotency_key=idempotency_key, mime_type=mime, size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), description=(description or "").strip() or None, uploaded_at=datetime.now(timezone.utc), uploaded_by=context.user.id, is_active=True)
+    item = ClinicalFile(id=item_id, company_id=context.user.company_id, patient_id=patient_id, treatment_id=treatment_id, appointment_id=appointment_id, file_type=file_type, category=category, original_name=normalized_name, storage_key=storage_key, idempotency_key=idempotency_key, request_fingerprint=fingerprint, mime_type=mime, size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), description=normalized_description, uploaded_at=datetime.now(timezone.utc), uploaded_by=context.user.id, is_active=True)
     session.add(item)
     _audit(session, context, metadata, item, "CLINICAL_FILE_UPLOADED", {"patient_id": str(patient_id), "file_type": file_type, "category": category, "size_bytes": len(data), "sha256": item.sha256})
     try:
         session.commit()
     except IntegrityError:
         session.rollback()
-        path.unlink(missing_ok=True)
         existing = session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == context.user.company_id, ClinicalFile.idempotency_key == idempotency_key))
-        if existing and existing.patient_id == patient_id:
+        if existing and existing.patient_id == patient_id and existing.request_fingerprint == fingerprint:
             return _response(existing)
         raise ClinicalFileError("No fue posible reconciliar la carga.", 409)
     except Exception:
         session.rollback()
-        path.unlink(missing_ok=True)
+        # The deterministic, private path is intentionally retained. A retry with the
+        # same idempotency key overwrites/reconciles this single orphan candidate.
         raise
     return _response(item)
 
@@ -186,6 +192,14 @@ def list_files(session: Session, context: AuthContext, patient_id: UUID, file_ty
         query = query.where(ClinicalFile.category == category.upper())
     items = list(session.scalars(query.order_by(ClinicalFile.uploaded_at.desc())))
     return ClinicalFileListResponse(items=[_response(item) for item in items], total=len(items))
+
+
+def get_by_idempotency_key(session: Session, context: AuthContext, patient_id: UUID, key: UUID) -> ClinicalFileResponse:
+    _patient(session, context, patient_id)
+    item = session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == context.user.company_id, ClinicalFile.patient_id == patient_id, ClinicalFile.idempotency_key == key, ClinicalFile.is_active.is_(True)))
+    if item is None:
+        raise ClinicalFileError("No existe una carga confirmada para la solicitud.", 404)
+    return _response(item)
 
 
 def download_file(session: Session, context: AuthContext, file_id: UUID, metadata: RequestMetadata) -> tuple[Path, ClinicalFile]:

@@ -9,7 +9,7 @@ from app.core.auth_dependencies import get_request_metadata, require_permission
 from app.database.session import get_db
 from app.schemas.clinical_file_schema import ClinicalFileDeactivateRequest, ClinicalFileListResponse, ClinicalFileResponse
 from app.services.auth_service import AuthContext
-from app.services.clinical_file_service import ClinicalFileError, deactivate_file, download_file, list_files, upload_file
+from app.services.clinical_file_service import ClinicalFileError, deactivate_file, download_file, get_by_idempotency_key, list_files, upload_file
 
 router = APIRouter(tags=["Archivos clínicos"])
 
@@ -30,6 +30,14 @@ def list_endpoint(patient_id: UUID, session: Annotated[Session, Depends(get_db)]
 async def upload_endpoint(patient_id: UUID, request: Request, session: Annotated[Session, Depends(get_db)], context: Annotated[AuthContext, Depends(require_permission("clinical_files.create"))], archivo: Annotated[UploadFile, File()], tipo: Annotated[str, Form()], idempotency_key: Annotated[UUID, Form()], categoria: Annotated[str, Form()] = "GENERAL", descripcion: Annotated[str | None, Form()] = None, tratamiento_id: Annotated[UUID | None, Form()] = None, cita_id: Annotated[UUID | None, Form()] = None):
     try:
         return await upload_file(session, context, patient_id, archivo, tipo, categoria, descripcion, tratamiento_id, cita_id, idempotency_key, get_request_metadata(request))
+    except ClinicalFileError as exc:
+        raise _error(exc)
+
+
+@router.get("/api/patients/{patient_id}/clinical-files/requests/{idempotency_key}", response_model=ClinicalFileResponse)
+def reconcile_endpoint(patient_id: UUID, idempotency_key: UUID, session: Annotated[Session, Depends(get_db)], context: Annotated[AuthContext, Depends(require_permission("clinical_files.view"))]):
+    try:
+        return get_by_idempotency_key(session, context, patient_id, idempotency_key)
     except ClinicalFileError as exc:
         raise _error(exc)
 

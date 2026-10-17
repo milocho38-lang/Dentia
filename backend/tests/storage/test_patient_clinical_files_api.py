@@ -1,6 +1,7 @@
 from uuid import UUID
 from io import BytesIO
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from reportlab.pdfgen import canvas
 from sqlalchemy import select
@@ -69,6 +70,8 @@ def test_rejects_invalid_empty_and_oversized_content(api_client, monkeypatch, se
     tenant = security_world.tenant_a
     assert upload(api_client, tenant, content=b"<svg>not allowed</svg>", name="xray.pdf").status_code == 415
     assert upload(api_client, tenant, content=b"%PDF-1.7 fake %%EOF", idempotency_key="62345678-1234-4234-9234-123456789abc").status_code == 415
+    structural_fake = b"%PDF-1.7 /Type /Pages /Type /Page startxref\n10\n%%EOF"
+    assert upload(api_client, tenant, content=structural_fake, idempotency_key="72345678-1234-4234-9234-123456789abc").status_code == 415
     assert upload(api_client, tenant, content=b"").status_code == 422
     monkeypatch.setattr(clinical_file_service, "MAX_SIZE", 16)
     oversized = upload(api_client, tenant, content=b"%PDF-1.7" + b"x" * 20)
@@ -94,6 +97,8 @@ def test_idempotency_private_modes_integrity_audit_and_blank_reason(api_client, 
     key = "52345678-1234-4234-9234-123456789abc"
     first = upload(api_client, tenant, idempotency_key=key); second = upload(api_client, tenant, idempotency_key=key)
     assert first.status_code == second.status_code == 201 and first.json()["id"] == second.json()["id"]
+    conflict = upload(api_client, tenant, content=PDF + b"different", idempotency_key=key)
+    assert conflict.status_code == 409
     record = db_session.get(ClinicalFile, UUID(first.json()["id"])); db_session.refresh(record)
     path = clinical_file_service.resolve_storage_key(record.storage_key)
     assert os.stat(path).st_mode & 0o777 == 0o600
@@ -104,3 +109,14 @@ def test_idempotency_private_modes_integrity_audit_and_blank_reason(api_client, 
     assert response.status_code == 410
     event = db_session.scalar(select(AuditEvent).where(AuditEvent.entity_id == record.id, AuditEvent.action == "CLINICAL_FILE_INTEGRITY_FAILED"))
     assert event is not None and event.result == "FAILURE"
+
+
+def test_concurrent_idempotent_uploads_create_one_record(api_client, db_session, security_world):
+    tenant = security_world.tenant_a
+    key = "82345678-1234-4234-9234-123456789abc"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda _: upload(api_client, tenant, idempotency_key=key), range(2)))
+    assert [response.status_code for response in responses] == [201, 201]
+    assert len({response.json()["id"] for response in responses}) == 1
+    count = len(list(db_session.scalars(select(ClinicalFile).where(ClinicalFile.company_id == tenant.company.id, ClinicalFile.idempotency_key == UUID(key)))))
+    assert count == 1

@@ -7,6 +7,9 @@ export function listClinicalFiles(patientId: string) {
 export function uploadClinicalFile(patientId: string, form: FormData, signal?: AbortSignal) {
   return apiRequest<ClinicalFile>(`/api/patients/${patientId}/clinical-files`, { method: "POST", body: form, signal });
 }
+export function reconcileClinicalFileUpload(patientId: string, idempotencyKey: string) {
+  return apiRequest<ClinicalFile>(`/api/patients/${patientId}/clinical-files/requests/${idempotencyKey}`);
+}
 export function downloadClinicalFile(id: string) { return apiBlob(`/api/clinical-files/${id}/download`); }
 export function deactivateClinicalFile(id: string, reason: string) {
   return apiRequest<void>(`/api/clinical-files/${id}/deactivate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
