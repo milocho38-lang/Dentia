@@ -68,6 +68,7 @@ def test_tenant_isolation_permissions_and_authentication(api_client, security_wo
 def test_rejects_invalid_empty_and_oversized_content(api_client, monkeypatch, security_world):
     tenant = security_world.tenant_a
     assert upload(api_client, tenant, content=b"<svg>not allowed</svg>", name="xray.pdf").status_code == 415
+    assert upload(api_client, tenant, content=b"%PDF-1.7 fake %%EOF", idempotency_key="62345678-1234-4234-9234-123456789abc").status_code == 415
     assert upload(api_client, tenant, content=b"").status_code == 422
     monkeypatch.setattr(clinical_file_service, "MAX_SIZE", 16)
     oversized = upload(api_client, tenant, content=b"%PDF-1.7" + b"x" * 20)
