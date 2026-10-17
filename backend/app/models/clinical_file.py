@@ -26,6 +26,7 @@ class ClinicalFile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     storage_key: Mapped[str] = mapped_column("ruta_archivo", String(600), nullable=False, unique=True)
     idempotency_key: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    storage_status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", server_default="PENDING")
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column("tamano_bytes", BigInteger, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)

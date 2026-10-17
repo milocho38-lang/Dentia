@@ -33,6 +33,7 @@ def upgrade():
         sa.Column("ruta_archivo", sa.String(600), nullable=False, unique=True),
         sa.Column("idempotency_key", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("request_fingerprint", sa.String(64), nullable=False),
+        sa.Column("storage_status", sa.String(20), server_default="PENDING", nullable=False),
         sa.Column("mime_type", sa.String(100), nullable=False),
         sa.Column("tamano_bytes", sa.BigInteger(), nullable=False),
         sa.Column("sha256", sa.String(64), nullable=False),
@@ -53,6 +54,7 @@ def upgrade():
         sa.CheckConstraint("tipo_archivo IN ('RADIOGRAPH','EXAM','PHOTOGRAPH','DOCUMENT','OTHER')", name="ck_archivos_clinicos_tipo"),
         sa.CheckConstraint("categoria IN ('INITIAL','EVOLUTION','FINAL','LEGAL','LABORATORY','GENERAL')", name="ck_archivos_clinicos_categoria"),
         sa.CheckConstraint("tamano_bytes > 0", name="ck_archivos_clinicos_size"),
+        sa.CheckConstraint("storage_status IN ('PENDING','AVAILABLE','FAILED')", name="ck_archivos_clinicos_storage_status"),
         sa.UniqueConstraint("empresa_id", "idempotency_key", name="uq_archivos_clinicos_empresa_idempotency"),
     )
     op.create_index("ix_archivos_clinicos_empresa_paciente", "archivos_clinicos", ["empresa_id", "paciente_id"])

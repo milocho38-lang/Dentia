@@ -1,28 +1,31 @@
 from uuid import UUID
 from io import BytesIO
 import os
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 
 from reportlab.pdfgen import canvas
 from sqlalchemy import select
 
 from app.models.audit_event import AuditEvent
+from app.models.agenda import Patient
 from app.models.clinical_file import ClinicalFile
 from app.services import clinical_file_service
 
 
-def synthetic_pdf() -> bytes:
-    output = BytesIO(); document = canvas.Canvas(output); document.drawString(72, 720, "Synthetic clinical file"); document.save(); return output.getvalue()
+def synthetic_pdf(text="Synthetic clinical file") -> bytes:
+    output = BytesIO(); document = canvas.Canvas(output); document.drawString(72, 720, text); document.save(); return output.getvalue()
 
 
 PDF = synthetic_pdf()
+PDF_B = synthetic_pdf("Different synthetic file")
 
 
-def upload(api_client, tenant, *, content=PDF, name="synthetic-xray.pdf", token=None, idempotency_key="12345678-1234-4234-9234-123456789abc"):
+def upload(api_client, tenant, *, content=PDF, name="synthetic-xray.pdf", token=None, idempotency_key="12345678-1234-4234-9234-123456789abc", file_type="RADIOGRAPH", patient_id=None):
     return api_client.post(
-        f"/api/patients/{tenant.patient.id}/clinical-files",
+        f"/api/patients/{patient_id or tenant.patient.id}/clinical-files",
         token=token or tenant.dentist_admin.token,
-        data={"tipo": "RADIOGRAPH", "categoria": "INITIAL", "descripcion": "Radiografía sintética", "idempotency_key": idempotency_key},
+        data={"tipo": file_type, "categoria": "INITIAL", "descripcion": "Radiografía sintética", "idempotency_key": idempotency_key},
         files={"archivo": (name, content, "application/pdf")},
     )
 
@@ -120,3 +123,53 @@ def test_concurrent_idempotent_uploads_create_one_record(api_client, db_session,
     assert len({response.json()["id"] for response in responses}) == 1
     count = len(list(db_session.scalars(select(ClinicalFile).where(ClinicalFile.company_id == tenant.company.id, ClinicalFile.idempotency_key == UUID(key)))))
     assert count == 1
+    record = db_session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == tenant.company.id, ClinicalFile.idempotency_key == UUID(key)))
+    path = clinical_file_service.resolve_storage_key(record.storage_key)
+    assert path.read_bytes() == PDF
+    assert api_client.get(f"/api/clinical-files/{record.id}/download", token=tenant.dentist_admin.token).content == PDF
+
+
+def test_concurrent_conflicting_payload_never_overwrites_winner(api_client, db_session, security_world):
+    tenant = security_world.tenant_a
+    key = "92345678-1234-4234-9234-123456789abc"
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(lambda content: upload(api_client, tenant, content=content, idempotency_key=key), (PDF, PDF_B)))
+    assert sorted(response.status_code for response in responses) == [201, 409]
+    record = db_session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == tenant.company.id, ClinicalFile.idempotency_key == UUID(key)))
+    db_session.refresh(record)
+    path = clinical_file_service.resolve_storage_key(record.storage_key)
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == record.sha256
+    assert api_client.get(f"/api/clinical-files/{record.id}/download", token=tenant.dentist_admin.token).content == path.read_bytes()
+
+
+def test_same_key_conflicts_across_type_and_patient_without_extra_candidates(api_client, db_session, security_world):
+    tenant = security_world.tenant_a
+    other = Patient(company_id=tenant.company.id, first_names="Paciente", last_names="Sintético Dos", document_type="CC", document="SYNTH-2", normalized_document="SYNTH-2", mobile="+573000000001", normalized_mobile="573000000001", status="Activo", search_text="paciente sintetico dos", profile_complete=True, created_by=tenant.dentist_admin.user.id, updated_by=tenant.dentist_admin.user.id)
+    db_session.add(other); db_session.commit()
+    key = "a2345678-1234-4234-9234-123456789abc"
+    assert upload(api_client, tenant, idempotency_key=key).status_code == 201
+    assert upload(api_client, tenant, idempotency_key=key, file_type="EXAM").status_code == 409
+    assert upload(api_client, tenant, idempotency_key=key, patient_id=other.id).status_code == 409
+    records = list(db_session.scalars(select(ClinicalFile).where(ClinicalFile.company_id == tenant.company.id, ClinicalFile.idempotency_key == UUID(key))))
+    assert len(records) == 1
+    upload_dir = clinical_file_service.resolve_storage_key(f"company_{tenant.company.id}/uploads")
+    assert len([path for path in upload_dir.iterdir() if path.name == str(records[0].id)]) == 1
+
+
+def test_interrupted_promotion_is_inventoried_and_retry_recovers(api_client, db_session, monkeypatch, security_world):
+    tenant = security_world.tenant_a
+    key = "b2345678-1234-4234-9234-123456789abc"
+    original = clinical_file_service._private_directory
+    monkeypatch.setattr(clinical_file_service, "_private_directory", lambda _: (_ for _ in ()).throw(OSError("synthetic crash")))
+    interrupted = upload(api_client, tenant, idempotency_key=key)
+    assert interrupted.status_code == 500
+    record = db_session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == tenant.company.id, ClinicalFile.idempotency_key == UUID(key)))
+    db_session.refresh(record)
+    assert record.storage_status == "PENDING"
+    assert db_session.scalar(select(AuditEvent).where(AuditEvent.entity_id == record.id, AuditEvent.action == "CLINICAL_FILE_UPLOAD_REGISTERED")) is not None
+    monkeypatch.setattr(clinical_file_service, "_private_directory", original)
+    recovered = upload(api_client, tenant, idempotency_key=key)
+    assert recovered.status_code == 201
+    db_session.refresh(record)
+    assert record.storage_status == "AVAILABLE"
+    assert api_client.get(f"/api/clinical-files/{record.id}/download", token=tenant.dentist_admin.token).content == PDF
