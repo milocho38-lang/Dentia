@@ -281,6 +281,35 @@ docker run --rm --network "${PROJECT}_dentia-network" --env-file "$ROOT/.env.pro
   --entrypoint python "$OLD_BACKEND_ID" -c \
   "from sqlalchemy import text; from app.database.session import SessionLocal; s=SessionLocal(); assert s.scalar(text('SELECT count(*) FROM pacientes')) == 1; s.close(); print('OLD_CODE_ON_0050_OK')"
 
+# Exercise multipart requests through the same frontend proxy used by browsers.
+# An 11 MiB valid PDF must pass the historical 10 MiB boundary, while a 26 MiB
+# payload must reach the backend and be rejected by the configured 25 MiB limit.
+LOGIN_RESPONSE="$(curl -fsS -X POST "http://127.0.0.1:$FRONTEND_PORT/api/auth/login" \
+  -H 'Content-Type: application/json' \
+  --data '{"identifier":"synthetic-admin","password":"SyntheticPassword!42"}')"
+ACCESS_TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+PROXY_PDF="$HARNESS/proxy-upload.pdf"
+docker exec "$BACKEND_CONTAINER" python -c \
+  'import pymupdf; d=pymupdf.open(); d.new_page(); d.save("/tmp/proxy-upload.pdf")'
+docker cp "$BACKEND_CONTAINER:/tmp/proxy-upload.pdf" "$PROXY_PDF" >/dev/null
+truncate -s 11534336 "$PROXY_PDF"
+PROXY_UPLOAD_STATUS="$(curl -sS -o "$HARNESS/proxy-upload-response.json" -w '%{http_code}' \
+  -X POST "http://127.0.0.1:$FRONTEND_PORT/api/patients/00000000-0000-4000-8000-000000000123/clinical-files" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F 'tipo=DOCUMENT' -F 'categoria=GENERAL' \
+  -F 'idempotency_key=00000000-0000-4000-8000-000000000127' \
+  -F "archivo=@$PROXY_PDF;type=application/pdf")"
+[ "$PROXY_UPLOAD_STATUS" = 201 ]
+truncate -s 27262976 "$PROXY_PDF"
+PROXY_OVERSIZE_STATUS="$(curl -sS -o "$HARNESS/proxy-oversize-response.json" -w '%{http_code}' \
+  -X POST "http://127.0.0.1:$FRONTEND_PORT/api/patients/00000000-0000-4000-8000-000000000123/clinical-files" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F 'tipo=DOCUMENT' -F 'categoria=GENERAL' \
+  -F 'idempotency_key=00000000-0000-4000-8000-000000000128' \
+  -F "archivo=@$PROXY_PDF;type=application/pdf")"
+[ "$PROXY_OVERSIZE_STATUS" = 413 ]
+printf 'CLINICAL_PROXY_LIMIT_OK accepted_bytes=11534336 rejected_bytes=27262976\n'
+
 # Add one synthetic private binary after the migration, then prove that a new
 # complete backup inventories and restores its bytes and SHA-256.
 CLINICAL_ID="00000000-0000-4000-8000-000000000125"
@@ -293,6 +322,14 @@ CLINICAL_SHA="$(shasum -a 256 "$ROOT/backend/storage/clinical_files/$CLINICAL_KE
 CLINICAL_SIZE="$(wc -c <"$ROOT/backend/storage/clinical_files/$CLINICAL_KEY" | tr -d '[:space:]')"
 docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U dentia_integration -d dentia_integration -c \
   "INSERT INTO archivos_clinicos (id,empresa_id,paciente_id,tipo_archivo,categoria,nombre_archivo,ruta_archivo,idempotency_key,request_fingerprint,storage_status,mime_type,tamano_bytes,sha256,fecha_carga,cargado_por_usuario_id,is_active,created_at,updated_at) VALUES ('$CLINICAL_ID','$COMPANY_ID','00000000-0000-4000-8000-000000000123','DOCUMENT','GENERAL','synthetic.pdf','$CLINICAL_KEY','00000000-0000-4000-8000-000000000126',repeat('a',64),'AVAILABLE','application/pdf',$CLINICAL_SIZE,'$CLINICAL_SHA',now(),'$USER_ID',true,now(),now());" >/dev/null
+DOWNGRADE_STATUS=0
+DENTIA_IMAGE_TAG="$TARGET_SHA" compose run --rm -T --no-deps dentia-backend \
+  alembic -c alembic.ini downgrade 20261012_0049 \
+  >"$HARNESS/downgrade-with-clinical-data.log" 2>&1 || DOWNGRADE_STATUS=$?
+[ "$DOWNGRADE_STATUS" -ne 0 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261017_0050 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM archivos_clinicos WHERE id='$CLINICAL_ID'")" = 1 ]
+printf 'CLINICAL_DOWNGRADE_GUARD_OK revision=20261017_0050 status=%s\n' "$DOWNGRADE_STATUS"
 POST_BACKUP_PATH="$(DENTIA_PRODUCTION_DIR="$ROOT" DENTIA_BACKUP_DIR="$BACKUPS/post-0050" DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" "$ROOT/scripts/production/backup_dentia.sh" --no-prune | tail -n 1)"
 grep -Fq $'clinical_file\t00000000-0000-4000-8000-000000000125' "$POST_BACKUP_PATH/document_inventory.tsv"
 RESTORE_DB="dentia_restore_clinical_${SUFFIX}"
