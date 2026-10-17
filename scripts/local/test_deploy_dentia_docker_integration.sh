@@ -297,9 +297,10 @@ POST_BACKUP_PATH="$(DENTIA_PRODUCTION_DIR="$ROOT" DENTIA_BACKUP_DIR="$BACKUPS/po
 grep -Fq $'clinical_file\t00000000-0000-4000-8000-000000000125' "$POST_BACKUP_PATH/document_inventory.tsv"
 RESTORE_DB="dentia_restore_clinical_${SUFFIX}"
 RESTORE_STORAGE="$HARNESS/restored-clinical-storage"
-DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+RESTORE_OUTPUT="$(DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
   "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$POST_BACKUP_PATH" --temporary \
-  --database-name "$RESTORE_DB" --storage-dir "$RESTORE_STORAGE" | grep -qx 'RESTORE_VALID'
+  --database-name "$RESTORE_DB" --storage-dir "$RESTORE_STORAGE")"
+printf '%s\n' "$RESTORE_OUTPUT" | grep -qx 'RESTORE_VALID'
 cmp "$ROOT/backend/storage/clinical_files/$CLINICAL_KEY" "$RESTORE_STORAGE/clinical_files/$CLINICAL_KEY"
 docker exec "$DB_CONTAINER" dropdb -U dentia_integration --if-exists "$RESTORE_DB" >/dev/null
 printf 'corrupted-existing-destination\n' >"$RESTORE_STORAGE/clinical_files/$CLINICAL_KEY"
