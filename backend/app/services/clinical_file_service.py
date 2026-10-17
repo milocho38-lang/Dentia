@@ -1,12 +1,15 @@
 import hashlib
 import os
 import re
+from io import BytesIO
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
+from PIL import Image
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -19,9 +22,10 @@ from app.services.auth_service import AuthContext, RequestMetadata
 
 FILE_TYPES = {"RADIOGRAPH", "EXAM", "PHOTOGRAPH", "DOCUMENT", "OTHER"}
 CATEGORIES = {"INITIAL", "EVOLUTION", "FINAL", "LEGAL", "LABORATORY", "GENERAL"}
-ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/dicom"}
-EXTENSIONS = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "application/pdf": ".pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx", "application/dicom": ".dcm"}
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+EXTENSIONS = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "application/pdf": ".pdf"}
 MAX_SIZE = int(os.getenv("CLINICAL_FILE_MAX_BYTES", str(25 * 1024 * 1024)))
+MAX_IMAGE_PIXELS = 80_000_000
 
 
 class ClinicalFileError(RuntimeError):
@@ -52,11 +56,38 @@ def detect_mime(data: bytes) -> str | None:
         return "image/png"
     if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
         return "image/webp"
-    if data.startswith(b"PK\x03\x04") and b"[Content_Types].xml" in data and b"word/" in data:
-        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    if len(data) >= 132 and data[128:132] == b"DICM":
-        return "application/dicom"
     return None
+
+
+def validate_structure(data: bytes, mime: str) -> None:
+    try:
+        if mime == "application/pdf":
+            if not data.rstrip().endswith(b"%%EOF") or b"startxref" not in data or b"/Type /Page" not in data:
+                raise ValueError("incomplete PDF structure")
+            tail = data.rsplit(b"startxref", 1)[1].splitlines()
+            offsets = [line.strip() for line in tail if line.strip() and line.strip() != b"%%EOF"]
+            if not offsets or not offsets[0].isdigit() or int(offsets[0]) >= len(data):
+                raise ValueError("invalid PDF xref offset")
+            return
+        with Image.open(BytesIO(data)) as image:
+            if image.width * image.height > MAX_IMAGE_PIXELS:
+                raise ValueError("image dimensions exceed limit")
+            expected = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}[mime]
+            if image.format != expected:
+                raise ValueError("format mismatch")
+            image.verify()
+    except Exception as exc:
+        raise ClinicalFileError("El archivo está truncado, dañado o no tiene una estructura válida.", 415) from exc
+
+
+def _private_directory(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    current, root = path, _root()
+    while current == root or root in current.parents:
+        current.chmod(0o700)
+        if current == root:
+            break
+        current = current.parent
 
 
 def safe_original_name(name: str | None) -> str:
@@ -86,12 +117,17 @@ def _get(session: Session, context: AuthContext, file_id: UUID, *, active: bool 
     return item
 
 
-def _audit(session: Session, context: AuthContext, metadata: RequestMetadata, item: ClinicalFile, action: str, detail: dict) -> None:
-    session.add(AuditEvent(company_id=context.user.company_id, user_id=context.user.id, session_id=context.auth_session.id, entity="clinical_file", entity_id=item.id, action=action, result="SUCCESS", detail=detail, ip_address=metadata.ip_address, user_agent=metadata.user_agent))
+def _audit(session: Session, context: AuthContext, metadata: RequestMetadata, item: ClinicalFile, action: str, detail: dict, result: str = "SUCCESS") -> None:
+    session.add(AuditEvent(company_id=context.user.company_id, user_id=context.user.id, session_id=context.auth_session.id, entity="clinical_file", entity_id=item.id, action=action, result=result, detail=detail, ip_address=metadata.ip_address, user_agent=metadata.user_agent))
 
 
-async def upload_file(session: Session, context: AuthContext, patient_id: UUID, upload: UploadFile, file_type: str, category: str, description: str | None, treatment_id: UUID | None, appointment_id: UUID | None, metadata: RequestMetadata) -> ClinicalFileResponse:
+async def upload_file(session: Session, context: AuthContext, patient_id: UUID, upload: UploadFile, file_type: str, category: str, description: str | None, treatment_id: UUID | None, appointment_id: UUID | None, idempotency_key: UUID, metadata: RequestMetadata) -> ClinicalFileResponse:
     _patient(session, context, patient_id)
+    existing = session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == context.user.company_id, ClinicalFile.idempotency_key == idempotency_key))
+    if existing:
+        if existing.patient_id != patient_id:
+            raise ClinicalFileError("La clave de idempotencia pertenece a otra solicitud.", 409)
+        return _response(existing)
     file_type, category = file_type.upper(), category.upper()
     if file_type not in FILE_TYPES or category not in CATEGORIES:
         raise ClinicalFileError("Tipo o categoría de archivo no válido.", 422)
@@ -107,18 +143,33 @@ async def upload_file(session: Session, context: AuthContext, patient_id: UUID, 
     mime = detect_mime(data)
     if mime not in ALLOWED_MIME_TYPES:
         raise ClinicalFileError("El contenido del archivo no corresponde a un tipo permitido.", 415)
+    validate_structure(data, mime)
     item_id = uuid4()
     storage_key = f"company_{context.user.company_id}/patients/patient_{patient_id}/{file_type.lower()}/{item_id}{EXTENSIONS[mime]}"
     path = resolve_storage_key(storage_key)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _private_directory(path.parent)
     temporary = path.with_suffix(path.suffix + ".uploading")
-    temporary.write_bytes(data)
-    temporary.replace(path)
-    item = ClinicalFile(id=item_id, company_id=context.user.company_id, patient_id=patient_id, treatment_id=treatment_id, appointment_id=appointment_id, file_type=file_type, category=category, original_name=safe_original_name(upload.filename), storage_key=storage_key, mime_type=mime, size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), description=(description or "").strip() or None, uploaded_at=datetime.now(timezone.utc), uploaded_by=context.user.id, is_active=True)
+    try:
+        temporary.write_bytes(data)
+        temporary.chmod(0o600)
+        temporary.replace(path)
+        path.chmod(0o600)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
+        raise ClinicalFileError("No fue posible almacenar el archivo.", 507)
+    item = ClinicalFile(id=item_id, company_id=context.user.company_id, patient_id=patient_id, treatment_id=treatment_id, appointment_id=appointment_id, file_type=file_type, category=category, original_name=safe_original_name(upload.filename), storage_key=storage_key, idempotency_key=idempotency_key, mime_type=mime, size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), description=(description or "").strip() or None, uploaded_at=datetime.now(timezone.utc), uploaded_by=context.user.id, is_active=True)
     session.add(item)
     _audit(session, context, metadata, item, "CLINICAL_FILE_UPLOADED", {"patient_id": str(patient_id), "file_type": file_type, "category": category, "size_bytes": len(data), "sha256": item.sha256})
     try:
         session.commit()
+    except IntegrityError:
+        session.rollback()
+        path.unlink(missing_ok=True)
+        existing = session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == context.user.company_id, ClinicalFile.idempotency_key == idempotency_key))
+        if existing and existing.patient_id == patient_id:
+            return _response(existing)
+        raise ClinicalFileError("No fue posible reconciliar la carga.", 409)
     except Exception:
         session.rollback()
         path.unlink(missing_ok=True)
@@ -141,10 +192,14 @@ def download_file(session: Session, context: AuthContext, file_id: UUID, metadat
     item = _get(session, context, file_id)
     path = resolve_storage_key(item.storage_key)
     if not path.is_file() or path.stat().st_size != item.size_bytes:
+        _audit(session, context, metadata, item, "CLINICAL_FILE_INTEGRITY_FAILED", {"reason": "missing_or_size_mismatch"}, "FAILURE")
+        session.commit()
         raise ClinicalFileError("El archivo no está disponible o no supera la verificación de integridad.", 410)
     if hashlib.sha256(path.read_bytes()).hexdigest() != item.sha256:
+        _audit(session, context, metadata, item, "CLINICAL_FILE_INTEGRITY_FAILED", {"reason": "sha256_mismatch"}, "FAILURE")
+        session.commit()
         raise ClinicalFileError("El archivo no supera la verificación de integridad.", 410)
-    _audit(session, context, metadata, item, "CLINICAL_FILE_DOWNLOADED", {"patient_id": str(item.patient_id), "sha256": item.sha256})
+    _audit(session, context, metadata, item, "CLINICAL_FILE_DOWNLOAD_AUTHORIZED", {"patient_id": str(item.patient_id), "sha256": item.sha256})
     session.commit()
     return path, item
 

@@ -573,7 +573,6 @@ export function PatientDetail({ patientId }: { patientId: string }) {
           <PatientFilesWorkspace patientId={patient.id} canView={hasPermission("clinical_files.view")} canCreate={hasPermission("clinical_files.create")} canManage={hasPermission("clinical_files.manage")} />
         )}
 
-        {activeTab === "files" && <PatientFilesPlaceholder />}
       </section>
 
       <CreateTreatmentDialog
@@ -2036,23 +2035,6 @@ function clinicalDocumentStatusLabel(status: ClinicalDocument["status"]) {
     FINALIZED: "Finalizado",
     VOIDED: "Anulado",
   }[status];
-}
-
-function PatientFilesPlaceholder() {
-  return (
-    <WorkspacePanel
-      title="Archivos clínicos"
-      description="Espacio preparado para radiografías, fotografías, tomografías y documentos PDF clínicos."
-    >
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-        <p className="text-lg font-black text-slate-900">Carga de archivos próximamente</p>
-        <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-          Esta sección queda reservada para futuras radiografías, fotografías clínicas,
-          tomografías, consentimientos, certificados y documentos externos del paciente.
-        </p>
-      </div>
-    </WorkspacePanel>
-  );
 }
 
 function CreateTreatmentDialog({

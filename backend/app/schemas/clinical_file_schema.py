@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ClinicalFileResponse(BaseModel):
@@ -27,3 +27,8 @@ class ClinicalFileListResponse(BaseModel):
 
 class ClinicalFileDeactivateRequest(BaseModel):
     reason: str = Field(min_length=5, max_length=500)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value

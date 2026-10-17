@@ -27,9 +27,9 @@ def list_endpoint(patient_id: UUID, session: Annotated[Session, Depends(get_db)]
 
 
 @router.post("/api/patients/{patient_id}/clinical-files", response_model=ClinicalFileResponse, status_code=201)
-async def upload_endpoint(patient_id: UUID, request: Request, session: Annotated[Session, Depends(get_db)], context: Annotated[AuthContext, Depends(require_permission("clinical_files.create"))], archivo: Annotated[UploadFile, File()], tipo: Annotated[str, Form()], categoria: Annotated[str, Form()] = "GENERAL", descripcion: Annotated[str | None, Form()] = None, tratamiento_id: Annotated[UUID | None, Form()] = None, cita_id: Annotated[UUID | None, Form()] = None):
+async def upload_endpoint(patient_id: UUID, request: Request, session: Annotated[Session, Depends(get_db)], context: Annotated[AuthContext, Depends(require_permission("clinical_files.create"))], archivo: Annotated[UploadFile, File()], tipo: Annotated[str, Form()], idempotency_key: Annotated[UUID, Form()], categoria: Annotated[str, Form()] = "GENERAL", descripcion: Annotated[str | None, Form()] = None, tratamiento_id: Annotated[UUID | None, Form()] = None, cita_id: Annotated[UUID | None, Form()] = None):
     try:
-        return await upload_file(session, context, patient_id, archivo, tipo, categoria, descripcion, tratamiento_id, cita_id, get_request_metadata(request))
+        return await upload_file(session, context, patient_id, archivo, tipo, categoria, descripcion, tratamiento_id, cita_id, idempotency_key, get_request_metadata(request))
     except ClinicalFileError as exc:
         raise _error(exc)
 

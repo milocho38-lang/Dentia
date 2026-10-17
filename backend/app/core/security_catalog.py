@@ -445,6 +445,7 @@ DENTIST_ADMIN_PERMISSIONS = SECRETARY_PERMISSIONS | DENTIST_PERMISSIONS | frozen
         "reports.clinical_aggregate",
         "reports.cross_site",
         "clinical_documents.void",
+        "clinical_files.manage",
         "prescriptions.void",
         "consent.template.read",
         "consent.template.create",

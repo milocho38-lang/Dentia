@@ -10,9 +10,11 @@ Implementa CU016 y CU017 para cargar, clasificar, listar, descargar y retirar de
 
 - Storage local privado, configurable con `CLINICAL_FILE_STORAGE_DIR`; 25 MB por defecto, configurable con `CLINICAL_FILE_MAX_BYTES`.
 - Claves físicas opacas bajo empresa y paciente; el nombre original sólo se conserva como metadato seguro.
-- Validación por firma real de PDF, JPEG, PNG, WebP, DOCX y DICOM, sin confiar en extensión o `Content-Type` del cliente.
+- Validación de firma y estructura de PDF, JPEG, PNG y WebP, sin confiar en extensión o `Content-Type` del cliente. DOCX y DICOM quedan restringidos hasta incorporar validadores específicos y límites seguros.
+- Esta validación rechaza archivos truncados y límites de imágenes descomprimidas, pero no sustituye análisis antimalware.
 - Descarga exclusivamente autenticada por backend, con permiso y filtro de empresa, verificación SHA-256 y `no-store`.
 - Los archivos se desactivan con motivo y auditoría; no se eliminan físicamente.
+- Cada carga usa una clave idempotente por empresa; tras una interrupción el cliente reconcilia la lista antes de sugerir reintento.
 - La migración entrega permisos a administrador, odontólogo administrador y odontólogo. No se habilita para secretaría de forma implícita; esa decisión debe tomarse en la matriz de roles de cada clínica.
 
 ## Fuera de alcance
