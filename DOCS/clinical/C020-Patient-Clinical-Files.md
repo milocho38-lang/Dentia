@@ -17,6 +17,7 @@ Implementa CU016 y CU017 para cargar, clasificar, listar, descargar y retirar de
 - Cada carga usa una clave idempotente por empresa; tras una interrupción el cliente reconcilia la lista antes de sugerir reintento.
 - La huella idempotente incluye contenido, nombre, clasificación, descripción y relaciones. Reutilizar la clave con otro payload produce conflicto.
 - Antes de promover bytes se registra y audita un intento `PENDING`. Un bloqueo advisory por empresa + clave arbitra solicitudes concurrentes. La ruta física única se deriva sólo de esa identidad opaca, no de paciente, tipo o MIME. Un reintento idéntico recupera `PENDING`; los payloads distintos reciben conflicto antes de tocar el archivo. Nunca se ejecuta limpieza amplia o por comodines.
+- El temporal también es determinístico (`<id>.uploading`) y sólo se manipula bajo el mismo lock. Si hay caída entre escritura y promoción, el retry valida tamaño y SHA-256 contra el registro `PENDING` antes de promoverlo.
 - La migración entrega permisos a administrador, odontólogo administrador y odontólogo. No se habilita para secretaría de forma implícita; esa decisión debe tomarse en la matriz de roles de cada clínica.
 
 ## Fuera de alcance

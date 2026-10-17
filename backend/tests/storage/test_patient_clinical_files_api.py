@@ -173,3 +173,22 @@ def test_interrupted_promotion_is_inventoried_and_retry_recovers(api_client, db_
     db_session.refresh(record)
     assert record.storage_status == "AVAILABLE"
     assert api_client.get(f"/api/clinical-files/{record.id}/download", token=tenant.dentist_admin.token).content == PDF
+
+
+def test_deterministic_temporary_survives_crash_and_is_reconciled(api_client, db_session, monkeypatch, security_world):
+    tenant = security_world.tenant_a
+    key = "c2345678-1234-4234-9234-123456789abc"
+    original = clinical_file_service._private_directory
+    monkeypatch.setattr(clinical_file_service, "_private_directory", lambda _: (_ for _ in ()).throw(OSError("synthetic pre-write interruption")))
+    assert upload(api_client, tenant, idempotency_key=key).status_code == 500
+    record = db_session.scalar(select(ClinicalFile).where(ClinicalFile.company_id == tenant.company.id, ClinicalFile.idempotency_key == UUID(key)))
+    path = clinical_file_service.resolve_storage_key(record.storage_key)
+    monkeypatch.setattr(clinical_file_service, "_private_directory", original)
+    clinical_file_service._private_directory(path.parent)
+    temporary = path.with_suffix(".uploading")
+    temporary.write_bytes(PDF); temporary.chmod(0o600)
+    recovered = upload(api_client, tenant, idempotency_key=key)
+    assert recovered.status_code == 201
+    db_session.refresh(record)
+    assert record.storage_status == "AVAILABLE"
+    assert path.read_bytes() == PDF and not temporary.exists()

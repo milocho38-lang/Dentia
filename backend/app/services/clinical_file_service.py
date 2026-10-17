@@ -5,7 +5,7 @@ import re
 from io import BytesIO
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
+from uuid import UUID, uuid5, NAMESPACE_URL
 
 from fastapi import UploadFile
 from PIL import Image
@@ -90,6 +90,19 @@ def _private_directory(path: Path) -> None:
         if current == root:
             break
         current = current.parent
+
+
+def _promote_pending_file(data: bytes, path: Path, expected_sha256: str) -> None:
+    temporary = path.with_suffix(".uploading")
+    if temporary.is_file():
+        valid_pending = temporary.stat().st_size == len(data) and hashlib.sha256(temporary.read_bytes()).hexdigest() == expected_sha256
+        if not valid_pending:
+            raise ClinicalFileError("El temporal pendiente no coincide con la solicitud registrada.", 409)
+    else:
+        temporary.write_bytes(data)
+        temporary.chmod(0o600)
+    temporary.replace(path)
+    path.chmod(0o600)
 
 
 def safe_original_name(name: str | None) -> str:
@@ -178,12 +191,9 @@ async def upload_file(session: Session, context: AuthContext, patient_id: UUID, 
         session.commit()
         return _response(item)
     _private_directory(path.parent)
-    temporary = path.with_suffix(path.suffix + f".{uuid4()}.uploading")
+    temporary = path.with_suffix(".uploading")
     try:
-        temporary.write_bytes(data)
-        temporary.chmod(0o600)
-        temporary.replace(path)
-        path.chmod(0o600)
+        _promote_pending_file(data, path, item.sha256)
     except Exception:
         temporary.unlink(missing_ok=True)
         path.unlink(missing_ok=True)
