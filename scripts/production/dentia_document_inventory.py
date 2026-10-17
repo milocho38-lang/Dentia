@@ -100,6 +100,28 @@ FROM (
 ORDER BY entity_type, empresa_id, record_id;
 """
 
+CLINICAL_FILES_QUERY = r"""
+SELECT
+  'clinical_file' AS entity_type,
+  id::text AS record_id,
+  empresa_id::text AS empresa_id,
+  CASE
+    WHEN storage_status <> 'AVAILABLE' THEN storage_status
+    WHEN is_active THEN 'AVAILABLE_ACTIVE'
+    ELSE 'AVAILABLE_RETIRED'
+  END AS status,
+  COALESCE(ruta_archivo, '') AS stored_path,
+  CASE WHEN ruta_archivo IS NULL OR ruta_archivo = ''
+    THEN ''
+    ELSE 'backend/storage/clinical_files/' || ruta_archivo
+  END AS expected_storage_path,
+  COALESCE(sha256, '') AS expected_sha256,
+  COALESCE(fecha_carga::text, '') AS finalized_at
+FROM archivos_clinicos
+WHERE storage_status = 'AVAILABLE'
+ORDER BY empresa_id, id;
+"""
+
 
 @dataclass
 class InventoryRow:
@@ -156,28 +178,37 @@ def storage_relative_path(expected_storage_path: str) -> Path:
 
 
 def query_documents(args: argparse.Namespace) -> list[InventoryRow]:
-    command = [
-        "docker",
-        "exec",
-        args.db_container,
-        "psql",
-        "-U",
-        args.db_user,
-        "-d",
-        args.db_name,
-        "-X",
-        "-A",
-        "-F",
-        "\t",
-        "-t",
-        "-c",
-        QUERY,
-    ]
-    result = subprocess.run(command, check=False, capture_output=True, text=True)
-    if result.returncode != 0:
-        fail(f"psql query failed: {result.stderr.strip()}")
+    def run_query(query: str) -> str:
+        command = [
+            "docker",
+            "exec",
+            args.db_container,
+            "psql",
+            "-U",
+            args.db_user,
+            "-d",
+            args.db_name,
+            "-X",
+            "-A",
+            "-F",
+            "\t",
+            "-t",
+            "-c",
+            query,
+        ]
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            fail(f"psql query failed: {result.stderr.strip()}")
+        return result.stdout
+
     rows: list[InventoryRow] = []
-    for line in result.stdout.splitlines():
+    outputs = [run_query(QUERY)]
+    table_exists = run_query("SELECT to_regclass('public.archivos_clinicos') IS NOT NULL;").strip()
+    if table_exists == "t":
+        outputs.append(run_query(CLINICAL_FILES_QUERY))
+    elif table_exists != "f":
+        fail(f"unexpected archivos_clinicos existence result: {table_exists!r}")
+    for line in "\n".join(outputs).splitlines():
         if not line.strip():
             continue
         parts = line.split("\t")

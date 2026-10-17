@@ -38,6 +38,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       BRANDING_STORAGE_DIR: ${BRANDING_STORAGE_DIR:-/app/storage/branding}
+      CLINICAL_FILE_STORAGE_DIR: ${CLINICAL_FILE_STORAGE_DIR:?CLINICAL_FILE_STORAGE_DIR is required}
+      CLINICAL_FILE_MAX_BYTES: ${CLINICAL_FILE_MAX_BYTES:?CLINICAL_FILE_MAX_BYTES is required}
     volumes:
       - ./backend/storage:/app/storage
     ports:

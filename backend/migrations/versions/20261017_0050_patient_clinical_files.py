@@ -76,6 +76,11 @@ def upgrade():
 
 
 def downgrade():
+    existing_files = op.get_bind().execute(sa.text("SELECT count(*) FROM archivos_clinicos")).scalar_one()
+    if existing_files:
+        raise RuntimeError(
+            "Refusing to downgrade 0050 with clinical file records; restore the complete pre-0050 backup explicitly instead."
+        )
     op.execute("DROP TRIGGER IF EXISTS trg_archivos_clinicos_scope ON archivos_clinicos")
     op.execute("DROP FUNCTION IF EXISTS validate_archivo_clinico_scope()")
     op.drop_index("ix_archivos_clinicos_empresa_tipo", table_name="archivos_clinicos")

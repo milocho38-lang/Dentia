@@ -143,15 +143,53 @@ with tarfile.open(archive, "r:gz") as tar:
     tar.extractall(destination, members=members)
 PY
 
+merge_storage_without_collisions() {
+  local source="$1"
+  local destination="$2"
+  [ -d "$source" ] || return 0
+  python3 - "$source" "$destination" <<'PY'
+import hashlib
+import shutil
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).resolve()
+destination = Path(sys.argv[2]).resolve()
+destination.mkdir(parents=True, exist_ok=True)
+
+def digest(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
+
+for item in sorted(source.rglob("*")):
+    if item.is_symlink():
+        raise SystemExit(f"source storage link is not allowed: {item}")
+    relative = item.relative_to(source)
+    target = destination / relative
+    if item.is_dir():
+        if target.exists() and (target.is_symlink() or not target.is_dir()):
+            raise SystemExit(f"storage directory collision: {target}")
+        target.mkdir(parents=True, exist_ok=True)
+        continue
+    if target.exists():
+        if target.is_symlink() or not target.is_file():
+            raise SystemExit(f"storage file collision: {target}")
+        if item.stat().st_size != target.stat().st_size or digest(item) != digest(target):
+            raise SystemExit(f"storage collision has different content: {target}")
+        continue
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(item, target)
+PY
+}
+
 if [ -d "$EXTRACT_DIR/backend/storage" ]; then
-  if [ "$MODE" = "production" ] && [ -n "$(find "$STORAGE_DIR" -mindepth 1 -type f -print -quit 2>/dev/null)" ]; then
-    dentia_warn "Production storage is not empty; files will be merged without overwrites."
-  fi
-  cp -Rn "$EXTRACT_DIR/backend/storage/." "$STORAGE_DIR/"
+  merge_storage_without_collisions "$EXTRACT_DIR/backend/storage" "$STORAGE_DIR"
 fi
 if [ -d "$EXTRACT_DIR/storage" ]; then
-  mkdir -p "$STORAGE_DIR/legacy-storage"
-  cp -Rn "$EXTRACT_DIR/storage/." "$STORAGE_DIR/legacy-storage/"
+  merge_storage_without_collisions "$EXTRACT_DIR/storage" "$STORAGE_DIR/legacy-storage"
 fi
 
 RESTORED_FILE_COUNT="$(find "$STORAGE_DIR" -type f 2>/dev/null | wc -l | awk '{print $1}')"

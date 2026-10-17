@@ -9,6 +9,7 @@ Implementa CU016 y CU017 para cargar, clasificar, listar, descargar y retirar de
 ## Decisiones
 
 - Storage local privado, configurable con `CLINICAL_FILE_STORAGE_DIR`; 25 MB por defecto, configurable con `CLINICAL_FILE_MAX_BYTES`.
+- En producción la ruta debe permanecer bajo el montaje persistente `/app/storage`; el gate de configuración rechaza rutas externas y límites no enteros, no positivos o superiores a 100 MB.
 - Claves físicas opacas bajo empresa y paciente; el nombre original sólo se conserva como metadato seguro.
 - Validación de firma y estructura de PDF, JPEG, PNG y WebP, sin confiar en extensión o `Content-Type` del cliente. DOCX y DICOM quedan restringidos hasta incorporar validadores específicos y límites seguros.
 - Esta validación rechaza archivos truncados y límites de imágenes descomprimidas, pero no sustituye análisis antimalware.
@@ -27,3 +28,5 @@ Visor DICOM, PACS, OCR, servicios externos, versionado de binarios, borrado fís
 ## Aceptación pendiente
 
 Ejecutar la migración `20261017_0050` y pruebas API multiempresa contra una base PostgreSQL de prueba aislada, además de revisión visible de carga correcta, rechazo por tipo/tamaño, doble clic, cancelación y navegación durante carga.
+
+El rollback operativo normal es volver el código a la versión anterior ya ensayada contra el esquema `0050`. No se debe ejecutar downgrade a `0049` después de recibir archivos: esa operación elimina la tabla y sólo es admisible dentro de un ensayo desechable o como restauración completa y explícita del backup pre-0050, con pérdida de escrituras posteriores.

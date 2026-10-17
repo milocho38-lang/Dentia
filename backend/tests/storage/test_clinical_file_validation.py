@@ -24,3 +24,15 @@ def test_rejects_storage_path_traversal(monkeypatch, tmp_path: Path):
 def test_accepts_tenant_scoped_storage_key(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(service, "_root", lambda: tmp_path.resolve())
     assert service.resolve_storage_key("company_a/patients/patient_b/file.pdf") == (tmp_path / "company_a/patients/patient_b/file.pdf").resolve()
+
+
+@pytest.mark.parametrize("value", ["invalid", "0", "104857601"])
+def test_rejects_invalid_max_size_configuration(monkeypatch, value: str):
+    monkeypatch.setenv("CLINICAL_FILE_MAX_BYTES", value)
+    with pytest.raises(RuntimeError, match="CLINICAL_FILE_MAX_BYTES"):
+        service.configured_max_size()
+
+
+def test_accepts_default_max_size(monkeypatch):
+    monkeypatch.delenv("CLINICAL_FILE_MAX_BYTES", raising=False)
+    assert service.configured_max_size() == 25 * 1024 * 1024

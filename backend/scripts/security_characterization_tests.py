@@ -55,7 +55,7 @@ AUTHENTICATED_ONLY_ROUTES = {
     ("POST", "/api/auth/change-password"),
 }
 
-EXPECTED_ROUTE_COUNT = 320
+EXPECTED_ROUTE_COUNT = 325
 
 
 def read(relative: str) -> str:
@@ -128,7 +128,9 @@ class EndpointProtectionTests(unittest.TestCase):
                 and "receipt" not in lower_path
             ):
                 continue
-            if any(fragment in path.lower() for fragment in {"{path", "{file", "{filename", "{storage"}):
+            # UUID resource identifiers such as ``{file_id}`` are safe. Reject
+            # only parameters that can directly carry a path or filename.
+            if any(fragment in path.lower() for fragment in {"{path", "{filename", "{storage"}):
                 unsafe.append(path)
         self.assertEqual(unsafe, [])
 

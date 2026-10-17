@@ -25,7 +25,8 @@ FILE_TYPES = {"RADIOGRAPH", "EXAM", "PHOTOGRAPH", "DOCUMENT", "OTHER"}
 CATEGORIES = {"INITIAL", "EVOLUTION", "FINAL", "LEGAL", "LABORATORY", "GENERAL"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 EXTENSIONS = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "application/pdf": ".pdf"}
-MAX_SIZE = int(os.getenv("CLINICAL_FILE_MAX_BYTES", str(25 * 1024 * 1024)))
+DEFAULT_MAX_SIZE = 25 * 1024 * 1024
+MAX_CONFIGURED_SIZE = 100 * 1024 * 1024
 MAX_IMAGE_PIXELS = 80_000_000
 
 
@@ -33,6 +34,19 @@ class ClinicalFileError(RuntimeError):
     def __init__(self, message: str, status_code: int = 400):
         super().__init__(message)
         self.status_code = status_code
+
+
+def configured_max_size() -> int:
+    raw = os.getenv("CLINICAL_FILE_MAX_BYTES", str(DEFAULT_MAX_SIZE))
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise RuntimeError("CLINICAL_FILE_MAX_BYTES must be an integer.") from exc
+    if not 1 <= value <= MAX_CONFIGURED_SIZE:
+        raise RuntimeError(
+            f"CLINICAL_FILE_MAX_BYTES must be between 1 and {MAX_CONFIGURED_SIZE} bytes."
+        )
+    return value
 
 
 def _root() -> Path:
@@ -145,10 +159,11 @@ async def upload_file(session: Session, context: AuthContext, patient_id: UUID, 
         raise ClinicalFileError("Tratamiento relacionado inválido.", 422)
     if appointment_id and not session.scalar(select(Appointment.id).where(Appointment.id == appointment_id, Appointment.company_id == context.user.company_id, Appointment.patient_id == patient_id)):
         raise ClinicalFileError("Cita relacionada inválida.", 422)
-    data = await upload.read(MAX_SIZE + 1)
+    max_size = configured_max_size()
+    data = await upload.read(max_size + 1)
     if not data:
         raise ClinicalFileError("El archivo está vacío.", 422)
-    if len(data) > MAX_SIZE:
+    if len(data) > max_size:
         raise ClinicalFileError("El archivo supera el tamaño máximo permitido.", 413)
     mime = detect_mime(data)
     if mime not in ALLOWED_MIME_TYPES:

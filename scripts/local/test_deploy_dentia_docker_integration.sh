@@ -9,7 +9,7 @@ esac
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." >/dev/null 2>&1 && pwd)"
 SOURCE_SHA="$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
-OLD_SHA="bac136e167a886bc2b7b995443df1196a3423744"
+OLD_SHA="da88346d97583a0d11a50644d118e05593f7e6b3"
 HARNESS="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-docker.XXXXXX")"
 ROOT="$HARNESS/repo"
 BACKUPS="$HARNESS/backups"
@@ -100,6 +100,8 @@ DATABASE_URL=postgresql+psycopg://dentia_integration:DentiaIntegrationPassword_$
 JWT_SECRET=DentiaIntegrationJWTSecret_${SUFFIX}_long_enough_for_validation
 DENTIA_BACKEND_ENV_FILE=$ROOT/.env.production
 BRANDING_STORAGE_DIR=/app/storage/branding
+CLINICAL_FILE_STORAGE_DIR=/app/storage/clinical_files
+CLINICAL_FILE_MAX_BYTES=26214400
 API_PROXY_TARGET=http://dentia-backend:8000
 PUBLIC_FRONTEND_URL=https://app.dentiapro.com
 NEXT_PUBLIC_SITE_URL=https://dentiapro.com
@@ -148,13 +150,15 @@ for _ in $(seq 1 60); do
   compose exec -T dentia-db pg_isready -U dentia_integration -d dentia_integration >/dev/null 2>&1 && break
   sleep 1
 done
-compose run --rm --no-deps dentia-backend alembic -c alembic.ini upgrade 20261006_0047
+compose run --rm --no-deps dentia-backend alembic -c alembic.ini upgrade 20261012_0049
 printf 'SyntheticPassword!42\nSyntheticPassword!42\n' | compose run --rm -T --no-deps dentia-backend \
   python -m app.cli.bootstrap --company-name "Synthetic Clinic" --company-slug synthetic-clinic \
   --site-name "Synthetic Site" --admin-name "Synthetic Admin" --admin-username synthetic-admin \
   --admin-email synthetic@example.invalid
 docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U dentia_integration -d dentia_integration -c \
   "INSERT INTO pacientes (id, empresa_id, nombres, apellidos, celular, celular_normalizado, texto_busqueda) SELECT '00000000-0000-4000-8000-000000000123', id, 'Paciente', 'Sintético', '3000000000', '3000000000', 'paciente sintetico' FROM empresas ORDER BY created_at LIMIT 1;" >/dev/null
+docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U dentia_integration -d dentia_integration -c \
+  "INSERT INTO roles (id, empresa_id, code, nombre, descripcion, is_system, is_active, created_at, updated_at) SELECT '00000000-0000-4000-8000-000000000124', id, 'CUSTOM_REVIEW', 'Rol sintético', 'No debe recibir permisos clínicos implícitos', false, true, now(), now() FROM empresas ORDER BY created_at LIMIT 1;" >/dev/null
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')" = 1 ]
 compose up -d dentia-backend dentia-frontend dentia-website
 for _ in $(seq 1 60); do
@@ -190,7 +194,7 @@ DENTIA_PRODUCTION_WEBSITE_URL="http://127.0.0.1:$WEBSITE_PORT" \
 
 if [ "$SCENARIO" = pre_failure ]; then
   [ "$DEPLOY_STATUS" -ne 0 ]
-  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261006_0047 ]
+  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261012_0049 ]
   [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM information_schema.columns WHERE table_name = 'usuarios' AND column_name = 'username'")" = 1 ]
   [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'platform_commercial_accounts'")" = 0 ]
   [ "$(docker inspect -f '{{.Image}}' "$BACKEND_CONTAINER")" = "$OLD_BACKEND_ID" ]
@@ -201,14 +205,14 @@ if [ "$SCENARIO" = pre_failure ]; then
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
   curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
   curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
-  printf 'docker_integration_pre_failure_recovered old_images_exact db=20261006_0047\n'
+  printf 'docker_integration_pre_failure_recovered old_images_exact db=20261012_0049\n'
   export_evidence passed
   exit 0
 fi
 
 if [ "$SCENARIO" = post_failure_recovery ]; then
   [ "$DEPLOY_STATUS" -ne 0 ]
-  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261012_0049 ]
+  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261017_0050 ]
   for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
     [ "$(docker inspect -f '{{.State.Running}}' "$container")" = false ]
   done
@@ -246,7 +250,7 @@ PY
   [ "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$BACKEND_PORT/")" = 503 ]
   rm -f "$ROOT/.run/maintenance_active" "$ROOT/backend/storage/.dentia-maintenance"
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
-  printf 'docker_integration_post_failure_fail_closed_and_recovered db=20261012_0049 backup=%s\n' "$BACKUP_PATH"
+  printf 'docker_integration_post_failure_fail_closed_and_recovered db=20261017_0050 backup=%s\n' "$BACKUP_PATH"
   export_evidence passed
   exit 0
 fi
@@ -254,8 +258,11 @@ fi
 [ "$DEPLOY_STATUS" -eq 0 ]
 
 [ "$(git rev-parse HEAD)" = "$TARGET_SHA" ]
-[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261012_0049 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261017_0050 ]
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')" = 1 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM permisos WHERE code LIKE 'clinical_files.%' AND is_active")" = 3 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id='00000000-0000-4000-8000-000000000124' AND p.code LIKE 'clinical_files.%' AND rp.is_active")" = 0 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM pg_trigger WHERE tgname='trg_archivos_clinicos_scope' AND NOT tgisinternal")" = 1 ]
 [ "$(docker inspect -f '{{.Image}}' "$BACKEND_CONTAINER")" != "$OLD_BACKEND_ID" ]
 [ "$(docker inspect -f '{{.Image}}' "$FRONTEND_CONTAINER")" != "$OLD_FRONTEND_ID" ]
 [ "$(docker inspect -f '{{.Image}}' "$WEBSITE_CONTAINER")" != "$OLD_WEBSITE_ID" ]
@@ -267,6 +274,42 @@ fi
 curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
 curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
 curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
+
+# The previous application must remain operable against the additive 0050 schema;
+# this is the supported code-only rollback path.
+docker run --rm --network "${PROJECT}_dentia-network" --env-file "$ROOT/.env.production" \
+  --entrypoint python "$OLD_BACKEND_ID" -c \
+  "from sqlalchemy import text; from app.database.session import SessionLocal; s=SessionLocal(); assert s.scalar(text('SELECT count(*) FROM pacientes')) == 1; s.close(); print('OLD_CODE_ON_0050_OK')"
+
+# Add one synthetic private binary after the migration, then prove that a new
+# complete backup inventories and restores its bytes and SHA-256.
+CLINICAL_ID="00000000-0000-4000-8000-000000000125"
+COMPANY_ID="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT id FROM empresas ORDER BY created_at LIMIT 1')"
+USER_ID="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT id FROM usuarios ORDER BY created_at LIMIT 1')"
+CLINICAL_KEY="company_${COMPANY_ID}/uploads/${CLINICAL_ID}"
+mkdir -p "$ROOT/backend/storage/clinical_files/$(dirname "$CLINICAL_KEY")"
+printf 'synthetic-clinical-binary-for-backup\n' >"$ROOT/backend/storage/clinical_files/$CLINICAL_KEY"
+CLINICAL_SHA="$(shasum -a 256 "$ROOT/backend/storage/clinical_files/$CLINICAL_KEY" | awk '{print $1}')"
+CLINICAL_SIZE="$(wc -c <"$ROOT/backend/storage/clinical_files/$CLINICAL_KEY" | tr -d '[:space:]')"
+docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U dentia_integration -d dentia_integration -c \
+  "INSERT INTO archivos_clinicos (id,empresa_id,paciente_id,tipo_archivo,categoria,nombre_archivo,ruta_archivo,idempotency_key,request_fingerprint,storage_status,mime_type,tamano_bytes,sha256,fecha_carga,cargado_por_usuario_id,is_active,created_at,updated_at) VALUES ('$CLINICAL_ID','$COMPANY_ID','00000000-0000-4000-8000-000000000123','DOCUMENT','GENERAL','synthetic.pdf','$CLINICAL_KEY','00000000-0000-4000-8000-000000000126',repeat('a',64),'AVAILABLE','application/pdf',$CLINICAL_SIZE,'$CLINICAL_SHA',now(),'$USER_ID',true,now(),now());" >/dev/null
+POST_BACKUP_PATH="$(DENTIA_PRODUCTION_DIR="$ROOT" DENTIA_BACKUP_DIR="$BACKUPS/post-0050" DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" "$ROOT/scripts/production/backup_dentia.sh" --no-prune | tail -n 1)"
+grep -Fq $'clinical_file\t00000000-0000-4000-8000-000000000125' "$POST_BACKUP_PATH/document_inventory.tsv"
+RESTORE_DB="dentia_restore_clinical_${SUFFIX}"
+RESTORE_STORAGE="$HARNESS/restored-clinical-storage"
+DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+  "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$POST_BACKUP_PATH" --temporary \
+  --database-name "$RESTORE_DB" --storage-dir "$RESTORE_STORAGE" | grep -qx 'RESTORE_VALID'
+cmp "$ROOT/backend/storage/clinical_files/$CLINICAL_KEY" "$RESTORE_STORAGE/clinical_files/$CLINICAL_KEY"
+docker exec "$DB_CONTAINER" dropdb -U dentia_integration --if-exists "$RESTORE_DB" >/dev/null
+printf 'corrupted-existing-destination\n' >"$RESTORE_STORAGE/clinical_files/$CLINICAL_KEY"
+COLLISION_STATUS=0
+DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+  "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$POST_BACKUP_PATH" --temporary \
+  --database-name "$RESTORE_DB" --storage-dir "$RESTORE_STORAGE" >/dev/null 2>&1 || COLLISION_STATUS=$?
+[ "$COLLISION_STATUS" -ne 0 ]
+grep -Fqx 'corrupted-existing-destination' "$RESTORE_STORAGE/clinical_files/$CLINICAL_KEY"
+docker exec "$DB_CONTAINER" dropdb -U dentia_integration --if-exists "$RESTORE_DB" >/dev/null
 BACKUP_PATH="$(completed_backup_path)"
 "$ROOT/scripts/production/verify_dentia_backup.sh" "$BACKUP_PATH" >/dev/null
 ! tar -tzf "$BACKUPS"/*/storage.tar.gz | grep -q '.dentia-maintenance'

@@ -114,7 +114,7 @@ SQL
 }
 
 deploy_assert_pre_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261006_0047}"
+  local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261012_0049}"
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected pre-deploy Alembic revision: $revision (expected $expected)."
@@ -132,7 +132,7 @@ deploy_assert_current_account_identity_invariants() {
 }
 
 deploy_assert_post_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261012_0049}"
+  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261017_0050}"
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected post-deploy Alembic revision: $revision (expected $expected)."
@@ -145,6 +145,13 @@ deploy_assert_post_migration_invariants() {
   [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_obligations;")" = "0" ] || dentia_fail "Commercial obligations must be empty immediately after rollout."
   [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_reconciliations;")" = "0" ] || dentia_fail "Commercial reconciliations must be empty immediately after rollout."
   [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_rates;")" = "0" ] || dentia_fail "Commercial rates must be empty immediately after rollout."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='archivos_clinicos';")" = "1" ] || dentia_fail "Clinical files table was not created exactly once."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM pg_trigger WHERE tgname='trg_archivos_clinicos_scope' AND NOT tgisinternal;")" = "1" ] || dentia_fail "Clinical file tenant-scope trigger was not created exactly once."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code IN ('clinical_files.view','clinical_files.create','clinical_files.manage') AND is_active;")" = "3" ] || dentia_fail "Clinical file permissions were not created exactly once."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id JOIN roles r ON r.id=rp.rol_id WHERE rp.is_active AND p.code IN ('clinical_files.view','clinical_files.create') AND r.code NOT IN ('ADMINISTRATOR','DENTIST_ADMIN','DENTIST');")" = "0" ] || dentia_fail "Clinical file view/create permission was assigned to an unauthorized role."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id JOIN roles r ON r.id=rp.rol_id WHERE rp.is_active AND p.code='clinical_files.manage' AND r.code NOT IN ('ADMINISTRATOR','DENTIST_ADMIN');")" = "0" ] || dentia_fail "Clinical file manage permission was assigned to an unauthorized role."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM roles r CROSS JOIN (VALUES ('clinical_files.view'),('clinical_files.create')) expected(code) WHERE r.code IN ('ADMINISTRATOR','DENTIST_ADMIN','DENTIST') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND rp.is_active AND p.is_active AND p.code=expected.code);")" = "0" ] || dentia_fail "Clinical file view/create permission is missing from an authorized role."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM roles r WHERE r.code IN ('ADMINISTRATOR','DENTIST_ADMIN') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND rp.is_active AND p.is_active AND p.code='clinical_files.manage');")" = "0" ] || dentia_fail "Clinical file manage permission is missing from an authorized role."
 }
 
 deploy_stop_application_writers() {
@@ -175,8 +182,8 @@ deploy_validate_recovery_baseline() {
   local live="$STATE_DIR/deploy_recovery_live_${TARGET_SHA}.tsv"
   [ -d "$backup" ] || dentia_fail "Recovery backup directory is missing: $backup"
   "$SCRIPT_DIR/verify_dentia_backup.sh" "$backup" >/dev/null
-  grep -Eq '"alembic_revision"[[:space:]]*:[[:space:]]*"20261006_0047"' "$backup/manifest.json" || \
-    dentia_fail "Recovery backup is not from the required pre-migration revision 0047."
+  grep -Eq '"alembic_revision"[[:space:]]*:[[:space:]]*"20261012_0049"' "$backup/manifest.json" || \
+    dentia_fail "Recovery backup is not from the required pre-migration revision 0049."
   RESTORE_SUFFIX="$(date -u +%Y%m%d_%H%M%S)_$$"
   RESTORE_DB="dentia_restore_recovery_$RESTORE_SUFFIX"
   RESTORE_STORAGE="/tmp/dentia_restore_deploy_$RESTORE_SUFFIX/storage"
@@ -316,10 +323,10 @@ dentia_assert_storage_path_safe "$HOST_STORAGE_ROOT"
 [ -w "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is not writable: $HOST_STORAGE_ROOT"
 
 if [ -n "$RECOVERY_BACKUP" ]; then
-  [ "${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-}" = "20261012_0049" ] || \
+  [ "${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-}" = "20261017_0050" ] || \
     dentia_fail "Recovery requires the explicit migrated revision guard."
-  [ "$(deploy_current_revision)" = "20261012_0049" ] || \
-    dentia_fail "Recovery requires the already migrated 0049 database."
+  [ "$(deploy_current_revision)" = "20261017_0050" ] || \
+    dentia_fail "Recovery requires the already migrated 0050 database."
   [ -f "$MAINTENANCE_MARKER" ] || dentia_fail "Recovery checkout requires the maintenance marker."
   [ -f "$WRITE_BARRIER_FILE" ] || dentia_fail "Recovery checkout requires the persistent write barrier."
   for container in "$DENTIA_BACKEND_CONTAINER" "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_WEBSITE_CONTAINER"; do
@@ -477,6 +484,11 @@ expected = {
     ("POST", "/api/patient-imports/dentalink/sources"),
     ("POST", "/api/patient-imports/dentalink/preview"),
     ("POST", "/api/patient-imports/dentalink/confirm"),
+    ("GET", "/api/patients/{patient_id}/clinical-files"),
+    ("POST", "/api/patients/{patient_id}/clinical-files"),
+    ("GET", "/api/patients/{patient_id}/clinical-files/requests/{idempotency_key}"),
+    ("GET", "/api/clinical-files/{file_id}/download"),
+    ("POST", "/api/clinical-files/{file_id}/deactivate"),
 }
 found = set()
 for route in create_app().routes:

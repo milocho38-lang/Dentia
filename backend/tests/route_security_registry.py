@@ -142,6 +142,8 @@ def _module_for(path: str) -> str:
         return "prescriptions"
     if path.startswith("/api/clinical-documents"):
         return "clinical_documents"
+    if path.startswith("/api/clinical-files") or "/clinical-files" in path:
+        return "clinical_files"
     if path.startswith("/api/patients"):
         return "patients"
     if path.startswith("/api/appointments"):
@@ -250,6 +252,8 @@ def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: 
             return TestStatus.DB_BACKED, "backend/tests/storage/test_document_downloads.py", ""
         if path.startswith("/api/clinical-documents"):
             return TestStatus.DB_BACKED, "backend/tests/storage/test_document_downloads.py", ""
+        if path.startswith("/api/clinical-files"):
+            return TestStatus.DB_BACKED, "backend/tests/storage/test_patient_clinical_files_api.py", "Autenticación, rol, aislamiento multiempresa, integridad y retiro lógico cubiertos con PostgreSQL real."
         if path == "/api/patients/{patient_id}/clinical-record/pdf":
             return TestStatus.DB_BACKED, "backend/tests/administration/test_clinical_history_improvements.py::test_clinical_history_pdf_is_tenant_scoped_and_audited", ""
         return TestStatus.PENDING, "", "Ruta de descarga sin prueba DB-backed asignada."

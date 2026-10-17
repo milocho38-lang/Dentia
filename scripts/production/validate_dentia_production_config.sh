@@ -104,6 +104,8 @@ required = {
     "JWT_SECRET",
     "DENTIA_BACKEND_ENV_FILE",
     "BRANDING_STORAGE_DIR",
+    "CLINICAL_FILE_STORAGE_DIR",
+    "CLINICAL_FILE_MAX_BYTES",
     "API_PROXY_TARGET",
     "PUBLIC_FRONTEND_URL",
     "NEXT_PUBLIC_SITE_URL",
@@ -210,6 +212,19 @@ for key in ("CONSENT_ACCEPTANCE_ENABLED", "CONSENT_PUBLIC_COOKIE_SECURE", "CONSE
         raise SystemExit(f"[dentia][ERROR] {key} must be true for clinical consent use.")
 if not env["CONSENT_FINAL_STORAGE_DIR"].startswith("/"):
     raise SystemExit("[dentia][ERROR] CONSENT_FINAL_STORAGE_DIR must be an absolute persistent path.")
+clinical_storage = Path(env["CLINICAL_FILE_STORAGE_DIR"])
+if not clinical_storage.is_absolute():
+    raise SystemExit("[dentia][ERROR] CLINICAL_FILE_STORAGE_DIR must be absolute.")
+try:
+    clinical_storage.relative_to(Path("/app/storage"))
+except ValueError:
+    raise SystemExit("[dentia][ERROR] CLINICAL_FILE_STORAGE_DIR must be inside the persistent /app/storage mount.")
+try:
+    clinical_max_bytes = int(env["CLINICAL_FILE_MAX_BYTES"])
+except ValueError:
+    raise SystemExit("[dentia][ERROR] CLINICAL_FILE_MAX_BYTES must be an integer.")
+if not 1 <= clinical_max_bytes <= 100 * 1024 * 1024:
+    raise SystemExit("[dentia][ERROR] CLINICAL_FILE_MAX_BYTES must be between 1 and 104857600 bytes.")
 if env["CONSENT_PROCEDURE_VERSION"] != "DENTIA_CONSENT_PROCEDURE_V1":
     raise SystemExit("[dentia][ERROR] Unsupported CONSENT_PROCEDURE_VERSION.")
 for key in ("CONSENT_OTP_EXPIRE_MINUTES", "CONSENT_OTP_MAX_ATTEMPTS", "CONSENT_PUBLIC_SESSION_MINUTES"):
