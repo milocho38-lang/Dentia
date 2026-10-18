@@ -395,7 +395,8 @@ DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_
 
 PRODUCTION_STORAGE_GUARD_DB="dentia_restore_production_storage_${SUFFIX}"
 PRODUCTION_STORAGE_GUARD_STATUS=0
-DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+DENTIA_PRODUCTION_DIR="$ROOT" DENTIA_DB_CONTAINER="$DB_CONTAINER" \
+  DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
   "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$POST_BACKUP_PATH" --temporary \
   --database-name "$PRODUCTION_STORAGE_GUARD_DB" --storage-dir "$ROOT/backend/storage" >/dev/null 2>&1 || PRODUCTION_STORAGE_GUARD_STATUS=$?
 [ "$PRODUCTION_STORAGE_GUARD_STATUS" -ne 0 ]
