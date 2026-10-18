@@ -177,11 +177,16 @@ for _ in $(seq 1 60); do
   compose exec -T dentia-db pg_isready -U dentia_integration -d dentia_integration >/dev/null 2>&1 && break
   sleep 1
 done
-compose run --rm --no-deps dentia-backend alembic -c alembic.ini upgrade "$INITIAL_REVISION"
+compose run --rm --no-deps dentia-backend alembic -c alembic.ini upgrade 20261012_0049
 printf 'SyntheticPassword!42\nSyntheticPassword!42\n' | compose run --rm -T --no-deps dentia-backend \
   python -m app.cli.bootstrap --company-name "Synthetic Clinic" --company-slug synthetic-clinic \
   --site-name "Synthetic Site" --admin-name "Synthetic Admin" --admin-username synthetic-admin \
   --admin-email synthetic@example.invalid
+if [ "$INITIAL_REVISION" != 20261012_0049 ]; then
+  # Reproduce the real production history: tenant roles existed before 0050,
+  # so the migration grants the new clinical-file permissions to those roles.
+  compose run --rm --no-deps dentia-backend alembic -c alembic.ini upgrade "$INITIAL_REVISION"
+fi
 docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U dentia_integration -d dentia_integration -c \
   "INSERT INTO pacientes (id, empresa_id, nombres, apellidos, celular, celular_normalizado, texto_busqueda) SELECT '00000000-0000-4000-8000-000000000123', id, 'Paciente', 'Sintético', '3000000000', '3000000000', 'paciente sintetico' FROM empresas ORDER BY created_at LIMIT 1;" >/dev/null
 docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U dentia_integration -d dentia_integration -c \
