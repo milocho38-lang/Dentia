@@ -77,7 +77,30 @@ TIMESTAMP="$(date -u +%Y%m%d_%H%M%S)"
 
 if [ "$MODE" = "temporary" ]; then
   DATABASE_NAME="${DATABASE_NAME:-dentia_restore_${TIMESTAMP}}"
-  STORAGE_DIR="${STORAGE_DIR:-/tmp/dentia_restore_${TIMESTAMP}/storage}"
+  STORAGE_DIR="${STORAGE_DIR:-${TMPDIR:-/tmp}/dentia_restore_${TIMESTAMP}/storage}"
+  [ "$DATABASE_NAME" != "$DENTIA_DB_NAME" ] || \
+    dentia_fail "Temporary restore cannot target the configured production database: $DENTIA_DB_NAME"
+  [[ "$DATABASE_NAME" =~ ^dentia_restore_[A-Za-z0-9_]+$ ]] || \
+    dentia_fail "Temporary restore database name must start with dentia_restore_ and contain only letters, digits, or underscores."
+  python3 - "$STORAGE_DIR" "$ROOT/backend/storage" <<'PY'
+import sys
+import tempfile
+from pathlib import Path
+
+requested = Path(sys.argv[1]).resolve()
+production = Path(sys.argv[2]).resolve()
+temporary_root = Path(tempfile.gettempdir()).resolve()
+if requested == production:
+    raise SystemExit("[dentia][ERROR] Temporary restore cannot target production storage.")
+try:
+    requested.relative_to(temporary_root)
+except ValueError:
+    raise SystemExit(
+        f"[dentia][ERROR] Temporary restore storage must be inside the controlled temporary root: {temporary_root}"
+    )
+if requested == temporary_root:
+    raise SystemExit("[dentia][ERROR] Temporary restore storage cannot be the temporary root itself.")
+PY
 else
   [ "$YES" = true ] || dentia_fail "Production restore requires --yes-i-understand."
   DATABASE_NAME="${DATABASE_NAME:-$DENTIA_DB_NAME}"
@@ -167,9 +190,12 @@ for index in range(1, len(sys.argv), 2):
 PY
 
 BACKUP_REVISION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("alembic_revision", ""))' "$BACKUP_PATH/manifest.json")"
+TARGET_DB_LIST_STATUS=0
+TARGET_DB_LIST="$(docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d postgres -X -tAc \
+  "SELECT datname FROM pg_database;")" || TARGET_DB_LIST_STATUS=$?
+[ "$TARGET_DB_LIST_STATUS" -eq 0 ] || dentia_fail "Could not query target database existence; refusing restore."
 TARGET_DB_EXISTS=f
-if docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d postgres -X -tAc \
-  "SELECT datname FROM pg_database;" | grep -Fqx -- "$DATABASE_NAME"; then
+if printf '%s\n' "$TARGET_DB_LIST" | grep -Fqx -- "$DATABASE_NAME"; then
   TARGET_DB_EXISTS=t
 fi
 if [ "$TARGET_DB_EXISTS" = t ]; then

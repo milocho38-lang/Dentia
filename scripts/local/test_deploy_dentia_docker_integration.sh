@@ -358,14 +358,20 @@ DENTIA_IMAGE_TAG="$TARGET_SHA" compose run --rm -T --no-deps dentia-backend \
 printf 'CLINICAL_DOWNGRADE_GUARD_OK revision=20261017_0050 status=%s\n' "$DOWNGRADE_STATUS"
 PRE_0050_BACKUP_PATH="$(completed_backup_path)"
 PRE_RESTORE_COUNT="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')"
+OLD_BACKUP_TARGET_DB="dentia_restore_old_backup_${SUFFIX}"
+docker exec "$DB_CONTAINER" createdb -U dentia_integration "$OLD_BACKUP_TARGET_DB"
+docker exec "$DB_CONTAINER" pg_dump -Fc --no-owner --no-privileges -U dentia_integration dentia_integration | \
+  docker exec -i "$DB_CONTAINER" pg_restore --no-owner --no-privileges -U dentia_integration -d "$OLD_BACKUP_TARGET_DB"
 OLD_BACKUP_STATUS=0
 DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
   "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$PRE_0050_BACKUP_PATH" --temporary \
-  --database-name dentia_integration --storage-dir "$HARNESS/old-backup-reject-storage" >/dev/null 2>&1 || OLD_BACKUP_STATUS=$?
+  --database-name "$OLD_BACKUP_TARGET_DB" --storage-dir "$HARNESS/old-backup-reject-storage" >/dev/null 2>&1 || OLD_BACKUP_STATUS=$?
 [ "$OLD_BACKUP_STATUS" -ne 0 ]
-[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261017_0050 ]
-[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')" = "$PRE_RESTORE_COUNT" ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d "$OLD_BACKUP_TARGET_DB" -tAc 'SELECT version_num FROM alembic_version')" = 20261017_0050 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d "$OLD_BACKUP_TARGET_DB" -tAc 'SELECT count(*) FROM archivos_clinicos')" = "$PRE_RESTORE_COUNT" ]
+[ ! -e "$HARNESS/old-backup-reject-storage" ]
 [ "$(shasum -a 256 "$ROOT/backend/storage/clinical_files/$CLINICAL_KEY" | awk '{print $1}')" = "$CLINICAL_SHA" ]
+docker exec "$DB_CONTAINER" dropdb -U dentia_integration "$OLD_BACKUP_TARGET_DB"
 printf 'CLINICAL_OLD_BACKUP_REJECTED_WITHOUT_MUTATION status=%s\n' "$OLD_BACKUP_STATUS"
 POST_BACKUP_PATH="$(DENTIA_PRODUCTION_DIR="$ROOT" DENTIA_BACKUP_DIR="$BACKUPS/post-0050" DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" "$ROOT/scripts/production/backup_dentia.sh" --no-prune | tail -n 1)"
 grep -Fq $'clinical_file\t00000000-0000-4000-8000-000000000125' "$POST_BACKUP_PATH/document_inventory.tsv"
@@ -373,6 +379,54 @@ grep -Fq $'clinical_file\t00000000-0000-4000-8000-000000000129' "$POST_BACKUP_PA
 grep -Fq $'clinical_file\t00000000-0000-4000-8000-000000000130' "$POST_BACKUP_PATH/document_inventory.tsv"
 grep -Fq $'clinical_file_temporary\t00000000-0000-4000-8000-000000000130' "$POST_BACKUP_PATH/document_inventory.tsv"
 grep -Fq $'clinical_file\t00000000-0000-4000-8000-000000000131' "$POST_BACKUP_PATH/document_inventory.tsv"
+docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -c \
+  "CREATE TABLE restore_temporary_guard_probe (value text NOT NULL); INSERT INTO restore_temporary_guard_probe VALUES ('preserved');" >/dev/null
+PRODUCTION_DB_GUARD_STORAGE="$HARNESS/production-db-guard-storage"
+PRODUCTION_DB_GUARD_STATUS=0
+DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+  "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$POST_BACKUP_PATH" --temporary \
+  --database-name dentia_integration --storage-dir "$PRODUCTION_DB_GUARD_STORAGE" >/dev/null 2>&1 || PRODUCTION_DB_GUARD_STATUS=$?
+[ "$PRODUCTION_DB_GUARD_STATUS" -ne 0 ]
+[ ! -e "$PRODUCTION_DB_GUARD_STORAGE" ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261017_0050 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')" = "$PRE_RESTORE_COUNT" ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT value FROM restore_temporary_guard_probe')" = preserved ]
+[ "$(shasum -a 256 "$ROOT/backend/storage/clinical_files/$CLINICAL_KEY" | awk '{print $1}')" = "$CLINICAL_SHA" ]
+
+PRODUCTION_STORAGE_GUARD_DB="dentia_restore_production_storage_${SUFFIX}"
+PRODUCTION_STORAGE_GUARD_STATUS=0
+DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+  "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$POST_BACKUP_PATH" --temporary \
+  --database-name "$PRODUCTION_STORAGE_GUARD_DB" --storage-dir "$ROOT/backend/storage" >/dev/null 2>&1 || PRODUCTION_STORAGE_GUARD_STATUS=$?
+[ "$PRODUCTION_STORAGE_GUARD_STATUS" -ne 0 ]
+! docker exec "$DB_CONTAINER" psql -U dentia_integration -d postgres -tAc 'SELECT datname FROM pg_database' | \
+  grep -Fqx "$PRODUCTION_STORAGE_GUARD_DB"
+[ "$(shasum -a 256 "$ROOT/backend/storage/clinical_files/$CLINICAL_KEY" | awk '{print $1}')" = "$CLINICAL_SHA" ]
+printf 'CLINICAL_TEMPORARY_TARGET_GUARDS_OK database_status=%s storage_status=%s\n' \
+  "$PRODUCTION_DB_GUARD_STATUS" "$PRODUCTION_STORAGE_GUARD_STATUS"
+
+REAL_DOCKER="$(command -v docker)"
+mkdir -p "$HARNESS/failing-docker-bin"
+cat >"$HARNESS/failing-docker-bin/docker" <<EOF
+#!/usr/bin/env bash
+if [[ "\$*" == *"SELECT datname FROM pg_database;"* ]]; then
+  exit 97
+fi
+exec "$REAL_DOCKER" "\$@"
+EOF
+chmod +x "$HARNESS/failing-docker-bin/docker"
+DB_QUERY_FAILURE_DB="dentia_restore_db_query_failure_${SUFFIX}"
+DB_QUERY_FAILURE_STORAGE="$HARNESS/db-query-failure-storage"
+DB_QUERY_FAILURE_STATUS=0
+PATH="$HARNESS/failing-docker-bin:$PATH" DENTIA_DB_CONTAINER="$DB_CONTAINER" \
+  DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+  "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$POST_BACKUP_PATH" --temporary \
+  --database-name "$DB_QUERY_FAILURE_DB" --storage-dir "$DB_QUERY_FAILURE_STORAGE" >/dev/null 2>&1 || DB_QUERY_FAILURE_STATUS=$?
+[ "$DB_QUERY_FAILURE_STATUS" -ne 0 ]
+[ ! -e "$DB_QUERY_FAILURE_STORAGE" ]
+! docker exec "$DB_CONTAINER" psql -U dentia_integration -d postgres -tAc 'SELECT datname FROM pg_database' | \
+  grep -Fqx "$DB_QUERY_FAILURE_DB"
+printf 'CLINICAL_DB_EXISTENCE_QUERY_FAIL_CLOSED_OK status=%s\n' "$DB_QUERY_FAILURE_STATUS"
 RESTORE_DB="dentia_restore_clinical_${SUFFIX}"
 RESTORE_STORAGE="$HARNESS/restored-clinical-storage"
 RESTORE_OUTPUT="$(DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
