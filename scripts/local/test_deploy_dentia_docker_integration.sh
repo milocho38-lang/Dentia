@@ -141,10 +141,16 @@ EOF
 chmod 600 "$ROOT/.env.production"
 mkdir -p "$ROOT/backend/storage" "$ROOT/.run" "$BACKUPS"
 
-compose() {
-  DENTIA_BACKEND_ENV_FILE="$ROOT/.env.production" \
-    docker compose --env-file "$ROOT/.env.production" -f "$ROOT/docker-compose.yml" -p "$PROJECT" "$@"
-}
+compose() (
+  # Compose gives exported shell variables precedence over --env-file. Load the
+  # synthetic production environment in a subshell so CI job variables (for
+  # example its localhost DATABASE_URL) cannot leak into this isolated stack.
+  set -a
+  # shellcheck disable=SC1090
+  . "$ROOT/.env.production"
+  set +a
+  docker compose --env-file "$ROOT/.env.production" -f "$ROOT/docker-compose.yml" -p "$PROJECT" "$@"
+)
 
 cd "$ROOT"
 DENTIA_BUILD_REVISION="$OLD_SHA" compose build
