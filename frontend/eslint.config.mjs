@@ -8,7 +8,7 @@ export default defineConfig([
     rules: { "@next/next/no-location-assign-relative-destination": "off" },
   },
   {
-    files: ["app/**/consentimiento/**/page.tsx"],
+    files: ["app/(public)/consentimiento/[[]token[]]/page.tsx"],
     rules: { "react-hooks/refs": "off" },
   },
   {
@@ -20,7 +20,7 @@ export default defineConfig([
     // newly enables this React compiler-era rule; keep exceptions explicit so
     // new files remain protected and remediation can be tracked independently.
     files: [
-      "app/**/consentimiento/**/page.tsx",
+      "app/(public)/consentimiento/[[]token[]]/page.tsx",
       "components/agenda/AgendaView.tsx",
       "components/consents/ConsentAccessPanel.tsx",
       "components/consents/ConsentPaperPanel.tsx",

@@ -538,6 +538,9 @@ if [ "$SCENARIO" = next_release_rollback ]; then
       curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null 2>&1 && break
     sleep 2
   done
+  curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
+  curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
+  curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
   [ "$(docker inspect -f '{{.Image}}' "$BACKEND_CONTAINER")" = "$OLD_BACKEND_ID" ]
   [ "$(docker inspect -f '{{.Image}}' "$FRONTEND_CONTAINER")" = "$OLD_FRONTEND_ID" ]
   [ "$(docker inspect -f '{{.Image}}' "$WEBSITE_CONTAINER")" = "$OLD_WEBSITE_ID" ]
@@ -550,6 +553,8 @@ if [ "$SCENARIO" = next_release_rollback ]; then
   [ "$(clinical_fixture_sha256 "$CLINICAL_KEY")" = "$CLINICAL_SHA" ]
   rm -f "$ROOT/.run/maintenance_active" "$ROOT/backend/storage/.dentia-maintenance"
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
+  curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
+  curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
   printf 'NEXT_RELEASE_ROLLBACK_OK sha=%s db=20261017_0050 patients=%s clinical_files=%s\n' \
     "$OLD_SHA" "$PRE_ROLLBACK_PATIENTS" "$PRE_ROLLBACK_FILES"
 fi
