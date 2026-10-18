@@ -36,12 +36,15 @@ HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 
 export_evidence() {
-  local outcome="$1" revision="unavailable" evidence_file
+  local outcome="$1" revision="unavailable" evidence_file patients="unavailable" clinical_files="unavailable"
+  local storage_inventory="$EVIDENCE_DIR/docker-${SCENARIO}-${TARGET_SHA:-unknown}-storage.sha256"
   [ -n "$EVIDENCE_DIR" ] || return 0
   mkdir -p "$EVIDENCE_DIR"
   chmod 700 "$EVIDENCE_DIR"
   if docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
     revision="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version' 2>/dev/null || printf unavailable)"
+    patients="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes' 2>/dev/null || printf unavailable)"
+    clinical_files="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT CASE WHEN to_regclass('public.archivos_clinicos') IS NULL THEN 0 ELSE (SELECT count(*) FROM archivos_clinicos) END" 2>/dev/null || printf unavailable)"
   fi
   evidence_file="$EVIDENCE_DIR/docker-${SCENARIO}-${TARGET_SHA:-unknown}.txt"
   umask 077
@@ -52,7 +55,24 @@ export_evidence() {
     printf 'source_worktree_sha=%s\n' "$SOURCE_SHA"
     printf 'target_sha=%s\n' "${TARGET_SHA:-unknown}"
     printf 'alembic_revision=%s\n' "$revision"
+    printf 'patients=%s\n' "$patients"
+    printf 'clinical_files=%s\n' "$clinical_files"
+    for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
+      if docker inspect "$container" >/dev/null 2>&1; then
+        printf 'container=%s image_id=%s revision=%s running=%s\n' "$container" \
+          "$(docker inspect -f '{{.Image}}' "$container")" \
+          "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")" \
+          "$(docker inspect -f '{{.State.Running}}' "$container")"
+      fi
+    done
   } >"$evidence_file"
+  if docker inspect "$BACKEND_CONTAINER" >/dev/null 2>&1; then
+    docker exec "$BACKEND_CONTAINER" sh -c \
+      'if [ -d /app/storage/clinical_files ]; then find /app/storage/clinical_files -type f -exec sha256sum {} \; | sort; fi' \
+      >"$storage_inventory"
+    printf 'storage_inventory_sha256=%s\n' "$(dentia_sha256 "$storage_inventory" | awk '{print $1}')" >>"$evidence_file"
+  fi
+  chmod 600 "$evidence_file" "$storage_inventory" 2>/dev/null || true
 }
 
 completed_backup_path() {
@@ -95,9 +115,10 @@ git clone --no-hardlinks "$SOURCE_ROOT" "$ROOT" >/dev/null
 cp "$SOURCE_ROOT/docker-compose.yml" "$ROOT/docker-compose.yml"
 cp "$SOURCE_ROOT/scripts/lib/dentia_common.sh" "$ROOT/scripts/lib/dentia_common.sh"
 cp "$SOURCE_ROOT/scripts/production/deploy_dentia.sh" "$ROOT/scripts/production/deploy_dentia.sh"
+cp "$SOURCE_ROOT/scripts/production/rollback_dentia.sh" "$ROOT/scripts/production/rollback_dentia.sh"
 git -C "$ROOT" config user.name "Dentia Integration"
 git -C "$ROOT" config user.email "integration@dentia.invalid"
-git -C "$ROOT" add docker-compose.yml scripts/lib/dentia_common.sh scripts/production/deploy_dentia.sh
+git -C "$ROOT" add docker-compose.yml scripts/lib/dentia_common.sh scripts/production/deploy_dentia.sh scripts/production/rollback_dentia.sh
 if ! git -C "$ROOT" diff --cached --quiet; then
   GIT_AUTHOR_DATE=2026-10-07T00:00:00Z GIT_COMMITTER_DATE=2026-10-07T00:00:00Z \
     git -C "$ROOT" commit -m "integration target" >/dev/null
@@ -363,6 +384,35 @@ PROXY_OVERSIZE_STATUS="$(curl -sS -o "$HARNESS/proxy-oversize-response.json" -w 
 [ "$PROXY_OVERSIZE_STATUS" = 413 ]
 printf 'CLINICAL_PROXY_LIMIT_OK accepted_bytes=11534336 rejected_bytes=27262976\n'
 
+# Three simultaneous 11 MiB browser uploads exercise bounded proxy buffering.
+# The 192 MiB delta ceiling allows the configured 27 MiB request allowance per
+# upload plus more than 100 MiB of runtime/multipart overhead, while still
+# catching an unbounded multi-copy regression.
+truncate -s 11534336 "$PROXY_PDF"
+PROXY_BASELINE_RSS_KIB="$(docker exec "$FRONTEND_CONTAINER" awk '/VmRSS:/ {print $2}' /proc/1/status)"
+PROXY_PEAK_RSS_KIB="$PROXY_BASELINE_RSS_KIB"
+for index in 1 2 3; do
+  curl -sS -o "$HARNESS/proxy-concurrent-$index-response.json" -w '%{http_code}' \
+    -X POST "http://127.0.0.1:$FRONTEND_PORT/api/patients/00000000-0000-4000-8000-000000000123/clinical-files" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -F 'tipo=DOCUMENT' -F 'categoria=GENERAL' \
+    -F "idempotency_key=00000000-0000-4000-8000-00000000013$((index + 4))" \
+    -F "archivo=@$PROXY_PDF;type=application/pdf" \
+    >"$HARNESS/proxy-concurrent-$index-status" &
+  eval "PROXY_PID_$index=$!"
+done
+while kill -0 "$PROXY_PID_1" 2>/dev/null || kill -0 "$PROXY_PID_2" 2>/dev/null || kill -0 "$PROXY_PID_3" 2>/dev/null; do
+  CURRENT_RSS_KIB="$(docker exec "$FRONTEND_CONTAINER" awk '/VmRSS:/ {print $2}' /proc/1/status)"
+  [ "$CURRENT_RSS_KIB" -le "$PROXY_PEAK_RSS_KIB" ] || PROXY_PEAK_RSS_KIB="$CURRENT_RSS_KIB"
+  sleep 0.05
+done
+wait "$PROXY_PID_1"; wait "$PROXY_PID_2"; wait "$PROXY_PID_3"
+for index in 1 2 3; do [ "$(cat "$HARNESS/proxy-concurrent-$index-status")" = 201 ]; done
+PROXY_RSS_DELTA_KIB=$((PROXY_PEAK_RSS_KIB - PROXY_BASELINE_RSS_KIB))
+[ "$PROXY_RSS_DELTA_KIB" -le 196608 ]
+printf 'CLINICAL_PROXY_CONCURRENCY_OK uploads=3 bytes_each=11534336 baseline_rss_kib=%s peak_rss_kib=%s delta_rss_kib=%s threshold_kib=196608\n' \
+  "$PROXY_BASELINE_RSS_KIB" "$PROXY_PEAK_RSS_KIB" "$PROXY_RSS_DELTA_KIB"
+
 # Add one synthetic private binary after the migration, then prove that a new
 # complete backup inventories and restores its bytes and SHA-256.
 # Preserve the real root-owned bind-mount permissions seen on Linux runners.
@@ -525,22 +575,17 @@ DENTIA_DB_CONTAINER="$DB_CONTAINER" \
 
 printf 'docker_integration_success target=%s backup=%s\n' "$TARGET_SHA" "$BACKUP_PATH"
 if [ "$SCENARIO" = next_release_rollback ]; then
-  # Exercise the supported code-only rollback to the exact production SHA.
-  # Migration 0050 is additive and intentionally remains applied.
+  # Exercise the real production code-only rollback procedure. Migration 0050
+  # is additive and intentionally remains applied.
   PRE_ROLLBACK_PATIENTS="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')"
   PRE_ROLLBACK_FILES="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')"
-  touch "$ROOT/.run/maintenance_active" "$ROOT/backend/storage/.dentia-maintenance"
-  compose stop dentia-backend dentia-frontend dentia-website
-  DENTIA_IMAGE_TAG="$OLD_SHA" compose up -d --no-deps dentia-backend dentia-frontend dentia-website
-  for _ in $(seq 1 60); do
-    curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null 2>&1 && \
-      curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null 2>&1 && \
-      curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null 2>&1 && break
-    sleep 2
-  done
-  curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
-  curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
-  curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
+  DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
+  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
+  DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
+  DENTIA_PRODUCTION_BACKEND_HEALTH_URL="http://127.0.0.1:$BACKEND_PORT/health" \
+  DENTIA_PRODUCTION_FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT" \
+  DENTIA_PRODUCTION_WEBSITE_URL="http://127.0.0.1:$WEBSITE_PORT" \
+    "$ROOT/scripts/production/rollback_dentia.sh" --maintenance --target-sha "$OLD_SHA"
   [ "$(docker inspect -f '{{.Image}}' "$BACKEND_CONTAINER")" = "$OLD_BACKEND_ID" ]
   [ "$(docker inspect -f '{{.Image}}' "$FRONTEND_CONTAINER")" = "$OLD_FRONTEND_ID" ]
   [ "$(docker inspect -f '{{.Image}}' "$WEBSITE_CONTAINER")" = "$OLD_WEBSITE_ID" ]
@@ -551,7 +596,9 @@ if [ "$SCENARIO" = next_release_rollback ]; then
   [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')" = "$PRE_ROLLBACK_PATIENTS" ]
   [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')" = "$PRE_ROLLBACK_FILES" ]
   [ "$(clinical_fixture_sha256 "$CLINICAL_KEY")" = "$CLINICAL_SHA" ]
-  rm -f "$ROOT/.run/maintenance_active" "$ROOT/backend/storage/.dentia-maintenance"
+  [ "$(tr -d '[:space:]' <"$ROOT/.run/last_deploy_commit")" = "$OLD_SHA" ]
+  [ ! -e "$ROOT/.run/maintenance_active" ]
+  [ ! -e "$ROOT/backend/storage/.dentia-maintenance" ]
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
   curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
   curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
