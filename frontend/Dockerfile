@@ -20,7 +20,6 @@ ENV API_PROXY_TARGET=http://dentia-backend:8000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 RUN addgroup -S dentia && adduser -S dentia -G dentia
-COPY --from=builder /app/public ./public
 COPY --chown=dentia:dentia --from=builder /app/.next/standalone ./
 COPY --chown=dentia:dentia --from=builder /app/.next/static ./.next/static
 USER dentia
