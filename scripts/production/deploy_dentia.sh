@@ -9,6 +9,8 @@ source "$SCRIPT_DIR/../lib/dentia_common.sh"
 # production helper it launches. Other scripts sourcing dentia_common do not
 # leak their resolved defaults into unrelated child processes.
 export DENTIA_PROJECT_DIR DENTIA_PRODUCTION_DIR DENTIA_ENV_FILE
+DENTIA_TEMP_ROOT="${TMPDIR:-/tmp}"
+DENTIA_TEMP_ROOT="${DENTIA_TEMP_ROOT%/}"
 
 usage() {
   cat <<'EOF'
@@ -170,7 +172,8 @@ deploy_cleanup_temporary_restore() {
   if [ -n "${RESTORE_DB:-}" ]; then
     docker exec "$DENTIA_DB_CONTAINER" dropdb -U "$DENTIA_DB_USER" --if-exists "$RESTORE_DB" >/dev/null 2>&1 || true
   fi
-  if [ -n "${RESTORE_STORAGE:-}" ] && [[ "$RESTORE_STORAGE" == /tmp/dentia_restore_deploy_* ]]; then
+  if [ -n "${RESTORE_STORAGE:-}" ] && \
+      [[ "$RESTORE_STORAGE" == "$DENTIA_TEMP_ROOT"/dentia_restore_deploy_*/storage ]]; then
     rm -rf "$RESTORE_STORAGE"
   fi
 }
@@ -186,7 +189,7 @@ deploy_validate_recovery_baseline() {
     dentia_fail "Recovery backup is not from the required pre-migration revision 0049."
   RESTORE_SUFFIX="$(date -u +%Y%m%d_%H%M%S)_$$"
   RESTORE_DB="dentia_restore_recovery_$RESTORE_SUFFIX"
-  RESTORE_STORAGE="/tmp/dentia_restore_deploy_$RESTORE_SUFFIX/storage"
+  RESTORE_STORAGE="$DENTIA_TEMP_ROOT/dentia_restore_deploy_$RESTORE_SUFFIX/storage"
   dentia_info "Restoring the immutable pre-migration backup for recovery baseline verification..."
   local restore_output
   restore_output="$("$SCRIPT_DIR/restore_dentia_backup.sh" --backup "$backup" --temporary \
@@ -413,7 +416,7 @@ BACKUP_PATH="$(
 
 RESTORE_SUFFIX="$(date -u +%Y%m%d_%H%M%S)_$$"
 RESTORE_DB="dentia_restore_deploy_$RESTORE_SUFFIX"
-RESTORE_STORAGE="/tmp/dentia_restore_deploy_$RESTORE_SUFFIX/storage"
+RESTORE_STORAGE="$DENTIA_TEMP_ROOT/dentia_restore_deploy_$RESTORE_SUFFIX/storage"
 dentia_info "Testing backup restoration in an isolated database and storage path..."
 RESTORE_OUTPUT="$("$SCRIPT_DIR/restore_dentia_backup.sh" --backup "$BACKUP_PATH" --temporary \
   --database-name "$RESTORE_DB" --storage-dir "$RESTORE_STORAGE")"
