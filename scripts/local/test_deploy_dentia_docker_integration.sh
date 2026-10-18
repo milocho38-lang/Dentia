@@ -65,6 +65,14 @@ export_evidence() {
     printf 'alembic_revision=%s\n' "$revision"
     printf 'patients=%s\n' "$patients"
     printf 'clinical_files=%s\n' "$clinical_files"
+    if [ -n "${PROXY_BASELINE_RSS_KIB:-}" ]; then
+      printf 'proxy_concurrent_uploads=3\n'
+      printf 'proxy_bytes_each=11534336\n'
+      printf 'proxy_baseline_rss_kib=%s\n' "$PROXY_BASELINE_RSS_KIB"
+      printf 'proxy_peak_rss_kib=%s\n' "$PROXY_PEAK_RSS_KIB"
+      printf 'proxy_delta_rss_kib=%s\n' "$PROXY_RSS_DELTA_KIB"
+      printf 'proxy_delta_threshold_kib=196608\n'
+    fi
     for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
       if docker inspect "$container" >/dev/null 2>&1; then
         printf 'container=%s image_id=%s revision=%s running=%s\n' "$container" \
@@ -408,6 +416,8 @@ for index in 1 2 3; do
     -F "archivo=@$PROXY_PDF;type=application/pdf" \
     >"$HARNESS/proxy-concurrent-$index-status" &
   eval "PROXY_PID_$index=$!"
+  CURRENT_RSS_KIB="$(docker exec "$FRONTEND_CONTAINER" awk '/VmRSS:/ {print $2}' /proc/1/status)"
+  [ "$CURRENT_RSS_KIB" -le "$PROXY_PEAK_RSS_KIB" ] || PROXY_PEAK_RSS_KIB="$CURRENT_RSS_KIB"
 done
 while kill -0 "$PROXY_PID_1" 2>/dev/null || kill -0 "$PROXY_PID_2" 2>/dev/null || kill -0 "$PROXY_PID_3" 2>/dev/null; do
   CURRENT_RSS_KIB="$(docker exec "$FRONTEND_CONTAINER" awk '/VmRSS:/ {print $2}' /proc/1/status)"
@@ -587,6 +597,23 @@ if [ "$SCENARIO" = next_release_rollback ]; then
   # is additive and intentionally remains applied.
   PRE_ROLLBACK_PATIENTS="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')"
   PRE_ROLLBACK_FILES="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')"
+  # A stale deployment record must be rejected before maintenance or any
+  # runtime mutation. Restore the synthetic record only after proving this.
+  printf '%s\n' "$OLD_SHA" >"$ROOT/.run/last_deploy_commit"
+  STALE_STATE_STATUS=0
+  DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
+  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
+  DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
+    "$ROOT/scripts/production/rollback_dentia.sh" --maintenance --target-sha "$OLD_SHA" \
+    >"$HARNESS/rollback-stale-state.log" 2>&1 || STALE_STATE_STATUS=$?
+  [ "$STALE_STATE_STATUS" -ne 0 ]
+  [ ! -e "$ROOT/.run/maintenance_active" ]
+  [ ! -e "$ROOT/backend/storage/.dentia-maintenance" ]
+  for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
+    [ "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")" = "$TARGET_SHA" ]
+  done
+  printf '%s\n' "$TARGET_SHA" >"$ROOT/.run/last_deploy_commit"
+  printf 'ROLLBACK_STALE_STATE_FAIL_CLOSED_OK status=%s\n' "$STALE_STATE_STATUS"
   DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
   DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
   DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \

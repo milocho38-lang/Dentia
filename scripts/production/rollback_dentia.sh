@@ -66,6 +66,15 @@ rollback_verify_runtime() {
   [ "$(docker inspect -f '{{.State.Running}}' "$container")" = true ] || dentia_fail "Runtime container is not running: $service"
 }
 
+rollback_verify_current_runtime() {
+  local service="$1" container="$2" runtime_id revision
+  runtime_id="$(docker inspect -f '{{.Image}}' "$container" 2>/dev/null || true)"
+  revision="$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container" 2>/dev/null || true)"
+  [[ "$runtime_id" =~ ^sha256:[0-9a-f]{64}$ ]] || dentia_fail "Current runtime image identity is not a full sha256 digest: $service"
+  [ "$revision" = "$CURRENT_SHA" ] || dentia_fail "Current runtime OCI revision differs from the verified deployed commit: $service"
+  [ "$(docker inspect -f '{{.State.Running}}' "$container")" = true ] || dentia_fail "Current runtime container is not running: $service"
+}
+
 mkdir -p "$STATE_DIR"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   dentia_fail "Deploy lock exists: $LOCK_DIR. Inspect it manually; stale locks are never removed automatically."
@@ -89,7 +98,12 @@ git cat-file -e "$TARGET_SHA^{commit}" 2>/dev/null || dentia_fail "Target SHA is
 [ -s "$STATE_DIR/last_deploy_commit" ] || dentia_fail "Verified deployed commit record is missing."
 CURRENT_SHA="$(tr -d '[:space:]' <"$STATE_DIR/last_deploy_commit")"
 [[ "$CURRENT_SHA" =~ ^[0-9a-f]{40}$ ]] || dentia_fail "Verified deployed commit record is not a full SHA."
+[ "$(git rev-parse HEAD)" = "$CURRENT_SHA" ] || dentia_fail "Production checkout differs from the verified deployed commit."
 git merge-base --is-ancestor "$TARGET_SHA" "$CURRENT_SHA" || dentia_fail "Rollback target is not an ancestor of the verified deployed commit."
+
+rollback_verify_current_runtime "$DENTIA_BACKEND_SERVICE" "$DENTIA_BACKEND_CONTAINER"
+rollback_verify_current_runtime "$DENTIA_FRONTEND_SERVICE" "$DENTIA_FRONTEND_CONTAINER"
+rollback_verify_current_runtime "$DENTIA_WEBSITE_SERVICE" "$DENTIA_WEBSITE_CONTAINER"
 
 "$SCRIPT_DIR/validate_dentia_production_config.sh"
 docker inspect "$DENTIA_DB_CONTAINER" >/dev/null 2>&1 || dentia_fail "Database container not found."

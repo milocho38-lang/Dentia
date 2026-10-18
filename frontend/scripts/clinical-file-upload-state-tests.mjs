@@ -9,6 +9,10 @@ assert.equal(canApplyUploadResult(4, 5, "patient-a", "patient-a"), false, "late 
 assert.equal(canApplyUploadResult(4, 4, "patient-a", "patient-b"), false, "response from another patient must be ignored");
 const nextConfig = fs.readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
 assert.match(nextConfig, /proxyClientMaxBodySize:\s*["']27mb["']/, "proxy preserves a complete 25 MiB multipart upload");
+const workspace = fs.readFileSync(new URL("../components/patients/PatientFilesWorkspace.tsx", import.meta.url), "utf8");
+assert.match(workspace, /createClinicalFileUploadGate\(\)/, "static wiring: workspace owns the synchronous upload gate");
+assert.match(workspace, /uploadGate\.current\.begin\(/, "static wiring: submit acquires the gate before upload setup");
+assert.match(workspace, /uploadGate\.current\.finish\(attempt\)/, "static wiring: only the owning attempt releases busy state");
 
 let uploadRequests = 0;
 let reconcileRequests = 0;
