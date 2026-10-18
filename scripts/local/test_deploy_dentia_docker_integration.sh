@@ -85,7 +85,10 @@ if ! git -C "$ROOT" diff --cached --quiet; then
     git -C "$ROOT" commit -m "integration target" >/dev/null
 fi
 TARGET_SHA="$(git -C "$ROOT" rev-parse HEAD)"
-git -C "$ROOT" branch -M master
+# GitHub Actions checks pull requests out at a detached merge commit. Create the
+# harness branch explicitly so the deployment simulation behaves the same from
+# branch and detached-HEAD source checkouts.
+git -C "$ROOT" checkout -B master "$TARGET_SHA" >/dev/null
 git -C "$ROOT" remote set-url origin "$ROOT"
 git -C "$ROOT" checkout "$OLD_SHA" >/dev/null
 
