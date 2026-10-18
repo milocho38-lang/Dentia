@@ -76,10 +76,12 @@ if data["document_inventory"].get("file") != "document_inventory.tsv":
 PY
 
 dentia_info "Validating PostgreSQL dump catalogue..."
-if command -v pg_restore >/dev/null 2>&1; then
-  pg_restore -l database.dump >/dev/null
-elif command -v docker >/dev/null 2>&1 && docker inspect "$DENTIA_DB_CONTAINER" >/dev/null 2>&1; then
+if command -v docker >/dev/null 2>&1 && docker inspect "$DENTIA_DB_CONTAINER" >/dev/null 2>&1; then
+  # Prefer the database container so pg_restore matches the server version
+  # that produced the dump. Runner or host clients may be older.
   docker exec -i "$DENTIA_DB_CONTAINER" pg_restore -l <database.dump >/dev/null
+elif command -v pg_restore >/dev/null 2>&1; then
+  pg_restore -l database.dump >/dev/null
 else
   dentia_fail "Backup verification failed: pg_restore unavailable and DB container is not available."
 fi
