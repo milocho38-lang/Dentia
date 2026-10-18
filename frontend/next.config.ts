@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
   experimental: {
     // The backend enforces 25 MiB. Keep enough room for multipart framing so
     // the backend receives the complete body and remains the source of truth.
-    middlewareClientMaxBodySize: "27mb",
+    proxyClientMaxBodySize: "27mb",
   },
   async headers() {
     return [

@@ -3,13 +3,18 @@ set -Eeuo pipefail
 
 SCENARIO="${1:-success}"
 case "$SCENARIO" in
-  success|pre_failure|post_failure_recovery) ;;
-  *) printf 'usage: %s [success|pre_failure|post_failure_recovery]\n' "$0" >&2; exit 2 ;;
+  success|pre_failure|post_failure_recovery|next_release_rollback) ;;
+  *) printf 'usage: %s [success|pre_failure|post_failure_recovery|next_release_rollback]\n' "$0" >&2; exit 2 ;;
 esac
 
 SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." >/dev/null 2>&1 && pwd)"
 SOURCE_SHA="$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
 OLD_SHA="da88346d97583a0d11a50644d118e05593f7e6b3"
+INITIAL_REVISION="20261012_0049"
+if [ "$SCENARIO" = next_release_rollback ]; then
+  OLD_SHA="40a76d6d028bd22356194fcec9fdcb9882f727f1"
+  INITIAL_REVISION="20261017_0050"
+fi
 HARNESS="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-docker.XXXXXX")"
 ROOT="$HARNESS/repo"
 BACKUPS="$HARNESS/backups"
@@ -78,6 +83,7 @@ cleanup() {
     if [ -n "${TARGET_SHA:-}" ]; then
       docker image rm "$repository:$TARGET_SHA" >/dev/null 2>&1 || true
     fi
+    docker image rm "$repository:$OLD_SHA" >/dev/null 2>&1 || true
   done
   case "$HARNESS" in
     "${TMPDIR:-/tmp}"/dentia-deploy-docker.*) rm -rf "$HARNESS" ;;
@@ -171,7 +177,7 @@ for _ in $(seq 1 60); do
   compose exec -T dentia-db pg_isready -U dentia_integration -d dentia_integration >/dev/null 2>&1 && break
   sleep 1
 done
-compose run --rm --no-deps dentia-backend alembic -c alembic.ini upgrade 20261012_0049
+compose run --rm --no-deps dentia-backend alembic -c alembic.ini upgrade "$INITIAL_REVISION"
 printf 'SyntheticPassword!42\nSyntheticPassword!42\n' | compose run --rm -T --no-deps dentia-backend \
   python -m app.cli.bootstrap --company-name "Synthetic Clinic" --company-slug synthetic-clinic \
   --site-name "Synthetic Site" --admin-name "Synthetic Admin" --admin-username synthetic-admin \
@@ -192,6 +198,9 @@ done
 OLD_BACKEND_ID="$(docker inspect -f '{{.Image}}' "$BACKEND_CONTAINER")"
 OLD_FRONTEND_ID="$(docker inspect -f '{{.Image}}' "$FRONTEND_CONTAINER")"
 OLD_WEBSITE_ID="$(docker inspect -f '{{.Image}}' "$WEBSITE_CONTAINER")"
+docker image tag "$OLD_BACKEND_ID" "$PROJECT-dentia-backend:$OLD_SHA"
+docker image tag "$OLD_FRONTEND_ID" "$PROJECT-dentia-frontend:$OLD_SHA"
+docker image tag "$OLD_WEBSITE_ID" "$PROJECT-dentia-website:$OLD_SHA"
 printf '%s\n' "$OLD_SHA" >"$ROOT/.run/last_deploy_commit"
 
 git checkout master >/dev/null
@@ -205,6 +214,7 @@ fi
 DEPLOY_STATUS=0
 DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
 DENTIA_BACKUP_DIR="$RUN_BACKUP_DIR" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
+DENTIA_EXPECTED_PRE_DEPLOY_REVISION="$INITIAL_REVISION" \
 DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER="dentia_integration" \
 DENTIA_DB_NAME="dentia_integration" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
 DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
@@ -509,4 +519,33 @@ DENTIA_DB_CONTAINER="$DB_CONTAINER" \
 ! tar -tzf "$BACKUPS"/*/storage.tar.gz | grep -q '.dentia-maintenance'
 
 printf 'docker_integration_success target=%s backup=%s\n' "$TARGET_SHA" "$BACKUP_PATH"
+if [ "$SCENARIO" = next_release_rollback ]; then
+  # Exercise the supported code-only rollback to the exact production SHA.
+  # Migration 0050 is additive and intentionally remains applied.
+  PRE_ROLLBACK_PATIENTS="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')"
+  PRE_ROLLBACK_FILES="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')"
+  touch "$ROOT/.run/maintenance_active" "$ROOT/backend/storage/.dentia-maintenance"
+  compose stop dentia-backend dentia-frontend dentia-website
+  DENTIA_IMAGE_TAG="$OLD_SHA" compose up -d --no-deps dentia-backend dentia-frontend dentia-website
+  for _ in $(seq 1 60); do
+    curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null 2>&1 && \
+      curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null 2>&1 && \
+      curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null 2>&1 && break
+    sleep 2
+  done
+  [ "$(docker inspect -f '{{.Image}}' "$BACKEND_CONTAINER")" = "$OLD_BACKEND_ID" ]
+  [ "$(docker inspect -f '{{.Image}}' "$FRONTEND_CONTAINER")" = "$OLD_FRONTEND_ID" ]
+  [ "$(docker inspect -f '{{.Image}}' "$WEBSITE_CONTAINER")" = "$OLD_WEBSITE_ID" ]
+  for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
+    [ "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")" = "$OLD_SHA" ]
+  done
+  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261017_0050 ]
+  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')" = "$PRE_ROLLBACK_PATIENTS" ]
+  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')" = "$PRE_ROLLBACK_FILES" ]
+  [ "$(clinical_fixture_sha256 "$CLINICAL_KEY")" = "$CLINICAL_SHA" ]
+  rm -f "$ROOT/.run/maintenance_active" "$ROOT/backend/storage/.dentia-maintenance"
+  curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
+  printf 'NEXT_RELEASE_ROLLBACK_OK sha=%s db=20261017_0050 patients=%s clinical_files=%s\n' \
+    "$OLD_SHA" "$PRE_ROLLBACK_PATIENTS" "$PRE_ROLLBACK_FILES"
+fi
 export_evidence passed
