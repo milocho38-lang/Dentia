@@ -77,3 +77,6 @@ jobs:
 
       - name: Exercise the 0049 to 0050 Docker deployment path
         run: ./scripts/local/test_deploy_dentia_docker_integration.sh success
+
+      - name: Exercise the 0050 release and immutable rollback path
+        run: ./scripts/local/test_deploy_dentia_docker_integration.sh next_release_rollback
