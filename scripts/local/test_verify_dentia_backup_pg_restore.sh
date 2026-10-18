@@ -30,7 +30,9 @@ cat >"$HARNESS/bin/docker" <<'EOF'
 #!/usr/bin/env bash
 printf 'docker %s\n' "$*" >>"$MOCK_LOG"
 if [ "${1:-}" = inspect ]; then
-  exit "${MOCK_DOCKER_INSPECT_STATUS:-0}"
+  status="${MOCK_DOCKER_INSPECT_STATUS:-0}"
+  [ "$status" -eq 0 ] && printf 'true\n'
+  exit "$status"
 fi
 if [ "${1:-}" = exec ]; then
   exit "${MOCK_DOCKER_EXEC_STATUS:-0}"
@@ -90,14 +92,14 @@ run_verify() {
 
 : >"$HARNESS/both.log"
 run_verify "$HARNESS/both.log" 0 0 0 | grep -qx BACKUP_VALID
-grep -q '^docker inspect dentia-test-db$' "$HARNESS/both.log"
+grep -q '^docker inspect -f {{.State.Running}} dentia-test-db$' "$HARNESS/both.log"
 grep -q '^docker exec -i dentia-test-db pg_restore -l$' "$HARNESS/both.log"
 ! grep -q '^host pg_restore ' "$HARNESS/both.log"
 printf 'container_preferred OK\n'
 
 : >"$HARNESS/host.log"
 run_verify "$HARNESS/host.log" 1 0 0 | grep -qx BACKUP_VALID
-grep -q '^docker inspect dentia-test-db$' "$HARNESS/host.log"
+grep -q '^docker inspect -f {{.State.Running}} dentia-test-db$' "$HARNESS/host.log"
 grep -q '^host pg_restore -l database.dump$' "$HARNESS/host.log"
 printf 'host_fallback OK\n'
 
