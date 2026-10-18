@@ -17,8 +17,12 @@ ARG DENTIA_VCS_REF=unknown
 LABEL org.opencontainers.image.revision=$DENTIA_VCS_REF
 ENV NODE_ENV=production
 ENV API_PROXY_TARGET=http://dentia-backend:8000
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 RUN addgroup -S dentia && adduser -S dentia -G dentia
-COPY --chown=dentia:dentia --from=builder /app ./
+COPY --from=builder /app/public ./public
+COPY --chown=dentia:dentia --from=builder /app/.next/standalone ./
+COPY --chown=dentia:dentia --from=builder /app/.next/static ./.next/static
 USER dentia
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+CMD ["node", "server.js"]
