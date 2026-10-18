@@ -39,6 +39,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The Docker release-path test starts from the currently deployed
+          # production SHA before fast-forwarding to the candidate.
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
