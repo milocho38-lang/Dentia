@@ -35,6 +35,14 @@ EVIDENCE_DIR="${DENTIA_INTEGRATION_EVIDENCE_DIR:-}"
 HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
 
+evidence_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1"
+  else
+    shasum -a 256 "$1"
+  fi
+}
+
 export_evidence() {
   local outcome="$1" revision="unavailable" evidence_file patients="unavailable" clinical_files="unavailable"
   local storage_inventory="$EVIDENCE_DIR/docker-${SCENARIO}-${TARGET_SHA:-unknown}-storage.sha256"
@@ -70,7 +78,7 @@ export_evidence() {
     docker exec "$BACKEND_CONTAINER" sh -c \
       'if [ -d /app/storage/clinical_files ]; then find /app/storage/clinical_files -type f -exec sha256sum {} \; | sort; fi' \
       >"$storage_inventory"
-    printf 'storage_inventory_sha256=%s\n' "$(dentia_sha256 "$storage_inventory" | awk '{print $1}')" >>"$evidence_file"
+    printf 'storage_inventory_sha256=%s\n' "$(evidence_sha256 "$storage_inventory" | awk '{print $1}')" >>"$evidence_file"
   fi
   chmod 600 "$evidence_file" "$storage_inventory" 2>/dev/null || true
 }
