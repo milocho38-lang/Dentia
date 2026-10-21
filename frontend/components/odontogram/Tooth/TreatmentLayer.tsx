@@ -47,6 +47,20 @@ export function TreatmentLayer({
         </>
       )}
 
+      {states.has("VENEER") && !states.has("DEFINITIVE_CROWN") && !states.has("TEMPORARY_CROWN") && !states.has("IMPLANT") && !states.has("MISSING") && (
+        <>
+          <path
+            d="M22 19 C27 11 51 11 56 19 C58 27 57 38 52 45 C44 49 34 49 26 45 C21 38 20 27 22 19 Z"
+            fill="#DBEAFE"
+            fillOpacity="0.82"
+            stroke="#2563EB"
+            strokeDasharray="3 2"
+            strokeWidth="1.25"
+          />
+          <path d="M28 21 C33 17 45 17 50 21" stroke="#FFFFFF" strokeLinecap="round" strokeWidth="1.8" />
+        </>
+      )}
+
       {states.has("FIXED_PROSTHESIS") && (
         <>
           <path d="M10 40 C20 31 29 32 38 40 C47 32 58 31 68 40" fill="none" stroke={DDS_COLORS.treatment} strokeWidth="4.2" strokeLinecap="round" opacity="0.82" />

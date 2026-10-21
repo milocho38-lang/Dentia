@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from app.services.patient_import_service import (
 
 
 router = APIRouter(prefix="/api/patient-imports/dentalink", tags=["Patient imports"])
+logger = logging.getLogger(__name__)
 
 
 async def _read_xlsx(file: UploadFile) -> bytes:
@@ -78,6 +80,11 @@ async def preview_endpoint(
         )
     except (DentalinkWorkbookError, PatientImportError) as exc:
         raise _handle(exc)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.error("Unexpected Dentalink preview failure")
+        raise HTTPException(500, "No fue posible procesar la vista previa.")
 
 
 @router.post("/confirm", response_model=PatientImportConfirmResponse)
@@ -100,3 +107,8 @@ async def confirm_endpoint(
         )
     except (DentalinkWorkbookError, PatientImportError) as exc:
         raise _handle(exc)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.error("Unexpected Dentalink confirmation failure")
+        raise HTTPException(500, "No fue posible completar la importación.")

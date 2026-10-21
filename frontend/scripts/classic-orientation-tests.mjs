@@ -294,6 +294,14 @@ mapped = mapper.mapDualClinicalTooth(real);
 assert.equal(mapped.structuralMarkers[0].symbol, "♛");
 assert.equal(mapped.structuralMarkers[0].color.toUpperCase(), "#2563EB", "completed crown uses completed color");
 
+real = adapt("11", { FINDING: [detail("veneer-existing", "FIND_VENEER", "Carilla existente", "FINDING", null, "FINDING")] });
+mapped = mapper.mapDualClinicalTooth(real);
+assert.equal(real.events[0].kind, "VENEER", "existing veneer uses its own clinical representation");
+assert.equal(real.events[0].status, "COMPLETED", "existing veneer is not a planned procedure");
+assert.deepEqual(real.events[0].surfaces, ["WHOLE_TOOTH"]);
+assert.equal(mapped.structuralMarkers[0].symbol, "V");
+assert.equal(mapped.structuralMarkers[0].color.toUpperCase(), "#2563EB", "existing veneer uses completed-treatment blue");
+
 real = adapt("31", { DIAGNOSIS: [detail("r10", "DX_ACTIVE_CARIES", "Caries", "DIAGNOSIS", ["VESTIBULAR"])] }, ["PERFORMED"]);
 assert.equal(real.events.length, 0, "hidden layers do not appear");
 

@@ -5,6 +5,7 @@ export const CLASSIC_COLORS: Record<ClinicalEventKind, { fill: string; stroke: s
   RESTORATION: { fill: "#2563EB", stroke: "#1D4ED8", text: "Restauración" },
   ENDODONTICS: { fill: "#8B5CF6", stroke: "#6D28D9", text: "Endodoncia" },
   CROWN: { fill: "#059669", stroke: "#047857", text: "Corona" },
+  VENEER: { fill: "#2563EB", stroke: "#1D4ED8", text: "Carilla" },
   IMPLANT: { fill: "#0F766E", stroke: "#115E59", text: "Implante" },
   FRACTURE: { fill: "#F97316", stroke: "#C2410C", text: "Fractura" },
   EXTRACTION: { fill: "#EF4444", stroke: "#B91C1C", text: "Extracción" },
@@ -59,4 +60,4 @@ export const SURFACE_OPTIONS: ToothSurface[] = [
 ];
 
 export const SURFACE_EVENT_KINDS: ClinicalEventKind[] = ["CARIES", "RESTORATION", "FRACTURE"];
-export const WHOLE_TOOTH_EVENT_KINDS: ClinicalEventKind[] = ["CROWN", "IMPLANT", "EXTRACTION", "ABSENT"];
+export const WHOLE_TOOTH_EVENT_KINDS: ClinicalEventKind[] = ["CROWN", "VENEER", "IMPLANT", "EXTRACTION", "ABSENT"];

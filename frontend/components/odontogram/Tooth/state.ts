@@ -49,6 +49,7 @@ function isPerformedTreatmentVisualState(state: ToothVisualState) {
     "MULTIPLE_FILLINGS",
     "DEFINITIVE_CROWN",
     "TEMPORARY_CROWN",
+    "VENEER",
     "ENDODONTICS",
     "POST",
     "IMPLANT",
@@ -94,6 +95,7 @@ export function classifyToothDetail(detail: ToothDetail): ToothVisualState {
   if (includesAny(text, ["PROTESIS FIJA", "PRÓTESIS FIJA", "PUENTE", "FIXED"])) return "FIXED_PROSTHESIS";
   if (includesAny(text, ["PROTESIS REMOVIBLE", "PRÓTESIS REMOVIBLE", "REMOVIBLE"])) return "REMOVABLE_PROSTHESIS";
   if (includesAny(text, ["CORONA TEMPORAL"])) return "TEMPORARY_CROWN";
+  if (includesAny(text, ["CARILLA", "VENEER"])) return "VENEER";
   if (includesAny(text, ["CORONA", "CROWN"])) return "DEFINITIVE_CROWN";
   if (includesAny(text, ["POSTE", "POST"])) return "POST";
   if (includesAny(text, ["ENDODONCIA", "ENDO", "CONDUCTO"])) return "ENDODONTICS";

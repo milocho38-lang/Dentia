@@ -15,6 +15,7 @@ export type ClinicalEventKind =
   | "RESTORATION"
   | "ENDODONTICS"
   | "CROWN"
+  | "VENEER"
   | "IMPLANT"
   | "FRACTURE"
   | "EXTRACTION"

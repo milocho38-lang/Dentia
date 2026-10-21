@@ -159,6 +159,25 @@ def test_payment_list_detail_create_and_cross_tenant_create_are_isolated(api_cli
     assert db_session.scalar(select(func.count(TreatmentPayment.id))) == before_count + 1
 
 
+def test_dentist_can_load_treatment_dependencies_without_payment_access(
+    api_client, security_world
+) -> None:
+    token = security_world.tenant_a.dentist.token
+    treatment_id = security_world.tenant_a.treatment.id
+
+    allowed = [
+        api_client.get(f"/api/treatments/{treatment_id}", token=token),
+        api_client.get(f"/api/treatments/{treatment_id}/procedures", token=token),
+        api_client.get("/api/budgets", token=token),
+        api_client.get("/api/agenda/options", token=token),
+        api_client.get("/api/procedure-catalog?activo=true", token=token),
+    ]
+    assert [response.status_code for response in allowed] == [200, 200, 200, 200, 200]
+
+    payments = api_client.get("/api/payments", token=token)
+    assert payments.status_code == 403
+
+
 def test_payment_receipt_authorized_cross_tenant_and_role_denied(api_client, security_world) -> None:
     own = api_client.get(
         f"/api/payments/{security_world.tenant_a.payment.id}/receipt",

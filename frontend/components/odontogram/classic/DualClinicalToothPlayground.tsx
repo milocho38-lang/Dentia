@@ -7,7 +7,7 @@ import { createToothModel, DUAL_TOOTH_PRESET_OPTIONS, DUAL_TOOTH_PRESETS, type D
 import { familyFromTooth, getSurfaceOrientation, isValidFdiTooth, surfaceToRole } from "./orientation";
 import type { ClinicalEventKind, ClinicalEventStatus, ToothFamily, ToothSurface } from "./types";
 
-const eventKinds: ClinicalEventKind[] = ["CARIES", "RESTORATION", "ENDODONTICS", "CROWN", "IMPLANT", "FRACTURE", "EXTRACTION", "ABSENT"];
+const eventKinds: ClinicalEventKind[] = ["CARIES", "RESTORATION", "ENDODONTICS", "CROWN", "VENEER", "IMPLANT", "FRACTURE", "EXTRACTION", "ABSENT"];
 const statuses: ClinicalEventStatus[] = ["DIAGNOSIS", "COMPLETED", "PLANNED"];
 const families: ToothFamily[] = ["INCISOR", "CANINE", "PREMOLAR", "MOLAR"];
 

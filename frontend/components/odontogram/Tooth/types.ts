@@ -26,6 +26,7 @@ export type ToothVisualState =
   | "MULTIPLE_FILLINGS"
   | "DEFINITIVE_CROWN"
   | "TEMPORARY_CROWN"
+  | "VENEER"
   | "ENDODONTICS"
   | "POST"
   | "IMPLANT"

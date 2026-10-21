@@ -34,6 +34,17 @@ const treatmentPages = read("frontend/components/treatments/TreatmentPages.tsx")
 const treatmentServiceTs = read("frontend/services/treatmentService.ts");
 
 includes(
+  treatmentPages,
+  'const paymentsPromise = hasPermission("payments.view")',
+  "Treatment detail does not request payments without payments.view.",
+);
+includes(
+  treatmentPages,
+  'Promise.resolve<Payment[]>([])',
+  "Treatment detail keeps the clinical page loadable when payments are unavailable.",
+);
+
+includes(
   odontogramModel,
   'treatment_id: Mapped[UUID | None] = mapped_column(',
   "OdontogramEvent can reference a treatment.",

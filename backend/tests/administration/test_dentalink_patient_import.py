@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 import hashlib
 from io import BytesIO
+import re
 import zipfile
 from uuid import uuid4
 
@@ -42,6 +43,40 @@ def _add_archive_entry(content: bytes, name: str, payload: bytes = b"unsafe") ->
         for item in source.infolist():
             target.writestr(item, source.read(item))
         target.writestr(name, payload)
+    return output.getvalue()
+
+
+def _without_worksheet_dimension(content: bytes) -> bytes:
+    source = zipfile.ZipFile(BytesIO(content))
+    output = BytesIO()
+    with source, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            payload = source.read(item)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                payload, replacements = re.subn(
+                    br"<(?:[A-Za-z0-9_]+:)?dimension\b[^>]*/>", b"", payload, count=1
+                )
+                assert replacements == 1
+            target.writestr(item, payload)
+    return output.getvalue()
+
+
+def _with_worksheet_dimension(content: bytes, reference: str) -> bytes:
+    source = zipfile.ZipFile(BytesIO(content))
+    output = BytesIO()
+    replacement = f'<dimension ref="{reference}"/>'.encode()
+    with source, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            payload = source.read(item)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                payload, replacements = re.subn(
+                    br"<(?:[A-Za-z0-9_]+:)?dimension\b[^>]*/>",
+                    replacement,
+                    payload,
+                    count=1,
+                )
+                assert replacements == 1
+            target.writestr(item, payload)
     return output.getvalue()
 
 
@@ -154,6 +189,85 @@ def test_preview_separates_incomplete_review_rejected_and_pending_fields(
     minor = next(item for item in payload["rows"] if item["source_patient_id"] == "minor")
     assert minor["status"] == "REVIEW"
     assert "responsible_source_reference" in minor["pending_fields"]
+
+
+def test_preview_accepts_valid_workbook_without_dimension_metadata(
+    api_client, security_world
+) -> None:
+    content = _without_worksheet_dimension(_xlsx([_row("dimensionless")]))
+    response = _preview(api_client, security_world.tenant_a.admin.token, content)
+    assert response.status_code == 200, response.text
+    assert response.json()["counts"]["ready"] == 1
+
+
+def test_dimensionless_workbook_still_enforces_row_limit(api_client, security_world) -> None:
+    content = _without_worksheet_dimension(
+        _xlsx([_row(f"limit-{index}") for index in range(5_001)])
+    )
+    response = _preview(api_client, security_world.tenant_a.admin.token, content)
+    assert response.status_code == 422
+    assert "límite de filas o columnas" in response.text
+
+
+def test_declared_dimension_cannot_hide_real_rows(api_client, security_world) -> None:
+    content = _with_worksheet_dimension(
+        _xlsx([_row(f"hidden-{index}") for index in range(5_001)]),
+        "A1:Y2",
+    )
+    response = _preview(api_client, security_world.tenant_a.admin.token, content)
+    assert response.status_code == 422
+    assert "límite de filas o columnas" in response.text
+
+
+def test_declared_dimension_cannot_hide_sparse_out_of_bounds_cell(
+    api_client, security_world
+) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Sheet1"
+    sheet.append(list(VERIFIED_HEADERS))
+    sheet.append([_row("sparse").get(header) for header in VERIFIED_HEADERS])
+    sheet["BB2"] = "outside-column-limit"
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    content = _with_worksheet_dimension(output.getvalue(), "A1:Y2")
+    response = _preview(api_client, security_world.tenant_a.admin.token, content)
+    assert response.status_code == 422
+    assert "límite de filas o columnas" in response.text
+
+
+def test_oversized_declared_dimension_does_not_reject_small_real_sheet(
+    api_client, security_world
+) -> None:
+    content = _with_worksheet_dimension(
+        _xlsx([_row("small-real-sheet")]),
+        "A1:XFD1048576",
+    )
+    response = _preview(api_client, security_world.tenant_a.admin.token, content)
+    assert response.status_code == 200, response.text
+    assert response.json()["counts"]["ready"] == 1
+
+
+def test_unexpected_preview_failure_is_sanitized(
+    api_client, security_world, monkeypatch, caplog
+) -> None:
+    def fail_unexpectedly(*_args, **_kwargs):
+        raise RuntimeError("internal-sensitive-detail")
+
+    monkeypatch.setattr(
+        "app.routers.patient_import_router.preview_dentalink_import",
+        fail_unexpectedly,
+    )
+    response = _preview(
+        api_client,
+        security_world.tenant_a.admin.token,
+        _xlsx([_row("sanitized")]),
+    )
+    assert response.status_code == 500
+    assert response.json() == {"detail": "No fue posible procesar la vista previa."}
+    assert "internal-sensitive-detail" not in response.text
+    assert "internal-sensitive-detail" not in caplog.text
 
 
 def test_confirm_imports_only_ready_and_incomplete_and_is_idempotent(

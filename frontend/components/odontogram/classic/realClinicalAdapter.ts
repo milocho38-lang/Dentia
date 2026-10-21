@@ -34,6 +34,7 @@ function fallbackKind(detail: OdontogramEventDetail) {
   }
   if (haystack.includes("ENDO")) return detail.layer === "PLANNED" ? mappingByCode("PLAN_ENDO") : mappingByCode("DONE_ENDO");
   if (haystack.includes("CORONA")) return detail.layer === "PLANNED" ? mappingByCode("PLAN_CROWN") : mappingByCode("DONE_CROWN");
+  if (haystack.includes("CARILLA") || haystack.includes("VENEER")) return mappingByCode("FIND_VENEER");
   if (haystack.includes("IMPLANT")) return detail.layer === "PLANNED" ? mappingByCode("PLAN_IMPLANT") : mappingByCode("DONE_IMPLANT");
   if (haystack.includes("AUSEN") || haystack.includes("EXTRAC")) return detail.layer === "PLANNED" ? mappingByCode("PLAN_EXTRACTION") : mappingByCode("DONE_EXTRACTION");
   if (haystack.includes("FRACT")) return mappingByCode("FIND_FRACTURE");
@@ -58,6 +59,9 @@ function localizationForDetail(
 function statusFromLayer(detail: OdontogramEventDetail, fallback: ClinicalEventStatus): ClinicalEventStatus {
   if (detail.layer === "PLANNED") return "PLANNED";
   if (detail.layer === "PERFORMED") return "COMPLETED";
+  if (detail.layer === "FINDING" && normalizedClinicalCode(detail.catalog_code) === "FIND_VENEER") {
+    return "COMPLETED";
+  }
   if (detail.layer === "DIAGNOSIS" || detail.layer === "FINDING") return "DIAGNOSIS";
   return fallback;
 }

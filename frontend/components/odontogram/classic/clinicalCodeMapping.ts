@@ -20,6 +20,7 @@ export const REAL_CLINICAL_CODE_MAPPING: Record<string, ClinicalCodeMapping> = {
   PLAN_SEALANT: { kind: "RESTORATION", status: "PLANNED", superficial: true },
   DONE_CROWN: { kind: "CROWN", status: "COMPLETED", defaultSurfaces: ["WHOLE_TOOTH"], superficial: false },
   FIND_CROWN: { kind: "CROWN", status: "COMPLETED", defaultSurfaces: ["WHOLE_TOOTH"], superficial: false },
+  FIND_VENEER: { kind: "VENEER", status: "COMPLETED", defaultSurfaces: ["WHOLE_TOOTH"], superficial: false },
   PLAN_CROWN: { kind: "CROWN", status: "PLANNED", defaultSurfaces: ["WHOLE_TOOTH"], superficial: false },
   DONE_ENDO: { kind: "ENDODONTICS", status: "COMPLETED", defaultSurfaces: ["PULPAL_RADICULAR"], superficial: false },
   PLAN_ENDO: { kind: "ENDODONTICS", status: "PLANNED", defaultSurfaces: ["PULPAL_RADICULAR"], superficial: false },

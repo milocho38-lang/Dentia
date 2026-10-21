@@ -270,6 +270,17 @@ def parse_dentalink_workbook(content: bytes) -> ParsedDentalinkWorkbook:
         if "Sheet1" not in workbook.sheetnames:
             raise DentalinkWorkbookError("El archivo debe contener la hoja Sheet1.")
         worksheet = workbook["Sheet1"]
+        # XLSX producers may omit or falsify <dimension>. Ignore that metadata and
+        # derive bounds from actual worksheet XML. The archive and each worksheet
+        # entry have already been capped by _inspect_archive, so this full scan is
+        # bounded before any rows are accepted or materialized.
+        worksheet.reset_dimensions()
+        try:
+            worksheet.calculate_dimension(force=True)
+        except Exception as exc:
+            raise DentalinkWorkbookError(
+                "No fue posible determinar las dimensiones de la hoja Sheet1."
+            ) from exc
         if worksheet.max_column > MAX_COLUMNS or worksheet.max_row > MAX_ROWS + 1:
             raise DentalinkWorkbookError("El archivo supera el límite de filas o columnas.")
         header_values = next(worksheet.iter_rows(min_row=1, max_row=1, values_only=True))

@@ -23,6 +23,7 @@ function crownPath(family: ToothFamily) {
 export function AnatomicalToothView({ viewModel }: { viewModel: DualClinicalToothViewModel }) {
   const { model, surfaceMarkers, structuralMarkers, isAbsent } = viewModel;
   const crown = structuralMarkers.find((marker) => marker.kind === "CROWN");
+  const veneer = structuralMarkers.find((marker) => marker.kind === "VENEER");
   const implant = structuralMarkers.find((marker) => marker.kind === "IMPLANT");
   const endodontics = structuralMarkers.find((marker) => marker.kind === "ENDODONTICS");
   const missing = isAbsent;
@@ -51,6 +52,16 @@ export function AnatomicalToothView({ viewModel }: { viewModel: DualClinicalToot
       {!missing && <path d={crownPath(model.family)} fill="#FFFFFF" fillOpacity="0.42" stroke="#CBD5E1" strokeWidth="0.8" />}
       {!missing && <AnatomicalClinicalMarkerLayer markers={surfaceMarkers} />}
       {crown && !missing && <path d={crownPath(model.family)} fill={crown.color} fillOpacity="0.9" stroke={crown.stroke} strokeWidth="1.8" />}
+      {veneer && !crown && !missing && (
+        <path
+          d={crownPath(model.family)}
+          fill={veneer.color}
+          fillOpacity="0.34"
+          stroke={veneer.stroke}
+          strokeDasharray="3 2"
+          strokeWidth="1.8"
+        />
+      )}
       {endodontics && !missing && (
         <g stroke={endodontics.stroke} strokeLinecap="round" fill="none">
           <path d="M50 20 C49 38 49 59 50 86" strokeWidth="3.2" />

@@ -17,6 +17,7 @@ function markerSymbol(event: DualClinicalEvent) {
   if (event.kind === "FRACTURE") return "Ⅱ";
   if (event.kind === "ABSENT" || event.kind === "EXTRACTION") return "×";
   if (event.kind === "CROWN") return "♛";
+  if (event.kind === "VENEER") return "V";
   if (event.kind === "INFORMATION") return "i";
   return "●";
 }

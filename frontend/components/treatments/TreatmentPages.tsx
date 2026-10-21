@@ -489,11 +489,14 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     if (showSpinner) setLoading(true);
     setError(null);
     try {
+      const paymentsPromise = hasPermission("payments.view")
+        ? listPayments()
+        : Promise.resolve<Payment[]>([]);
       const [loadedTreatment, loadedProcedures, loadedBudgets, loadedPayments, loadedOptions, loadedCatalog] = await Promise.all([
         getTreatment(treatmentId),
         listProcedures(treatmentId),
         listBudgets(),
-        listPayments(),
+        paymentsPromise,
         getAgendaOptions(),
         listProcedureCatalog("?activo=true"),
       ]);
@@ -508,7 +511,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     } finally {
       if (showSpinner) setLoading(false);
     }
-  }, [treatmentId]);
+  }, [hasPermission, treatmentId]);
 
   const refresh = useCallback(() => load(false), [load]);
 
@@ -1042,7 +1045,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
           ) : <p className="mt-4 text-sm text-slate-500">Sin presupuesto.</p>}
       </Panel>
 
-      <Panel
+      {(hasPermission("payments.view") || hasPermission("payments.create")) && <Panel
         title="Pagos"
         description={`Saldo actualizado: ${money(treatment.summary.balance)}`}
       >
@@ -1085,7 +1088,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
             </table>
             {!payments.length && <p className="py-6 text-center text-sm text-slate-500">Sin pagos registrados.</p>}
           </div>
-      </Panel>
+      </Panel>}
 
       <Panel
         title="Acciones"
