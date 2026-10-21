@@ -115,6 +115,20 @@ SQL
   [ -s "$output" ] || dentia_fail "Stable data snapshot is empty."
 }
 
+deploy_snapshot_clinical_permissions() {
+  local output="$1"
+  local database="${2:-$DENTIA_DB_NAME}"
+  docker exec -i "$DENTIA_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DENTIA_DB_USER" \
+    -d "$database" -At -F '|' <<'SQL' >"$output"
+SELECT r.id::text, r.code, p.id::text, p.code, p.is_active::text, rp.id::text, rp.is_active::text
+FROM rol_permisos rp
+JOIN permisos p ON p.id = rp.permiso_id
+JOIN roles r ON r.id = rp.rol_id
+WHERE p.code IN ('clinical_files.view', 'clinical_files.create', 'clinical_files.manage')
+ORDER BY r.id, p.code, rp.id;
+SQL
+}
+
 deploy_assert_pre_migration_invariants() {
   local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261012_0049}"
   local revision
@@ -152,8 +166,16 @@ deploy_assert_post_migration_invariants() {
   [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code IN ('clinical_files.view','clinical_files.create','clinical_files.manage') AND is_active;")" = "3" ] || dentia_fail "Clinical file permissions were not created exactly once."
   [ "$(deploy_db_scalar "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id JOIN roles r ON r.id=rp.rol_id WHERE rp.is_active AND p.code IN ('clinical_files.view','clinical_files.create') AND r.code NOT IN ('ADMINISTRATOR','DENTIST_ADMIN','DENTIST');")" = "0" ] || dentia_fail "Clinical file view/create permission was assigned to an unauthorized role."
   [ "$(deploy_db_scalar "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id JOIN roles r ON r.id=rp.rol_id WHERE rp.is_active AND p.code='clinical_files.manage' AND r.code NOT IN ('ADMINISTRATOR','DENTIST_ADMIN');")" = "0" ] || dentia_fail "Clinical file manage permission was assigned to an unauthorized role."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM roles r CROSS JOIN (VALUES ('clinical_files.view'),('clinical_files.create')) expected(code) WHERE r.code IN ('ADMINISTRATOR','DENTIST_ADMIN','DENTIST') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND rp.is_active AND p.is_active AND p.code=expected.code);")" = "0" ] || dentia_fail "Clinical file view/create permission is missing from an authorized role."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM roles r WHERE r.code IN ('ADMINISTRATOR','DENTIST_ADMIN') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND rp.is_active AND p.is_active AND p.code='clinical_files.manage');")" = "0" ] || dentia_fail "Clinical file manage permission is missing from an authorized role."
+  if [ -n "${CLINICAL_PERMISSION_BASELINE:-}" ]; then
+    local candidate="$STATE_DIR/deploy_after_clinical_permissions.tsv"
+    deploy_snapshot_clinical_permissions "$candidate"
+    cmp -s "$CLINICAL_PERMISSION_BASELINE" "$candidate" || \
+      dentia_fail "Clinical file permission assignments changed during deployment."
+    rm -f "$candidate"
+  else
+    [ "$(deploy_db_scalar "SELECT count(*) FROM roles r CROSS JOIN (VALUES ('clinical_files.view'),('clinical_files.create')) expected(code) WHERE r.code IN ('ADMINISTRATOR','DENTIST_ADMIN','DENTIST') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND rp.is_active AND p.is_active AND p.code=expected.code);")" = "0" ] || dentia_fail "Clinical file view/create permission is missing from an authorized role."
+    [ "$(deploy_db_scalar "SELECT count(*) FROM roles r WHERE r.code IN ('ADMINISTRATOR','DENTIST_ADMIN') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND rp.is_active AND p.is_active AND p.code='clinical_files.manage');")" = "0" ] || dentia_fail "Clinical file manage permission is missing from an authorized role."
+  fi
   [ "$(deploy_db_scalar "SELECT count(*) FROM odontograma_catalogo WHERE empresa_id IS NULL AND codigo='FIND_VENEER' AND tipo='FINDING' AND is_active;")" = "1" ] || dentia_fail "Existing veneer finding was not created exactly once."
 }
 
@@ -184,6 +206,9 @@ deploy_validate_recovery_baseline() {
   local baseline="$STATE_DIR/deploy_recovery_baseline_${TARGET_SHA}.tsv"
   local candidate="$STATE_DIR/deploy_recovery_candidate_${TARGET_SHA}.tsv"
   local live="$STATE_DIR/deploy_recovery_live_${TARGET_SHA}.tsv"
+  local clinical_baseline="$STATE_DIR/deploy_recovery_clinical_permissions_${TARGET_SHA}.tsv"
+  local clinical_candidate="$STATE_DIR/deploy_recovery_clinical_permissions_candidate_${TARGET_SHA}.tsv"
+  local clinical_live="$STATE_DIR/deploy_recovery_clinical_permissions_live_${TARGET_SHA}.tsv"
   [ -d "$backup" ] || dentia_fail "Recovery backup directory is missing: $backup"
   "$SCRIPT_DIR/verify_dentia_backup.sh" "$backup" >/dev/null
   local expected_backup_revision="${DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION:-20261012_0049}"
@@ -209,10 +234,24 @@ deploy_validate_recovery_baseline() {
   deploy_snapshot_stable_data "$live"
   cmp -s "$baseline" "$live" || dentia_fail "Migrated stable data differs from the immutable pre-migration backup."
   rm -f "$live"
+  deploy_snapshot_clinical_permissions "$clinical_candidate" "$RESTORE_DB"
+  if [ -e "$clinical_baseline" ]; then
+    cmp -s "$clinical_baseline" "$clinical_candidate" || \
+      dentia_fail "Persisted clinical permission baseline differs from the immutable backup."
+    rm -f "$clinical_candidate"
+  else
+    mv "$clinical_candidate" "$clinical_baseline"
+    chmod 400 "$clinical_baseline" 2>/dev/null || true
+  fi
+  deploy_snapshot_clinical_permissions "$clinical_live"
+  cmp -s "$clinical_baseline" "$clinical_live" || \
+    dentia_fail "Migrated clinical permission assignments differ from the immutable pre-migration backup."
+  rm -f "$clinical_live"
   deploy_cleanup_temporary_restore
   RESTORE_DB=""
   RESTORE_STORAGE=""
   RECOVERY_BASELINE="$baseline"
+  CLINICAL_PERMISSION_BASELINE="$clinical_baseline"
 }
 
 deploy_restart_old_containers() {
@@ -301,6 +340,7 @@ OLD_COMMIT="$(git rev-parse "$DEPLOYED_COMMIT_REF^{commit}" 2>/dev/null || true)
 CHECKOUT_COMMIT="$(git rev-parse HEAD)"
 RECOVERY_BACKUP="${DENTIA_RECOVERY_BACKUP_PATH:-}"
 RECOVERY_BASELINE=""
+CLINICAL_PERMISSION_BASELINE=""
 if [ -n "$RECOVERY_BACKUP" ]; then
   git merge-base --is-ancestor "$OLD_COMMIT" "$CHECKOUT_COMMIT" || \
     dentia_fail "Recovery checkout is not descended from the verified deployed commit."
@@ -400,6 +440,11 @@ if [ -n "$RECOVERY_BASELINE" ]; then
   BEFORE_SNAPSHOT="$RECOVERY_BASELINE"
 else
   deploy_snapshot_stable_data "$BEFORE_SNAPSHOT"
+fi
+if [ -z "$CLINICAL_PERMISSION_BASELINE" ] && \
+   [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code IN ('clinical_files.view','clinical_files.create','clinical_files.manage') AND is_active;")" = "3" ]; then
+  CLINICAL_PERMISSION_BASELINE="$STATE_DIR/deploy_before_clinical_permissions.tsv"
+  deploy_snapshot_clinical_permissions "$CLINICAL_PERMISSION_BASELINE"
 fi
 
 dentia_info "Creating and verifying a consistent backup with writers stopped..."

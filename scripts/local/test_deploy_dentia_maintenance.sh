@@ -181,8 +181,15 @@ case "$1" in
     elif [[ "$*" == *'psql '* ]]; then
       sql="${@: -1}"
       if [[ "$*" == *" -At -F "* ]]; then
-        cat >/dev/null
-        if [ "${DEPLOY_TEST_SCENARIO:-success}" = recovery_hash_mismatch ] && [[ "$*" == *" -d dentia "* ]]; then
+        stdin_sql="$(cat)"
+        if [[ "$stdin_sql" == *'FROM rol_permisos rp'* ]]; then
+          if [ "${DEPLOY_TEST_SCENARIO:-success}" = clinical_permission_drift ] && \
+             [ -f "$DEPLOY_TEST_HARNESS/migrated" ] && [[ "$*" == *" -d dentia "* ]]; then
+            printf 'role-admin|ADMINISTRATOR|permission-view|clinical_files.view|t|assignment-view|f\n'
+          else
+            printf 'role-admin|ADMINISTRATOR|permission-view|clinical_files.view|t|assignment-view|t\n'
+          fi
+        elif [ "${DEPLOY_TEST_SCENARIO:-success}" = recovery_hash_mismatch ] && [[ "$*" == *" -d dentia "* ]]; then
           printf 'auditoria_eventos|1|changed\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
         else
           printf 'auditoria_eventos|1|a\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
@@ -301,7 +308,7 @@ run_case() {
       assert_absent "$log" backup
       [ ! -e "$harness/root/.run/maintenance_active" ] || fail "$scenario entered maintenance"
       ;;
-    migrate_fail|internal_smoke_fail|barrier_remove_fail)
+    migrate_fail|clinical_permission_drift|internal_smoke_fail|barrier_remove_fail)
       grep -Fq migrate "$log" || fail "migration was not attempted"
       assert_absent "$log" 'start:dentia-backend'
       [ -f "$harness/root/.run/maintenance_active" ] || fail "post-migration failure cleared maintenance"
@@ -571,6 +578,7 @@ run_case backup_fail false
 run_case restore_fail false
 run_case unknown_writers false
 run_case migrate_fail false
+run_case clinical_permission_drift false
 run_case internal_smoke_fail false
 run_case barrier_remove_fail false
 run_retry_case
