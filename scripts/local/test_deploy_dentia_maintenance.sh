@@ -211,7 +211,14 @@ case "$1" in
       elif [[ "$sql" == *"table_name='archivos_clinicos'"* ]] || [[ "$sql" == *"tgname='trg_archivos_clinicos_scope'"* ]]; then
         printf '1\n'
       elif [[ "$sql" == *"code IN ('clinical_files.view','clinical_files.create','clinical_files.manage')"* ]]; then
-        printf '3\n'
+        if [[ "$*" == *" -d dentia_restore_"* ]] && \
+           [ ! -f "$DEPLOY_TEST_HARNESS/recovery-backup-has-clinical-permissions" ]; then
+          printf '0\n'
+        else
+          printf '3\n'
+        fi
+      elif [[ "$sql" == *"CROSS JOIN (VALUES ('clinical_files.view'),('clinical_files.create'))"* ]]; then
+        if [ "${DEPLOY_TEST_SCENARIO:-success}" = recovery_0049_incomplete_authorized_role ]; then printf '1\n'; else printf '0\n'; fi
       elif [[ "$sql" == *"codigo='FIND_VENEER'"* ]]; then
         printf '1\n'
       else
@@ -361,16 +368,21 @@ prepare_recovery_harness() {
 }
 
 run_recovery_case() {
-  local scenario="$1" expect_success="$2"
+  local scenario="$1" expect_success="$2" backup_revision="${3:-20261012_0049}"
   local harness status=0 log
   harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-recovery.XXXXXX")"
   prepare_recovery_harness "$harness"
+  if [ "$backup_revision" = 20261017_0050 ]; then
+    printf '{"alembic_revision":"20261017_0050"}\n' >"$harness/recovery-backup/manifest.json"
+    touch "$harness/recovery-backup-has-clinical-permissions"
+  fi
   log="$harness/commands.log"
   DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_SCENARIO="$scenario" \
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
   DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261021_0051 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261021_0051 DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION="$backup_revision" \
+  DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
   if [ "$expect_success" = true ]; then
     [ "$status" -eq 0 ] || fail "recovery $scenario failed with $status"
@@ -384,6 +396,10 @@ run_recovery_case() {
   fi
   if [ "$scenario" = success ] || [ "$scenario" = backup_fail ] || [ "$scenario" = recovery_hash_mismatch ]; then
     [ -f "$harness/root/.run/deploy_recovery_baseline_${TARGET_SHA}.tsv" ] || fail "recovery $scenario did not preserve baseline"
+  fi
+  if [ "$backup_revision" = 20261012_0049 ]; then
+    [ ! -e "$harness/root/.run/deploy_before_clinical_permissions.tsv" ] || \
+      fail "recovery 0049 captured a post-migration clinical permission baseline"
   fi
   while IFS= read -r storage_path; do
     [ ! -e "$storage_path" ] || fail "recovery $scenario retained temporary clinical storage: $storage_path"
@@ -585,6 +601,9 @@ run_retry_case
 run_recovery_case success true
 run_recovery_case backup_fail false
 run_recovery_case recovery_hash_mismatch false
+run_recovery_case recovery_0049_incomplete_authorized_role false
+run_recovery_case clinical_permission_baseline_0050 true 20261017_0050
+run_recovery_case clinical_permission_drift false 20261017_0050
 run_recovery_guard_case marker
 run_recovery_guard_case barrier
 run_recovery_guard_case revision

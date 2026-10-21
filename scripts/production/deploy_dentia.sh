@@ -234,24 +234,41 @@ deploy_validate_recovery_baseline() {
   deploy_snapshot_stable_data "$live"
   cmp -s "$baseline" "$live" || dentia_fail "Migrated stable data differs from the immutable pre-migration backup."
   rm -f "$live"
-  deploy_snapshot_clinical_permissions "$clinical_candidate" "$RESTORE_DB"
-  if [ -e "$clinical_baseline" ]; then
-    cmp -s "$clinical_baseline" "$clinical_candidate" || \
-      dentia_fail "Persisted clinical permission baseline differs from the immutable backup."
-    rm -f "$clinical_candidate"
-  else
-    mv "$clinical_candidate" "$clinical_baseline"
-    chmod 400 "$clinical_baseline" 2>/dev/null || true
-  fi
-  deploy_snapshot_clinical_permissions "$clinical_live"
-  cmp -s "$clinical_baseline" "$clinical_live" || \
-    dentia_fail "Migrated clinical permission assignments differ from the immutable pre-migration backup."
-  rm -f "$clinical_live"
+  local restored_clinical_permission_count
+  restored_clinical_permission_count="$(
+    docker exec "$DENTIA_DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DENTIA_DB_USER" \
+      -d "$RESTORE_DB" -tAc \
+      "SELECT count(*) FROM permisos WHERE code IN ('clinical_files.view','clinical_files.create','clinical_files.manage') AND is_active;" |
+      tr -d '[:space:]'
+  )"
+  case "$restored_clinical_permission_count" in
+    0)
+      rm -f "$clinical_baseline" "$clinical_candidate" "$clinical_live"
+      ;;
+    3)
+      deploy_snapshot_clinical_permissions "$clinical_candidate" "$RESTORE_DB"
+      if [ -e "$clinical_baseline" ]; then
+        cmp -s "$clinical_baseline" "$clinical_candidate" || \
+          dentia_fail "Persisted clinical permission baseline differs from the immutable backup."
+        rm -f "$clinical_candidate"
+      else
+        mv "$clinical_candidate" "$clinical_baseline"
+        chmod 400 "$clinical_baseline" 2>/dev/null || true
+      fi
+      deploy_snapshot_clinical_permissions "$clinical_live"
+      cmp -s "$clinical_baseline" "$clinical_live" || \
+        dentia_fail "Migrated clinical permission assignments differ from the immutable pre-migration backup."
+      rm -f "$clinical_live"
+      CLINICAL_PERMISSION_BASELINE="$clinical_baseline"
+      ;;
+    *)
+      dentia_fail "Recovery backup has an unexpected active clinical permission definition count: $restored_clinical_permission_count."
+      ;;
+  esac
   deploy_cleanup_temporary_restore
   RESTORE_DB=""
   RESTORE_STORAGE=""
   RECOVERY_BASELINE="$baseline"
-  CLINICAL_PERMISSION_BASELINE="$clinical_baseline"
 }
 
 deploy_restart_old_containers() {
@@ -441,7 +458,7 @@ if [ -n "$RECOVERY_BASELINE" ]; then
 else
   deploy_snapshot_stable_data "$BEFORE_SNAPSHOT"
 fi
-if [ -z "$CLINICAL_PERMISSION_BASELINE" ] && \
+if [ -z "$RECOVERY_BACKUP" ] && [ -z "$CLINICAL_PERMISSION_BASELINE" ] && \
    [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code IN ('clinical_files.view','clinical_files.create','clinical_files.manage') AND is_active;")" = "3" ]; then
   CLINICAL_PERMISSION_BASELINE="$STATE_DIR/deploy_before_clinical_permissions.tsv"
   deploy_snapshot_clinical_permissions "$CLINICAL_PERMISSION_BASELINE"
