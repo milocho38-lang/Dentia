@@ -206,8 +206,10 @@ if [ "$TARGET_DB_EXISTS" = t ]; then
     docker exec "$DENTIA_DB_CONTAINER" psql -U "$DENTIA_DB_USER" -d "$DATABASE_NAME" -X -tAc \
       "SELECT id::text FROM archivos_clinicos ORDER BY id;" >"$TARGET_CLINICAL_IDS"
     if [ -s "$TARGET_CLINICAL_IDS" ]; then
-      [ "$BACKUP_REVISION" = 20261017_0050 ] || \
-        dentia_fail "Refusing restore: target has clinical-file records but backup revision is $BACKUP_REVISION, not 20261017_0050."
+      case "$BACKUP_REVISION" in
+        20261017_0050|20261021_0051) ;;
+        *) dentia_fail "Refusing restore: target has clinical-file records but backup revision $BACKUP_REVISION predates clinical-file preservation support." ;;
+      esac
       python3 - "$TARGET_CLINICAL_IDS" "$BACKUP_PATH/document_inventory.tsv" <<'PY'
 import csv
 import sys

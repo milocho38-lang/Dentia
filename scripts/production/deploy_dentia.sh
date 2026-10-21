@@ -134,7 +134,7 @@ deploy_assert_current_account_identity_invariants() {
 }
 
 deploy_assert_post_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261017_0050}"
+  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261021_0051}"
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected post-deploy Alembic revision: $revision (expected $expected)."
@@ -154,6 +154,7 @@ deploy_assert_post_migration_invariants() {
   [ "$(deploy_db_scalar "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id JOIN roles r ON r.id=rp.rol_id WHERE rp.is_active AND p.code='clinical_files.manage' AND r.code NOT IN ('ADMINISTRATOR','DENTIST_ADMIN');")" = "0" ] || dentia_fail "Clinical file manage permission was assigned to an unauthorized role."
   [ "$(deploy_db_scalar "SELECT count(*) FROM roles r CROSS JOIN (VALUES ('clinical_files.view'),('clinical_files.create')) expected(code) WHERE r.code IN ('ADMINISTRATOR','DENTIST_ADMIN','DENTIST') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND rp.is_active AND p.is_active AND p.code=expected.code);")" = "0" ] || dentia_fail "Clinical file view/create permission is missing from an authorized role."
   [ "$(deploy_db_scalar "SELECT count(*) FROM roles r WHERE r.code IN ('ADMINISTRATOR','DENTIST_ADMIN') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND rp.is_active AND p.is_active AND p.code='clinical_files.manage');")" = "0" ] || dentia_fail "Clinical file manage permission is missing from an authorized role."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM odontograma_catalogo WHERE empresa_id IS NULL AND codigo='FIND_VENEER' AND tipo='FINDING' AND is_active;")" = "1" ] || dentia_fail "Existing veneer finding was not created exactly once."
 }
 
 deploy_stop_application_writers() {
@@ -185,8 +186,9 @@ deploy_validate_recovery_baseline() {
   local live="$STATE_DIR/deploy_recovery_live_${TARGET_SHA}.tsv"
   [ -d "$backup" ] || dentia_fail "Recovery backup directory is missing: $backup"
   "$SCRIPT_DIR/verify_dentia_backup.sh" "$backup" >/dev/null
-  grep -Eq '"alembic_revision"[[:space:]]*:[[:space:]]*"20261012_0049"' "$backup/manifest.json" || \
-    dentia_fail "Recovery backup is not from the required pre-migration revision 0049."
+  local expected_backup_revision="${DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION:-20261012_0049}"
+  grep -Eq '"alembic_revision"[[:space:]]*:[[:space:]]*"'"$expected_backup_revision"'"' "$backup/manifest.json" || \
+    dentia_fail "Recovery backup is not from the required pre-migration revision $expected_backup_revision."
   RESTORE_SUFFIX="$(date -u +%Y%m%d_%H%M%S)_$$"
   RESTORE_DB="dentia_restore_recovery_$RESTORE_SUFFIX"
   RESTORE_STORAGE="$DENTIA_TEMP_ROOT/dentia_restore_deploy_$RESTORE_SUFFIX/storage"
@@ -326,10 +328,11 @@ dentia_assert_storage_path_safe "$HOST_STORAGE_ROOT"
 [ -w "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is not writable: $HOST_STORAGE_ROOT"
 
 if [ -n "$RECOVERY_BACKUP" ]; then
-  [ "${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-}" = "20261017_0050" ] || \
+  EXPECTED_RECOVERY_REVISION="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261021_0051}"
+  [ "${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-}" = "$EXPECTED_RECOVERY_REVISION" ] || \
     dentia_fail "Recovery requires the explicit migrated revision guard."
-  [ "$(deploy_current_revision)" = "20261017_0050" ] || \
-    dentia_fail "Recovery requires the already migrated 0050 database."
+  [ "$(deploy_current_revision)" = "$EXPECTED_RECOVERY_REVISION" ] || \
+    dentia_fail "Recovery requires the already migrated $EXPECTED_RECOVERY_REVISION database."
   [ -f "$MAINTENANCE_MARKER" ] || dentia_fail "Recovery checkout requires the maintenance marker."
   [ -f "$WRITE_BARRIER_FILE" ] || dentia_fail "Recovery checkout requires the persistent write barrier."
   for container in "$DENTIA_BACKEND_CONTAINER" "$DENTIA_FRONTEND_CONTAINER" "$DENTIA_WEBSITE_CONTAINER"; do
