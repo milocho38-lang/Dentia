@@ -16,9 +16,12 @@ assert.match(workspace, /uploadGate\.current\.finish\(attempt\)/, "static wiring
 
 let uploadRequests = 0;
 let reconcileRequests = 0;
+let markUploadObserved;
+const uploadObserved = new Promise((resolve) => { markUploadObserved = resolve; });
 const server = http.createServer((request, response) => {
   if (request.url === "/upload") {
     uploadRequests += 1;
+    markUploadObserved();
     request.resume();
     setTimeout(() => { if (!response.writableEnded) { response.writeHead(201, { "content-type": "application/json" }); response.end('{"id":"uploaded"}'); } }, 150);
     return;
@@ -55,7 +58,17 @@ try {
   assert.equal(gate.busy, true, "button state remains busy while the owner is active");
 
   const request = fetch(`${baseUrl}/upload`, { method: "POST", body: "synthetic", signal: first.controller.signal });
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  let uploadObservationTimeout;
+  try {
+    await Promise.race([
+      uploadObserved,
+      new Promise((_, reject) => {
+        uploadObservationTimeout = setTimeout(() => reject(new Error("upload request was not observed")), 2_000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(uploadObservationTimeout);
+  }
   first.controller.abort();
   await assert.rejects(request, (error) => error?.name === "AbortError");
   assert.equal(uploadRequests, 1, "double submit must produce exactly one real upload request");
