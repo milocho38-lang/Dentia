@@ -195,7 +195,13 @@ case "$1" in
           printf 'auditoria_eventos|1|a\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
         fi
       elif [[ "$sql" == *'SELECT version_num'* ]]; then
-        if [ -f "$DEPLOY_TEST_HARNESS/migrated" ]; then printf '20261021_0051\n'; else printf '20261012_0049\n'; fi
+        if [ -f "$DEPLOY_TEST_HARNESS/migrated" ]; then
+          if [ "${DEPLOY_TEST_SCENARIO:-success}" = unexpected_post_revision ]; then printf '20261021_0051\n'; else printf '20261102_0052\n'; fi
+        elif [ "${DEPLOY_TEST_SCENARIO:-success}" = unexpected_pre_revision ]; then
+          printf '20261012_0049\n'
+        else
+          printf '20261021_0051\n'
+        fi
       elif [[ "$sql" == *'pg_stat_activity'* ]]; then
         if [ "${DEPLOY_TEST_SCENARIO:-success}" = unknown_writers ]; then printf '1\n'; else printf '0\n'; fi
       elif [[ "$sql" == *"username_normalizado IS NULL"* ]]; then
@@ -221,6 +227,8 @@ case "$1" in
         if [ "${DEPLOY_TEST_SCENARIO:-success}" = recovery_0049_incomplete_authorized_role ]; then printf '1\n'; else printf '0\n'; fi
       elif [[ "$sql" == *"codigo='FIND_VENEER'"* ]]; then
         printf '1\n'
+      elif [[ "$sql" == *"table_name='catalogo_procedimientos'"* ]] && [[ "$sql" == *"moneda_valor"* ]]; then
+        printf '2\n'
       else
         printf '0\n'
       fi
@@ -309,13 +317,13 @@ run_case() {
       grep -Fq 'start:dentia-frontend dentia-website' "$log" || fail "$scenario did not restart old frontend/website"
       [ ! -e "$harness/root/.run/maintenance_active" ] || fail "$scenario retained maintenance after safe recovery"
       ;;
-    invalid_username_blank|invalid_username_duplicate|invalid_tenant_email_duplicate)
+    invalid_username_blank|invalid_username_duplicate|invalid_tenant_email_duplicate|unexpected_pre_revision)
       assert_absent "$log" fetch
       assert_absent "$log" build-with-target-label
       assert_absent "$log" backup
       [ ! -e "$harness/root/.run/maintenance_active" ] || fail "$scenario entered maintenance"
       ;;
-    migrate_fail|clinical_permission_drift|internal_smoke_fail|barrier_remove_fail)
+    migrate_fail|clinical_permission_drift|internal_smoke_fail|barrier_remove_fail|unexpected_post_revision)
       grep -Fq migrate "$log" || fail "migration was not attempted"
       assert_absent "$log" 'start:dentia-backend'
       [ -f "$harness/root/.run/maintenance_active" ] || fail "post-migration failure cleared maintenance"
@@ -364,11 +372,11 @@ prepare_recovery_harness() {
   printf 'false\n' >"$harness/state/dentia-frontend"
   printf 'false\n' >"$harness/state/dentia-website"
   mkdir -p "$harness/recovery-backup"
-  printf '{"alembic_revision":"20261012_0049"}\n' >"$harness/recovery-backup/manifest.json"
+  printf '{"alembic_revision":"20261021_0051"}\n' >"$harness/recovery-backup/manifest.json"
 }
 
 run_recovery_case() {
-  local scenario="$1" expect_success="$2" backup_revision="${3:-20261012_0049}"
+  local scenario="$1" expect_success="$2" backup_revision="${3:-20261021_0051}"
   local harness status=0 log
   harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-recovery.XXXXXX")"
   prepare_recovery_harness "$harness"
@@ -381,7 +389,7 @@ run_recovery_case() {
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
   DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261021_0051 DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION="$backup_revision" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261102_0052 DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION="$backup_revision" \
   DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
   if [ "$expect_success" = true ]; then
@@ -397,7 +405,7 @@ run_recovery_case() {
   if [ "$scenario" = success ] || [ "$scenario" = backup_fail ] || [ "$scenario" = recovery_hash_mismatch ]; then
     [ -f "$harness/root/.run/deploy_recovery_baseline_${TARGET_SHA}.tsv" ] || fail "recovery $scenario did not preserve baseline"
   fi
-  if [ "$backup_revision" = 20261012_0049 ]; then
+  if [ "$backup_revision" = 20261021_0051 ]; then
     [ ! -e "$harness/root/.run/deploy_before_clinical_permissions.tsv" ] || \
       fail "recovery 0049 captured a post-migration clinical permission baseline"
   fi
@@ -424,11 +432,31 @@ run_recovery_guard_case() {
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
   DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261021_0051 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261102_0052 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] || fail "recovery guard $guard unexpectedly succeeded"
   assert_absent "$log" 'start:dentia-backend'
   printf 'recovery_guard_%s OK\n' "$guard"
+  rm -rf "$harness"
+}
+
+run_recovery_backup_revision_guard_case() {
+  local harness status=0 log
+  harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-recovery-backup-guard.XXXXXX")"
+  prepare_recovery_harness "$harness"
+  printf '{"alembic_revision":"20261012_0049"}\n' >"$harness/recovery-backup/manifest.json"
+  log="$harness/commands.log"
+  DEPLOY_TEST_HARNESS="$harness" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_SCENARIO=success \
+  DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
+  DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
+  DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261102_0052 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
+    "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
+  [ "$status" -ne 0 ] || fail "recovery accepted a backup from unexpected revision 20261012_0049"
+  assert_absent "$log" 'start:dentia-backend'
+  [ -f "$harness/root/.run/maintenance_active" ] || fail "recovery backup revision guard cleared maintenance"
+  [ -f "$harness/root/backend/storage/.dentia-maintenance" ] || fail "recovery backup revision guard cleared barrier"
+  printf 'recovery_guard_backup_revision OK\n'
   rm -rf "$harness"
 }
 
@@ -590,6 +618,7 @@ run_case success true
 run_case invalid_username_blank false
 run_case invalid_username_duplicate false
 run_case invalid_tenant_email_duplicate false
+run_case unexpected_pre_revision false
 run_case backup_fail false
 run_case restore_fail false
 run_case unknown_writers false
@@ -597,6 +626,7 @@ run_case migrate_fail false
 run_case clinical_permission_drift false
 run_case internal_smoke_fail false
 run_case barrier_remove_fail false
+run_case unexpected_post_revision false
 run_retry_case
 run_recovery_case success true
 run_recovery_case backup_fail false
@@ -608,6 +638,7 @@ run_recovery_guard_case marker
 run_recovery_guard_case barrier
 run_recovery_guard_case revision
 run_recovery_guard_case active
+run_recovery_backup_revision_guard_case
 run_signal_case
 run_launcher_case
 run_real_extracted_launcher_case

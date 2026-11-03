@@ -104,19 +104,19 @@ Si Alembic falla:
 - revisar logs de la ejecución one-off;
 - no ejecutar `up -d` manualmente hasta resolver la migración.
 
-## Recuperación fail-closed después de migrar a `20261017_0050`
+## Recuperación fail-closed después de migrar a `20261102_0052`
 
-Este procedimiento sólo aplica cuando el runner ya inició migraciones, la base
-está exactamente en `20261017_0050` y conserva tanto `.run/maintenance_active`
+Este procedimiento sólo aplica al release del catálogo inicial cuando el runner
+ya inició migraciones, la base está exactamente en `20261102_0052` y conserva tanto `.run/maintenance_active`
 como `backend/storage/.dentia-maintenance`. No se deben iniciar las imágenes
 antiguas sobre la base migrada.
 
 Precondiciones obligatorias:
 
 1. Mantener backend, frontend y website detenidos.
-2. Resolver el backup registrado para el intento fallido y ejecutar
+2. Resolver el backup pre-migración `20261021_0051` registrado para el intento fallido y ejecutar
    `verify_dentia_backup.sh` sobre ese directorio.
-3. Confirmar Alembic `20261017_0050`, la tabla y trigger de archivos clínicos,
+3. Confirmar Alembic `20261102_0052`, las columnas de procedencia del catálogo,
    RBAC, invariantes de usernames y preservación de los datos estables.
 4. Leer `target_images.backend`, `target_images.frontend` y
    `target_images.website` de `manifest.json`; son los tres IDs exactos
@@ -126,7 +126,7 @@ Precondiciones obligatorias:
 Secuencia revisada y ensayada:
 
 ```text
-1. Verificar backup e invariantes 0047 con los servicios detenidos.
+1. Verificar el backup `20261021_0051` y sus invariantes con los servicios detenidos.
 2. Resolver las referencias inmutables etiquetadas con el SHA objetivo.
 3. Iniciar sólo el backend objetivo y esperar /health.
 4. Comparar docker inspect .Image del backend con target_images.backend.
@@ -141,14 +141,14 @@ Secuencia revisada y ensayada:
 Si cualquier ID, invariante, backup, healthcheck o respuesta 503 no coincide,
 dejar todos los servicios de aplicación detenidos y conservar ambos marcadores.
 La versión de código inmediatamente anterior debe ensayarse contra una copia de
-la base ya migrada a `0050` antes de autorizar el release. Ese rollback normal
+la base ya migrada a `0052` antes de autorizar el release. Ese rollback normal
 es únicamente de código y no revierte el esquema ni elimina archivos.
 
-Nunca ejecutar `alembic downgrade` como rollback normal después de aceptar una
-carga clínica: `0050 -> 0049` elimina la tabla y destruye su trazabilidad. Volver
-a una base pre-0050 exige mantenimiento cerrado, restaurar el backup completo
-pre-migración (DB y storage) y aceptar explícitamente la pérdida de toda escritura
-posterior al backup. No es una maniobra automática del deploy.
+Nunca ejecutar `alembic downgrade` como rollback normal después de reabrir la
+aplicación o cargar el catálogo. Volver a una base pre-0052 exige mantenimiento
+cerrado, restaurar el backup completo `0051` (DB y storage) y aceptar explícitamente
+la pérdida de toda escritura posterior al backup. No es una maniobra automática
+del deploy.
 
 ## Limpieza Docker
 
