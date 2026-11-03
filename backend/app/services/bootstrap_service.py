@@ -21,8 +21,6 @@ from app.models.site import Site
 from app.models.user import User
 from app.services.agenda_service import ensure_agenda_seed_data
 from app.services.procedure_catalog_seed_service import (
-    CatalogConversion,
-    conversion_from_settings,
     optional_company_currency,
     record_unsupported_country_skip,
     seed_initial_procedure_catalog,
@@ -47,6 +45,7 @@ class BootstrapInput:
     admin_username: str
     admin_email: str
     admin_password: str
+    company_country: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +65,7 @@ def validate_bootstrap_input(data: BootstrapInput) -> BootstrapInput:
     admin_username = data.admin_username.strip()
     admin_email = data.admin_email.strip()
     normalized_email = normalize_email(admin_email)
+    company_country = data.company_country.strip() if data.company_country else None
 
     if not company_name:
         raise BootstrapError("El nombre de la empresa es obligatorio.")
@@ -94,6 +94,7 @@ def validate_bootstrap_input(data: BootstrapInput) -> BootstrapInput:
         admin_username=admin_username,
         admin_email=admin_email,
         admin_password=data.admin_password,
+        company_country=company_country,
     )
 
 
@@ -124,6 +125,7 @@ def bootstrap_installation(
         name=data.company_name,
         slug=data.company_slug,
         status="Activa",
+        country=data.company_country,
     )
     session.add(company)
     session.flush()
@@ -250,8 +252,7 @@ def bootstrap_installation(
     if settings.procedure_catalog_seed_enabled:
         currency = optional_company_currency(company.country)
         if currency:
-            conversion = conversion_from_settings() if currency == "COP" else CatalogConversion()
-            seed_initial_procedure_catalog(session, company, admin.id, conversion)
+            seed_initial_procedure_catalog(session, company, admin.id)
         else:
             record_unsupported_country_skip(session, company, admin.id)
 

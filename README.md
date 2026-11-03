@@ -112,6 +112,7 @@ También puede proporcionar los datos no sensibles como argumentos:
 python -m app.cli.bootstrap \
   --company-name "Mi Consultorio" \
   --company-slug "mi-consultorio" \
+  --company-country Chile \
   --site-name "Sede Principal" \
   --admin-name "Administrador" \
   --admin-email "admin@consultorio.local"
@@ -120,3 +121,13 @@ python -m app.cli.bootstrap \
 La contraseña siempre se solicita de forma oculta por consola. El comando solo
 funciona cuando no existen empresas ni usuarios y realiza toda la instalación
 en una única transacción.
+
+En una terminal interactiva, si no se entrega `--company-country`, el comando
+solicita opcionalmente Chile o Colombia. Con la precarga habilitada, esos países
+reciben respectivamente los 173 precios fijos CLP o COP. Un país distinto se
+conserva, pero omite el catálogo y registra la decisión; nunca se infiere moneda.
+
+Las automatizaciones no interactivas nunca quedan esperando entrada: deben usar
+`--company-country Chile`, `--company-country Colombia` o
+`--without-company-country`. Para preservar compatibilidad, si no indican ninguna
+opción se continúa sin país, se muestra una advertencia y se omite la precarga.

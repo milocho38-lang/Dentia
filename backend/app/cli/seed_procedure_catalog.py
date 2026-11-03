@@ -1,5 +1,4 @@
 import argparse
-from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -8,7 +7,6 @@ from app.database.session import SessionLocal
 from app.models.company import Company
 from app.models.user import User
 from app.services.procedure_catalog_seed_service import (
-    CatalogConversion,
     ProcedureCatalogSeedError,
     company_currency,
     seed_initial_procedure_catalog,
@@ -19,9 +17,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Precarga idempotente del catálogo inicial por empresa.")
     parser.add_argument("--company-id", required=True, type=UUID)
     parser.add_argument("--actor-id", required=True, type=UUID)
-    parser.add_argument("--clp-cop-rate", type=Decimal)
-    parser.add_argument("--rate-source")
-    parser.add_argument("--rate-observed-at-utc")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     with SessionLocal() as session:
@@ -31,8 +26,7 @@ def main() -> None:
             raise SystemExit("Empresa o actor empresarial no encontrado.")
         try:
             company_currency(company.country)
-            result = seed_initial_procedure_catalog(session, company, actor.id,
-                CatalogConversion(args.clp_cop_rate, args.rate_source, args.rate_observed_at_utc))
+            result = seed_initial_procedure_catalog(session, company, actor.id)
         except ProcedureCatalogSeedError as exc:
             raise SystemExit(
                 f"Carga omitida: {exc} Configure explícitamente Chile o Colombia; "

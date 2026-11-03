@@ -44,9 +44,7 @@ from app.schemas.platform_schema import (
 )
 from app.services.agenda_service import ensure_agenda_seed_data
 from app.services.procedure_catalog_seed_service import (
-    CatalogConversion,
     ProcedureCatalogSeedError,
-    conversion_from_settings,
     optional_company_currency,
     record_unsupported_country_skip,
     seed_initial_procedure_catalog,
@@ -1021,8 +1019,7 @@ def create_platform_company(
         currency = optional_company_currency(company.country)
         if currency:
             try:
-                conversion = conversion_from_settings() if currency == "COP" else CatalogConversion()
-                seed_initial_procedure_catalog(session, company, admin.id, conversion)
+                seed_initial_procedure_catalog(session, company, admin.id)
             except ProcedureCatalogSeedError as exc:
                 raise PlatformError(f"No se pudo preparar el catálogo inicial: {exc}", 422) from exc
         else:

@@ -17,6 +17,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--company-name", help="Nombre de la empresa inicial.")
     parser.add_argument("--company-slug", help="Slug técnico de la empresa.")
+    country = parser.add_mutually_exclusive_group()
+    country.add_argument("--company-country", help="País de la empresa inicial (Chile o Colombia).")
+    country.add_argument(
+        "--without-company-country", action="store_true",
+        help="Continúa explícitamente sin país y omite la precarga del catálogo.",
+    )
     parser.add_argument("--site-name", help="Nombre de la sede principal.")
     parser.add_argument("--admin-name", help="Nombre del administrador inicial.")
     parser.add_argument("--admin-username", help="Nombre de usuario del administrador inicial.")
@@ -36,6 +42,23 @@ def prompt_password() -> str:
     if password != confirmation:
         raise BootstrapError("Las contraseñas no coinciden.")
     return password
+
+
+def resolve_company_country(value: str | None, without_country: bool) -> str | None:
+    if value is not None:
+        normalized = value.strip()
+        return normalized or None
+    if without_country:
+        return None
+    if sys.stdin.isatty():
+        entered = input("País de la empresa (Chile/Colombia; vacío para omitir): ").strip()
+        return entered or None
+    print(
+        "País no indicado en ejecución no interactiva; el catálogo inicial se omitirá. "
+        "Use --company-country Chile|Colombia para precargarlo.",
+        file=sys.stderr,
+    )
+    return None
 
 
 def main() -> int:
@@ -71,6 +94,10 @@ def main() -> int:
                 "Correo del administrador",
             ),
             admin_password=prompt_password(),
+            company_country=resolve_company_country(
+                args.company_country,
+                args.without_company_country,
+            ),
         )
 
         with SessionLocal() as session:

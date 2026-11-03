@@ -1,5 +1,4 @@
-from decimal import Decimal
-from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 import json
 from pathlib import Path
 from uuid import uuid4
@@ -8,23 +7,13 @@ import pytest
 
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
+from app.services import procedure_catalog_seed_service as catalog_service
 from app.services.procedure_catalog_seed_service import (
-    CatalogConversion,
     ProcedureCatalogSeedError,
     company_currency,
     planned_catalog_rows,
     seed_initial_procedure_catalog,
 )
-
-
-REFERENCE = CatalogConversion(
-    Decimal("3.2126"),
-    "XE https://www.xe.com/es/currencyconverter/convert/?Amount=1&From=CLP&To=COP",
-    "2026-11-02T09:47:00Z",
-    is_reference=True,
-    allow_reference=True,
-)
-REFERENCE_NOW = datetime(2026, 11, 2, 10, 0, tzinfo=timezone.utc)
 
 
 class FakeScalars:
@@ -45,11 +34,13 @@ class FakeSession:
         self.inserted = inserted
         self.added = []
         self.flushed = False
+        self.executed = False
 
     def scalars(self, _statement):
         return FakeScalars(())
 
     def execute(self, _statement):
+        self.executed = True
         return FakeResult(self.inserted)
 
     def add(self, value):
@@ -64,7 +55,7 @@ def company(country):
 
 
 def test_manifest_is_exactly_173_unique_no_change_candidates():
-    payload, rows = planned_catalog_rows("Chile", CatalogConversion())
+    payload, rows = planned_catalog_rows("Chile")
     assert payload["source_sha256"] == "1d77bd1c0723fdfaf05e57f78dd4aed15f04eabc95797a2f7589b1446c8de5df"
     assert len(rows) == 173
     assert len({row["normalized_name"] for row in rows}) == 173
@@ -75,44 +66,66 @@ def test_manifest_is_exactly_173_unique_no_change_candidates():
 
 
 def test_chile_keeps_clp_without_conversion():
-    _, rows = planned_catalog_rows("Chile", CatalogConversion())
+    _, rows = planned_catalog_rows("Chile")
     assert all(row["price_currency"] == "CLP" for row in rows)
     assert all(row["suggested_value"] == Decimal(row["source_price_clp"]) for row in rows)
     assert all("clp_to_cop_rate" not in row["price_provenance"] for row in rows)
 
 
-def test_colombia_reference_conversion_rounds_to_nearest_thousand_and_is_traced():
-    _, rows = planned_catalog_rows("Colombia", REFERENCE, REFERENCE_NOW)
+def test_colombia_uses_approved_fixed_prices_and_historical_basis():
+    payload, rows = planned_catalog_rows("Colombia")
     assert all(row["price_currency"] == "COP" for row in rows)
     assert all(row["suggested_value"] % 1000 == 0 for row in rows)
-    assert all(row["price_provenance"]["clp_to_cop_rate"] == "3.2126" for row in rows)
-    assert all(row["price_provenance"]["rate_observed_at_utc"] == "2026-11-02T09:47:00Z" for row in rows)
+    assert all(row["price_provenance"]["clp_to_cop_rate"] == "3.291243" for row in rows)
+    assert all(row["price_provenance"]["rate_observed_at_utc"] == "2026-11-03T03:33:00Z" for row in rows)
+    assert all(
+        row["price_provenance"]["approved_payload_sha256"] == catalog_service.APPROVED_PAYLOAD_SHA256
+        for row in rows
+    )
+    for source, row in zip(payload["items"], rows, strict=True):
+        expected = (Decimal(source["source_price_clp"]) * Decimal("3.291243") / 1000).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        ) * 1000
+        assert Decimal(source["suggested_price_cop"]) == expected == row["suggested_value"]
 
 
-def test_reference_rate_is_blocked_without_explicit_test_override():
-    conversion = CatalogConversion(Decimal("3.2126"), "XE", "2026-11-02T09:47:00Z", is_reference=True)
-    with pytest.raises(ProcedureCatalogSeedError, match="referencia"):
-        planned_catalog_rows("Colombia", conversion, REFERENCE_NOW)
-    equivalent = CatalogConversion(Decimal("3.2126"), "another label", "2026-11-02T09:47:00+00:00")
-    with pytest.raises(ProcedureCatalogSeedError, match="referencia"):
-        planned_catalog_rows("Colombia", equivalent, REFERENCE_NOW)
+def test_fixed_colombia_catalog_does_not_depend_on_current_date_or_settings():
+    first = planned_catalog_rows("Colombia")[1]
+    second = planned_catalog_rows("Colombia")[1]
+    assert [(row["source_row"], row["suggested_value"]) for row in first] == [
+        (row["source_row"], row["suggested_value"]) for row in second
+    ]
 
 
-@pytest.mark.parametrize("observed", [
-    "2026-11-02T09:47:00", "2026-11-02T09:47:00-03:00",
-    "2026-11-02T10:01:00Z", "2026-11-01T09:59:59Z",
+def test_invalid_manifest_fails_before_any_database_mutation(tmp_path, monkeypatch):
+    payload = json.loads(catalog_service.CATALOG_PATH.read_text(encoding="utf-8"))
+    payload["items"][0]["suggested_price_cop"] = "999000"
+    invalid = tmp_path / "invalid-catalog.json"
+    invalid.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(catalog_service, "CATALOG_PATH", invalid)
+    session = FakeSession()
+
+    with pytest.raises(ProcedureCatalogSeedError, match="manifiesto aprobado"):
+        seed_initial_procedure_catalog(session, company("Colombia"), uuid4())
+
+    assert not session.executed
+    assert session.added == []
+    assert not session.flushed
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("catalog_version", "UNAPPROVED-VERSION"),
+    ("source_sha256", "0" * 64),
 ])
-def test_rate_rejects_missing_utc_offset_non_utc_future_and_stale(observed):
-    conversion = CatalogConversion(Decimal("3.2"), "source", observed)
-    with pytest.raises(ProcedureCatalogSeedError):
-        planned_catalog_rows("Colombia", conversion, REFERENCE_NOW)
+def test_manifest_identity_fields_are_covered_by_approved_hash(field, value, tmp_path, monkeypatch):
+    payload = json.loads(catalog_service.CATALOG_PATH.read_text(encoding="utf-8"))
+    payload[field] = value
+    invalid = tmp_path / f"invalid-{field}.json"
+    invalid.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(catalog_service, "CATALOG_PATH", invalid)
 
-
-@pytest.mark.parametrize("conversion", [CatalogConversion(), CatalogConversion(Decimal("3.2")),
-    CatalogConversion(Decimal("3.2"), "XE", None)])
-def test_colombia_requires_complete_rate_trace(conversion):
-    with pytest.raises(ProcedureCatalogSeedError):
-        planned_catalog_rows("Colombia", conversion, REFERENCE_NOW)
+    with pytest.raises(ProcedureCatalogSeedError, match="manifiesto aprobado"):
+        planned_catalog_rows("Chile")
 
 
 @pytest.mark.parametrize("country", [None, "", "Perú"])
@@ -123,7 +136,7 @@ def test_unsupported_or_missing_country_is_rejected(country):
 
 def test_new_company_inserts_all_items_without_commit():
     session = FakeSession()
-    result = seed_initial_procedure_catalog(session, company("Chile"), uuid4(), CatalogConversion())
+    result = seed_initial_procedure_catalog(session, company("Chile"), uuid4())
     audits = [row for row in session.added if isinstance(row, AuditEvent)]
     assert result.inserted == 173 and result.skipped_collisions == 0
     assert len(audits) == 1 and session.flushed
@@ -131,11 +144,11 @@ def test_new_company_inserts_all_items_without_commit():
 
 def test_existing_company_skips_collision_and_never_updates_existing_price():
     session = FakeSession(inserted=172)
-    result = seed_initial_procedure_catalog(session, company("Chile"), uuid4(), CatalogConversion())
+    result = seed_initial_procedure_catalog(session, company("Chile"), uuid4())
     assert result.inserted == 172 and result.skipped_collisions == 1
 
 
 def test_second_run_is_idempotent():
     session = FakeSession(inserted=0)
-    result = seed_initial_procedure_catalog(session, company("Chile"), uuid4(), CatalogConversion())
+    result = seed_initial_procedure_catalog(session, company("Chile"), uuid4())
     assert result.inserted == 0 and result.skipped_collisions == 173

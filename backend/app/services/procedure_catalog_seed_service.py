@@ -1,7 +1,7 @@
+import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import UUID
 
@@ -11,26 +11,13 @@ from sqlalchemy.orm import Session
 from app.models.audit_event import AuditEvent
 from app.models.company import Company
 from app.models.treatment import ProcedureCatalogItem
-from app.core.config import settings
-
-
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "library_data" / "procedure_catalog_initial_173.json"
-THOUSAND = Decimal("1000")
-TEST_REFERENCE_RATE = Decimal("3.2126")
-TEST_REFERENCE_OBSERVED_AT = "2026-11-02T09:47:00Z"
+APPROVED_PAYLOAD_SHA256 = "9ba8bf0c2ddaa2524ce272ec5a7c19b47a0fbede704fb47be05d1ca7798b8d13"
+APPROVED_SCOPES = {"GENERAL", "ZONE", "TOOTH", "TOOTH_SURFACE"}
 
 
 class ProcedureCatalogSeedError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True)
-class CatalogConversion:
-    clp_to_cop_rate: Decimal | None = None
-    source: str | None = None
-    observed_at_utc: str | None = None
-    is_reference: bool = False
-    allow_reference: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,81 +65,66 @@ def record_unsupported_country_skip(session: Session, company: Company, actor_id
     session.flush()
 
 
-def conversion_from_settings() -> CatalogConversion:
-    try:
-        rate = Decimal(settings.procedure_catalog_clp_to_cop_rate) if settings.procedure_catalog_clp_to_cop_rate else None
-    except InvalidOperation as exc:
-        raise ProcedureCatalogSeedError("La tasa CLP/COP configurada no es decimal válida.") from exc
-    return CatalogConversion(rate, settings.procedure_catalog_rate_source,
-        settings.procedure_catalog_rate_observed_at_utc,
-        settings.procedure_catalog_rate_is_reference, False)
-
-
 def _load_catalog() -> dict:
     payload = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     if len(payload.get("items", [])) != 173:
         raise ProcedureCatalogSeedError("El lote inicial debe contener exactamente 173 filas.")
+    payload_digest = hashlib.sha256(json.dumps(
+        {key: payload.get(key) for key in (
+            "catalog_version", "source_sha256", "cop_price_basis", "items"
+        )},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")).hexdigest()
+    if payload_digest != APPROVED_PAYLOAD_SHA256:
+        raise ProcedureCatalogSeedError("El lote inicial no coincide con el manifiesto aprobado.")
     names = [normalize_catalog_name(row["name"]) for row in payload["items"]]
     if len(names) != len(set(names)):
         raise ProcedureCatalogSeedError("El lote inicial contiene nombres normalizados duplicados.")
+    for row in payload["items"]:
+        try:
+            clp = Decimal(row["source_price_clp"])
+            cop = Decimal(row["suggested_price_cop"])
+        except (InvalidOperation, KeyError) as exc:
+            raise ProcedureCatalogSeedError("El lote aprobado contiene un precio inválido.") from exc
+        if clp < 0 or cop < 0 or cop % 1000:
+            raise ProcedureCatalogSeedError("El lote aprobado contiene un precio fuera de regla.")
+        if row.get("suggested_scope_type") not in APPROVED_SCOPES:
+            raise ProcedureCatalogSeedError("El lote aprobado contiene un alcance inválido.")
     return payload
 
 
-def _cop_value(clp: Decimal, conversion: CatalogConversion, now: datetime | None = None) -> Decimal:
-    if not conversion.clp_to_cop_rate or conversion.clp_to_cop_rate <= 0:
-        raise ProcedureCatalogSeedError("La carga COP requiere una tasa CLP/COP positiva.")
-    if not conversion.source or not conversion.observed_at_utc:
-        raise ProcedureCatalogSeedError("La carga COP requiere fuente y fecha UTC de la tasa.")
-    try:
-        observed = datetime.fromisoformat(conversion.observed_at_utc.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ProcedureCatalogSeedError("La fecha de la tasa no es ISO-8601 válida.") from exc
-    if observed.tzinfo is None or observed.utcoffset() != timedelta(0):
-        raise ProcedureCatalogSeedError("La fecha de la tasa debe incluir offset UTC +00:00 o Z.")
-    current = now or datetime.now(timezone.utc)
-    if observed > current:
-        raise ProcedureCatalogSeedError("La fecha de la tasa no puede estar en el futuro.")
-    if current - observed > timedelta(hours=24):
-        raise ProcedureCatalogSeedError("La tasa tiene más de 24 horas y debe renovarse.")
-    test_reference_instant = datetime.fromisoformat(TEST_REFERENCE_OBSERVED_AT.replace("Z", "+00:00"))
-    known_test_reference = conversion.clp_to_cop_rate == TEST_REFERENCE_RATE and observed == test_reference_instant
-    if (conversion.is_reference or known_test_reference) and not conversion.allow_reference:
-        raise ProcedureCatalogSeedError("La tasa marcada como referencia no puede usarse para una carga real.")
-    return (clp * conversion.clp_to_cop_rate / THOUSAND).quantize(
-        Decimal("1"), rounding=ROUND_HALF_UP
-    ) * THOUSAND
-
-
-def planned_catalog_rows(country: str | None, conversion: CatalogConversion,
-                         now: datetime | None = None) -> tuple[dict, list[dict]]:
+def planned_catalog_rows(country: str | None) -> tuple[dict, list[dict]]:
     payload = _load_catalog()
     currency = company_currency(country)
+    basis = payload.get("cop_price_basis") or {}
     planned = []
     for source in payload["items"]:
         try:
             clp = Decimal(source["source_price_clp"])
-        except InvalidOperation as exc:
-            raise ProcedureCatalogSeedError("Precio CLP inválido en el lote.") from exc
-        value = clp if currency == "CLP" else _cop_value(clp, conversion, now)
+            cop = Decimal(source["suggested_price_cop"])
+        except (InvalidOperation, KeyError) as exc:
+            raise ProcedureCatalogSeedError("Precio inválido en el lote aprobado.") from exc
+        value = clp if currency == "CLP" else cop
         provenance = {
             "catalog_version": payload["catalog_version"], "source_sha256": payload["source_sha256"],
+            "approved_payload_sha256": APPROVED_PAYLOAD_SHA256,
             "source_row": source["source_row"], "source_currency": "CLP", "source_price": str(clp),
             "generated_currency": currency, "generated_value": str(value),
             "currency_role": "IMPORT_ORIGIN_NOT_CURRENT_DISPLAY_CURRENCY",
         }
         if currency == "COP":
-            provenance.update({"clp_to_cop_rate": str(conversion.clp_to_cop_rate),
-                "rate_source": conversion.source, "rate_observed_at_utc": conversion.observed_at_utc,
-                "rounding": "NEAREST_1000_COP_HALF_UP"})
+            provenance.update({"clp_to_cop_rate": basis.get("clp_to_cop_rate"),
+                "rate_source": basis.get("rate_source"),
+                "rate_observed_at_utc": basis.get("rate_observed_at_utc"),
+                "rounding": basis.get("rounding")})
         planned.append({**source, "normalized_name": normalize_catalog_name(source["name"]),
                         "suggested_value": value, "price_currency": currency,
                         "price_provenance": provenance})
     return payload, planned
 
 
-def seed_initial_procedure_catalog(session: Session, company: Company, actor_id: UUID,
-                                   conversion: CatalogConversion) -> CatalogSeedResult:
-    payload, rows = planned_catalog_rows(company.country, conversion)
+def seed_initial_procedure_catalog(session: Session, company: Company, actor_id: UUID | None) -> CatalogSeedResult:
+    payload, rows = planned_catalog_rows(company.country)
     values = [{"company_id": company.id, "name": row["name"],
         "normalized_name": row["normalized_name"], "suggested_value": row["suggested_value"],
         "price_currency": row["price_currency"], "price_provenance": row["price_provenance"],
@@ -168,6 +140,7 @@ def seed_initial_procedure_catalog(session: Session, company: Company, actor_id:
         entity="procedure_catalog_seed", entity_id=company.id,
         action="PROCEDURE_CATALOG_SEEDED", result="SUCCESS",
         detail={"catalog_version": payload["catalog_version"], "source_sha256": payload["source_sha256"],
+                "approved_payload_sha256": APPROVED_PAYLOAD_SHA256,
                 "inserted": inserted, "skipped_collisions": skipped, "currency": currency}))
     session.flush()
     return CatalogSeedResult(inserted, skipped, currency, payload["catalog_version"])
