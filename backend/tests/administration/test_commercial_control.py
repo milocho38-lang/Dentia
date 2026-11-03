@@ -6,6 +6,17 @@ from sqlalchemy import select, text
 
 from app.models.audit_event import AuditEvent
 from app.models.commercial_control import CommercialObligation, CommercialReconciliation, CommercialTransfer
+from app.services import commercial_control_service
+
+
+class _October2026Date(date):
+    @classmethod
+    def today(cls):
+        return cls(2026, 10, 12)
+
+
+def _freeze_commercial_today(monkeypatch) -> None:
+    monkeypatch.setattr(commercial_control_service, "date", _October2026Date)
 
 
 def _configure(api_client, world, *, start="2026-11-01"):
@@ -103,7 +114,8 @@ def test_idempotency_conflict_currency_lock_and_reconciliation(api_client, secur
     assert db_session.scalar(select(CommercialReconciliation)) is not None
 
 
-def test_pending_balance_accumulates_and_credit_never_becomes_negative(api_client, security_world) -> None:
+def test_pending_balance_accumulates_and_credit_never_becomes_negative(api_client, security_world, monkeypatch) -> None:
+    _freeze_commercial_today(monkeypatch)
     assert _configure(api_client, security_world, start="2026-07-01").status_code == 200
     detail = api_client.get(f"/api/platform/commercial/accounts/{security_world.tenant_a.company.id}", token=security_world.platform_admin.token)
     assert Decimal(detail.json()["pending_balance"]) == Decimal("400")
@@ -115,7 +127,8 @@ def test_pending_balance_accumulates_and_credit_never_becomes_negative(api_clien
     assert Decimal(verified.json()["credit_balance"]) == Decimal("50")
 
 
-def test_reversing_earlier_period_creates_traced_gap_without_rewriting_later_fact(api_client, security_world, db_session) -> None:
+def test_reversing_earlier_period_creates_traced_gap_without_rewriting_later_fact(api_client, security_world, db_session, monkeypatch) -> None:
+    _freeze_commercial_today(monkeypatch)
     assert _configure(api_client, security_world, start="2026-09-01").status_code == 200
     base = f"/api/platform/commercial/accounts/{security_world.tenant_a.company.id}/transfers"
     ids = []
@@ -132,7 +145,8 @@ def test_reversing_earlier_period_creates_traced_gap_without_rewriting_later_fac
     assert db_session.scalar(select(CommercialReconciliation).where(CommercialReconciliation.action == "TRANSFER_REVERSED")) is not None
 
 
-def test_gap_payment_reports_non_contiguous_periods_without_revaluing_old_debt(api_client, security_world) -> None:
+def test_gap_payment_reports_non_contiguous_periods_without_revaluing_old_debt(api_client, security_world, monkeypatch) -> None:
+    _freeze_commercial_today(monkeypatch)
     assert _configure(api_client, security_world, start="2026-07-01").status_code == 200
     company_id = security_world.tenant_a.company.id
     base = f"/api/platform/commercial/accounts/{company_id}/transfers"
@@ -194,10 +208,11 @@ def test_rate_change_and_pending_creation_serialize_consistently(api_client, sec
     if rows:
         row = rows[0]
         assert row.list_amount == row.monthly_fee_snapshot * row.months_covered
-        if update_response.status_code == 200:
-            assert row.list_amount == Decimal("200")
-        else:
-            assert row.list_amount == Decimal("100")
+        # A successful rate update does not revalue the already-due first
+        # period: its historical rate remains 100. If creation wins the lock,
+        # the update is rejected; in both valid orderings the transfer keeps
+        # the immutable price snapshot used to create its obligation.
+        assert row.list_amount == Decimal("100")
 
 
 def test_concurrent_duplicate_submission_creates_one_transfer_and_audit_snapshot(api_client, security_world, db_session) -> None:
