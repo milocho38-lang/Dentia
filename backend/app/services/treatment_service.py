@@ -268,9 +268,24 @@ def _soft_accent_background(accent: colors.Color) -> colors.Color:
     return colors.Color(accent.red, accent.green, accent.blue, alpha=0.10)
 
 
-def _money_text(value: Decimal | int | float | None) -> str:
+def _display_currency(country: str | None) -> str | None:
+    normalized = (country or "").strip().casefold()
+    if normalized in {"chile", "cl"}:
+        return "CLP"
+    if normalized in {"colombia", "co"}:
+        return "COP"
+    return None
+
+
+def _company_display_currency(session: Session, company_id: UUID) -> str | None:
+    company = session.get(Company, company_id)
+    return _display_currency(company.country if company else None)
+
+
+def _money_text(value: Decimal | int | float | None, currency: str | None = None) -> str:
     amount = int(_money(value))
-    return f"${amount:,.0f}".replace(",", ".")
+    rendered = f"${amount:,.0f}".replace(",", ".")
+    return f"{currency} {rendered}" if currency else f"moneda local · {rendered}"
 
 
 def _date_text(value: datetime | date | None) -> str:
@@ -703,6 +718,12 @@ def _catalog_response(
         category=item.category,
         description=item.description,
         suggested_value=_money(item.suggested_value) if item.suggested_value is not None else None,
+        price_currency=(
+            _company_display_currency(session, item.company_id)
+            if session is not None
+            else item.price_currency
+        ),
+        price_provenance=item.price_provenance,
         suggested_scope_type=item.suggested_scope_type,
         odontogram_behavior=item.odontogram_behavior or "UNCONFIGURED",
         odontogram_scope_type=item.odontogram_scope_type,
@@ -867,6 +888,7 @@ def create_procedure_catalog_item(
         diagnosis_ids=diagnosis_ids,
         default_performed_catalog_item_id=payload.default_performed_catalog_item_id,
     )
+    company = session.get(Company, context.user.company_id)
     item = ProcedureCatalogItem(
         company_id=context.user.company_id,
         name=payload.name,
@@ -874,6 +896,7 @@ def create_procedure_catalog_item(
         category=payload.category,
         description=payload.description,
         suggested_value=_money(payload.suggested_value) if payload.suggested_value is not None else None,
+        price_currency=_display_currency(company.country if company else None),
         suggested_scope_type=payload.suggested_scope_type,
         odontogram_behavior=behavior,
         odontogram_scope_type=payload.odontogram_scope_type,
@@ -930,9 +953,17 @@ def update_procedure_catalog_item(
         if key in data:
             setattr(item, attr, data[key])
     if "suggested_value" in data:
+        previous_provenance = item.price_provenance or {}
+        original_provenance = previous_provenance.get("original_import", previous_provenance)
         item.suggested_value = (
             _money(data["suggested_value"]) if data["suggested_value"] is not None else None
         )
+        item.price_provenance = {
+            "current_value_source": "MANUAL_EDIT",
+            "edited_at_utc": datetime.now(timezone.utc).isoformat(),
+            "edited_by": str(context.user.id),
+            "original_import": original_provenance,
+        }
     if {
         "odontogram_behavior",
         "odontogram_scope_type",
@@ -965,7 +996,7 @@ def update_procedure_catalog_item(
         entity="procedure_catalog",
         entity_id=item.id,
         action="PROCEDURE_CATALOG_UPDATED",
-        detail=data,
+        detail={**data, "price_provenance": item.price_provenance if "suggested_value" in data else None},
     )
     session.commit()
     session.refresh(item)
@@ -1136,6 +1167,7 @@ def _treatment_item(session: Session, treatment: Treatment) -> TreatmentListItem
         final_value=summary.final_value,
         paid_value=summary.paid_value,
         balance=summary.balance,
+        currency_code=_company_display_currency(session, treatment.company_id),
         updated_at=treatment.updated_at,
     )
 
@@ -1306,10 +1338,11 @@ def list_procedures(session: Session, context: AuthContext, treatment_id: UUID) 
         .where(TreatmentProcedure.treatment_id == treatment.id)
         .order_by(TreatmentProcedure.created_at)
     ).all()
-    return [_procedure_response(*row) for row in rows]
+    return [_procedure_response(session, *row) for row in rows]
 
 
 def _procedure_response(
+    session: Session,
     procedure: TreatmentProcedure,
     dentist: Dentist | None = None,
     site: Site | None = None,
@@ -1330,6 +1363,7 @@ def _procedure_response(
         unit_value=_money(procedure.unit_value),
         quantity=Decimal(procedure.quantity),
         total_value=_money(procedure.total_value),
+        currency_code=_company_display_currency(session, procedure.company_id),
         status=procedure.status,
         estimated_date=procedure.estimated_date,
         performed_at=procedure.performed_at,
@@ -1355,6 +1389,7 @@ def _canonical_surfaces(value: list[str] | None) -> list[str] | None:
 
 
 def _linked_procedure_response(
+    session: Session,
     procedure: TreatmentProcedure,
     treatment: Treatment,
 ) -> OdontogramLinkedProcedureResponse:
@@ -1372,6 +1407,7 @@ def _linked_procedure_response(
         unit_value=_money(procedure.unit_value),
         quantity=Decimal(procedure.quantity),
         total_value=_money(procedure.total_value),
+        currency_code=_company_display_currency(session, procedure.company_id),
         scope_type=procedure.scope_type or "GENERAL",
         zone=procedure.zone,
         tooth=procedure.tooth,
@@ -1402,7 +1438,7 @@ def _linked_procedures_for_events(
         )
         .order_by(TreatmentProcedure.created_at.desc())
     ).all()
-    return [_linked_procedure_response(procedure, treatment) for procedure, treatment in rows]
+    return [_linked_procedure_response(session, procedure, treatment) for procedure, treatment in rows]
 
 
 def _require_eligible_odontogram_event(
@@ -1525,7 +1561,7 @@ def create_planned_procedure_from_odontogram_event(
             .where(TreatmentProcedure.id == replay.id)
         ).one()
         return OdontogramPlannedProcedureCreateResponse(
-            procedure=_procedure_response(*row),
+            procedure=_procedure_response(session, *row),
             linked_procedures=linked,
             source_odontogram_event_id=event.id,
             treatment_id=replay.treatment_id,
@@ -1623,7 +1659,7 @@ def create_planned_procedure_from_odontogram_event(
         surfaces=surfaces,
     )
     if similar and not payload.allow_similar_duplicate:
-        linked = [_linked_procedure_response(procedure, linked_treatment) for procedure, linked_treatment in similar]
+        linked = [_linked_procedure_response(session, procedure, linked_treatment) for procedure, linked_treatment in similar]
         return OdontogramPlannedProcedureCreateResponse(
             procedure=None,
             linked_procedures=linked,
@@ -1709,7 +1745,7 @@ def create_planned_procedure_from_odontogram_event(
     ).one()
     linked = _linked_procedures_for_events(session, context, [event.id])
     return OdontogramPlannedProcedureCreateResponse(
-        procedure=_procedure_response(*row),
+        procedure=_procedure_response(session, *row),
         linked_procedures=linked,
         source_odontogram_event_id=event.id,
         treatment_id=treatment.id,
@@ -1788,7 +1824,7 @@ def create_procedure(
         .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
         .where(TreatmentProcedure.id == procedure.id)
     ).one()
-    return _procedure_response(*row)
+    return _procedure_response(session, *row)
 
 
 def _find_existing_confirmed_diagnosis_event(
@@ -1945,7 +1981,7 @@ def create_procedure_with_diagnosis(
             .where(TreatmentProcedure.id == replay.id)
         ).one()
         return ProcedureWithDiagnosisCreateResponse(
-            procedure=_procedure_response(*row),
+            procedure=_procedure_response(session, *row),
             diagnosis_event_id=replay.source_odontogram_event_id,
             diagnosis_created=False,
             diagnosis_reused=bool(replay.source_odontogram_event_id),
@@ -2126,7 +2162,7 @@ def create_procedure_with_diagnosis(
         .where(TreatmentProcedure.id == procedure.id)
     ).one()
     return ProcedureWithDiagnosisCreateResponse(
-        procedure=_procedure_response(*row),
+        procedure=_procedure_response(session, *row),
         diagnosis_event_id=diagnosis_event.id if diagnosis_event else None,
         diagnosis_created=diagnosis_created,
         diagnosis_reused=diagnosis_reused,
@@ -2217,7 +2253,7 @@ def update_procedure(
         .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
         .where(TreatmentProcedure.id == procedure.id)
     ).one()
-    return _procedure_response(*row)
+    return _procedure_response(session, *row)
 
 
 def mark_procedure_done(session: Session, context: AuthContext, treatment_id: UUID, procedure_id: UUID, metadata: RequestMetadata) -> ProcedureResponse:
@@ -2239,7 +2275,7 @@ def mark_procedure_done(session: Session, context: AuthContext, treatment_id: UU
         .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
         .where(TreatmentProcedure.id == procedure.id)
     ).one()
-    return _procedure_response(*row)
+    return _procedure_response(session, *row)
 
 
 def complete_procedure_clinically(
@@ -2267,7 +2303,7 @@ def complete_procedure_clinically(
             .where(TreatmentProcedure.id == procedure_id)
         ).one()
         return ProcedureClinicalCompletionResponse(
-            procedure=_procedure_response(*row),
+            procedure=_procedure_response(session, *row),
             odontogram_event_id=existing_event.id,
             odontogram_event_status=existing_event.status,
             clinical_evolution_id=existing_event.evolution_id or payload.clinical_evolution_id,
@@ -2315,7 +2351,7 @@ def complete_procedure_clinically(
             .where(TreatmentProcedure.id == procedure.id)
         ).one()
         return ProcedureClinicalCompletionResponse(
-            procedure=_procedure_response(*row),
+            procedure=_procedure_response(session, *row),
             odontogram_event_id=duplicate.id,
             odontogram_event_status=duplicate.status,
             clinical_evolution_id=evolution.id,
@@ -2469,7 +2505,7 @@ def complete_procedure_clinically(
         .where(TreatmentProcedure.id == procedure.id)
     ).one()
     return ProcedureClinicalCompletionResponse(
-        procedure=_procedure_response(*row),
+        procedure=_procedure_response(session, *row),
         odontogram_event_id=event.id,
         odontogram_event_status=event.status,
         clinical_evolution_id=evolution.id,
@@ -2500,7 +2536,7 @@ def cancel_procedure(session: Session, context: AuthContext, treatment_id: UUID,
         .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
         .where(TreatmentProcedure.id == procedure.id)
     ).one()
-    return _procedure_response(*row)
+    return _procedure_response(session, *row)
 
 
 def delete_procedure(
@@ -2578,7 +2614,7 @@ def link_procedure_appointment(
         .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
         .where(TreatmentProcedure.id == procedure.id)
     ).one()
-    return _procedure_response(*row)
+    return _procedure_response(session, *row)
 
 
 def link_appointment_treatment_procedure(
@@ -2887,6 +2923,7 @@ def create_budget(session: Session, context: AuthContext, treatment_id: UUID, pa
 
 
 def _budget_response(session: Session, budget: Budget) -> BudgetResponse:
+    currency = _company_display_currency(session, budget.company_id)
     details = session.scalars(
         select(BudgetDetail).where(BudgetDetail.budget_id == budget.id).order_by(BudgetDetail.order)
     ).all()
@@ -2909,6 +2946,7 @@ def _budget_response(session: Session, budget: Budget) -> BudgetResponse:
         discount_value=_money(budget.discount_value),
         discount_calculated_value=_money(budget.discount_calculated_value),
         final_value=_money(budget.final_value),
+        currency_code=currency,
         observations=budget.observations,
         issued_at=budget.issued_at,
         expires_on=budget.expires_on,
@@ -2923,6 +2961,7 @@ def _budget_response(session: Session, budget: Budget) -> BudgetResponse:
                 quantity=detail.quantity,
                 unit_value=_money(detail.unit_value),
                 total_value=_money(detail.total_value),
+                currency_code=currency,
                 order=detail.order,
                 observations=detail.observations,
                 scope_type=detail.scope_type or "GENERAL",
@@ -2964,6 +3003,7 @@ def generate_budget_pdf(
     patient = session.get(Patient, budget.patient_id)
     if company is None or patient is None:
         raise TreatmentError("Presupuesto incompleto.", 500)
+    currency = _display_currency(company.country)
     dentist = None
     if treatment.responsible_dentist_id:
         dentist = session.scalar(
@@ -3206,8 +3246,8 @@ def generate_budget_pdf(
                 _paragraph(detail.name, styles["cell_bold"]),
                 _paragraph(_scope_label(detail.scope_type, detail.zone, detail.tooth, detail.surfaces), styles["cell"]),
                 _paragraph(f"{detail.quantity.normalize():f}", styles["cell"]),
-                _paragraph(_money_text(detail.unit_value), styles["cell"]),
-                _paragraph(_money_text(detail.total_value), styles["cell_bold"]),
+                _paragraph(_money_text(detail.unit_value, currency), styles["cell"]),
+                _paragraph(_money_text(detail.total_value, currency), styles["cell_bold"]),
             ]
         )
     story.append(_paragraph("Procedimientos", styles["h2"]))
@@ -3232,23 +3272,23 @@ def generate_budget_pdf(
         )
     )
 
-    summary_rows = [["Subtotal", _money_text(budget.gross_value)]]
+    summary_rows = [["Subtotal", _money_text(budget.gross_value, currency)]]
     has_discount = _money(budget.discount_calculated_value) > 0
     if has_discount:
-        discount_label = _money_text(budget.discount_value)
+        discount_label = _money_text(budget.discount_value, currency)
         if budget.discount_type == "porcentaje":
             discount_label = f"{budget.discount_value.normalize()}%"
         summary_rows.extend(
             [
                 ["Descuento", discount_label],
-                ["Valor descuento", _money_text(budget.discount_calculated_value)],
+                ["Valor descuento", _money_text(budget.discount_calculated_value, currency)],
             ]
         )
     summary_rows.extend(
         [
-            ["Valor final", _money_text(budget.final_value)],
-            ["Pagado", _money_text(summary.paid_value)],
-            ["Saldo pendiente", _money_text(summary.balance)],
+            ["Valor final", _money_text(budget.final_value, currency)],
+            ["Pagado", _money_text(summary.paid_value, currency)],
+            ["Saldo pendiente", _money_text(summary.balance, currency)],
         ]
     )
     final_row = len(summary_rows) - 3
@@ -3749,6 +3789,7 @@ def _payment_response(session: Session, payment: TreatmentPayment) -> PaymentRes
         dentist_name=dentist.name if dentist else None,
         paid_at=payment.paid_at,
         value=_money(payment.value),
+        currency_code=_company_display_currency(session, payment.company_id),
         payment_method=payment.payment_method,
         reference=payment.reference,
         observation=payment.observation,
@@ -3806,6 +3847,7 @@ def generate_payment_receipt_pdf(
     receiver = session.get(User, payment.registered_by) if payment.registered_by else None
     if company is None or patient is None or site is None:
         raise TreatmentError("Pago incompleto.", 500)
+    currency = _display_currency(company.country)
 
     payment_procedures = list(
         session.scalars(
@@ -4132,7 +4174,7 @@ def generate_payment_receipt_pdf(
 
     story.append(_paragraph("Pago recibido", styles["h2"]))
     payment_rows = [
-        ["Valor pagado", _money_text(payment.value), "Medio de pago", payment.payment_method],
+        ["Valor pagado", _money_text(payment.value, currency), "Medio de pago", payment.payment_method],
     ]
     if payment.reference:
         payment_rows.append(["Referencia", payment.reference, "Recibido por", receiver.name if receiver else "—"])
@@ -4145,7 +4187,7 @@ def generate_payment_receipt_pdf(
             Table(
                 [[
                     _paragraph("Saldo pendiente después de este pago", styles["cell_bold"]),
-                    _paragraph(_money_text(payment.remaining_balance_snapshot), styles["receipt_number"]),
+                    _paragraph(_money_text(payment.remaining_balance_snapshot, currency), styles["receipt_number"]),
                 ]],
                 colWidths=[doc.width * 0.68, doc.width * 0.32],
                 style=TableStyle(
@@ -4279,6 +4321,7 @@ def finance_dashboard(session: Session, context: AuthContext) -> FinanceDashboar
     active_count = sum(1 for treatment in treatments if treatment.status in TREATMENT_ACTIVE_STATUSES)
     approved_finals = [_summary(session, treatment.id).final_value for treatment in treatments if _summary(session, treatment.id).final_value > 0]
     return FinanceDashboardResponse(
+        currency_code=_company_display_currency(session, context.user.company_id),
         income_today=income_since(start_day),
         income_month=income_since(start_month),
         income_year=income_since(start_year),
@@ -4309,7 +4352,10 @@ def _breakdown(session: Session, context: AuthContext, group: str) -> FinanceBre
             .where(TreatmentProcedure.company_id == context.user.company_id, TreatmentProcedure.status == "Realizado")
             .group_by(TreatmentProcedure.id, TreatmentProcedure.name)
         ).all()
-    return FinanceBreakdownResponse(items=[FinanceBreakdownItem(id=row[0], name=row[1], value=_money(row[2])) for row in rows])
+    return FinanceBreakdownResponse(
+        currency_code=_company_display_currency(session, context.user.company_id),
+        items=[FinanceBreakdownItem(id=row[0], name=row[1], value=_money(row[2])) for row in rows],
+    )
 
 
 def finance_by_site(session: Session, context: AuthContext) -> FinanceBreakdownResponse:
@@ -4336,4 +4382,7 @@ def patient_balances(session: Session, context: AuthContext) -> PatientBalancesR
         patient = session.get(Patient, patient_id)
         if patient:
             items.append(PatientBalanceItem(patient_id=patient_id, patient_name=f"{patient.first_names} {patient.last_names}".strip(), balance=_money(balance)))
-    return PatientBalancesResponse(items=items)
+    return PatientBalancesResponse(
+        currency_code=_company_display_currency(session, context.user.company_id),
+        items=items,
+    )

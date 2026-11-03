@@ -75,6 +75,16 @@ def _company_timezone(session: Session, context: AuthContext) -> str:
     return (company.timezone if company else None) or FALLBACK_TIMEZONE
 
 
+def _company_currency_label(session: Session, context: AuthContext) -> str | None:
+    company = session.get(Company, context.user.company_id)
+    normalized = (company.country if company else "").strip().casefold()
+    if normalized in {"chile", "cl"}:
+        return "CLP"
+    if normalized in {"colombia", "co"}:
+        return "COP"
+    return None
+
+
 def _local_bounds(date_from: date, date_to: date, timezone_name: str) -> tuple[datetime, datetime]:
     tz = ZoneInfo(timezone_name)
     start = datetime.combine(date_from, time.min, tzinfo=tz).astimezone(timezone.utc)
@@ -658,6 +668,7 @@ def _finance_report(
         bucket = "0–30" if days <= 30 else "31–60" if days <= 60 else "61–90" if days <= 90 else ">90"
         aging[bucket] += balance
     return FinanceReportsResponse(
+        currency_code=_company_currency_label(session, context),
         income_today=income_between(today_start, today_start + timedelta(days=1)),
         income_month=income_between(month_start, end_utc),
         income_range=income_between(start_utc, end_utc),

@@ -98,6 +98,17 @@ export function AddPlannedProcedureDialog({
   }, [patientId]);
 
   const selectedCatalog = useMemo(() => catalog.find((item) => item.id === catalogId), [catalog, catalogId]);
+  const displayCurrency = useMemo(() => {
+    const selectedTreatment = treatments.find((item) => item.id === treatmentId);
+    return (
+      selectedCatalog?.price_currency ??
+      selectedTreatment?.currency_code ??
+      treatments.find((item) => item.currency_code)?.currency_code ??
+      catalog.find((item) => item.price_currency)?.price_currency ??
+      linkedProcedures.find((item) => item.currency_code)?.currency_code ??
+      "moneda local"
+    );
+  }, [catalog, linkedProcedures, selectedCatalog, treatmentId, treatments]);
 
   useEffect(() => {
     if (!selectedCatalog) return;
@@ -224,7 +235,7 @@ export function AddPlannedProcedureDialog({
                   <input value={procedureName} onChange={(item) => setProcedureName(item.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2" />
                 </label>
                 <label className="text-sm font-bold text-slate-700">
-                  Valor unitario
+                  Valor unitario ({displayCurrency})
                   <input type="number" min="0" value={unitValue} onChange={(item) => setUnitValue(item.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2" />
                 </label>
                 <label className="text-sm font-bold text-slate-700">

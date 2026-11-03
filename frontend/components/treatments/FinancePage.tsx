@@ -16,10 +16,14 @@ import type {
   PatientBalanceItem,
 } from "@/types/treatment";
 
-function money(value: string | number) {
+function money(value: string | number, currency?: string | null) {
+  if (!currency) {
+    return `moneda local · $${Number(value).toLocaleString("es-CO")}`;
+  }
+  if (currency === "COP") return `COP ${Number(value).toLocaleString("es-CO", { maximumFractionDigits: 0 })}`;
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
-    currency: "COP",
+    currency,
     maximumFractionDigits: 0,
   }).format(Number(value));
 }
@@ -78,28 +82,27 @@ export function FinancePage() {
       </header>
 
       {error && <Alert tone="error">{error}</Alert>}
-
       {dashboard && (
         <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-          <Metric label="Hoy" value={money(dashboard.income_today)} />
-          <Metric label="Mes" value={money(dashboard.income_month)} />
-          <Metric label="Año" value={money(dashboard.income_year)} />
-          <Metric label="Pendiente" value={money(dashboard.receivables_total)} tone="orange" />
+          <Metric label="Hoy" value={money(dashboard.income_today, dashboard.currency_code)} />
+          <Metric label="Mes" value={money(dashboard.income_month, dashboard.currency_code)} />
+          <Metric label="Año" value={money(dashboard.income_year, dashboard.currency_code)} />
+          <Metric label="Pendiente" value={money(dashboard.receivables_total, dashboard.currency_code)} tone="orange" />
           <Metric label="Tratamientos activos" value={String(dashboard.active_treatments)} />
-          <Metric label="Ticket promedio" value={money(dashboard.average_ticket)} />
+          <Metric label="Ticket promedio" value={money(dashboard.average_ticket, dashboard.currency_code)} />
         </section>
       )}
 
       <section className="grid gap-6 lg:grid-cols-3">
-        <Breakdown title="Ingresos por sede" items={bySite} />
-        <Breakdown title="Ingresos por odontólogo" items={byDentist} />
+        <Breakdown title="Ingresos por sede" items={bySite} currency={dashboard?.currency_code} />
+        <Breakdown title="Ingresos por odontólogo" items={byDentist} currency={dashboard?.currency_code} />
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-black text-slate-950">Pacientes con saldo</h2>
           <div className="mt-4 space-y-3">
             {balances.map((item) => (
               <div key={item.patient_id} className="flex justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm">
                 <span className="font-bold text-slate-800">{item.patient_name}</span>
-                <span className="font-black text-orange-700">{money(item.balance)}</span>
+                <span className="font-black text-orange-700">{money(item.balance, dashboard?.currency_code)}</span>
               </div>
             ))}
             {!balances.length && (
@@ -129,7 +132,7 @@ function Metric({
   );
 }
 
-function Breakdown({ title, items }: { title: string; items: FinanceBreakdownItem[] }) {
+function Breakdown({ title, items, currency }: { title: string; items: FinanceBreakdownItem[]; currency?: string | null }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-black text-slate-950">{title}</h2>
@@ -137,7 +140,7 @@ function Breakdown({ title, items }: { title: string; items: FinanceBreakdownIte
         {items.map((item, index) => (
           <div key={`${item.id ?? index}-${item.name}`} className="flex justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm">
             <span className="font-bold text-slate-800">{item.name}</span>
-            <span className="font-black text-green-700">{money(item.value)}</span>
+            <span className="font-black text-green-700">{money(item.value, currency)}</span>
           </div>
         ))}
         {!items.length && <p className="text-sm text-slate-500">Sin datos todavía.</p>}

@@ -270,6 +270,12 @@ class ProcedureCatalogItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     suggested_value: Mapped[Decimal | None] = mapped_column(
         "valor_sugerido", Numeric(14, 2), nullable=True
     )
+    price_currency: Mapped[str | None] = mapped_column(
+        "moneda_valor", String(3), nullable=True
+    )
+    price_provenance: Mapped[dict | None] = mapped_column(
+        "procedencia_precio", JSONB, nullable=True
+    )
     suggested_scope_type: Mapped[str | None] = mapped_column(
         "tipo_alcance_sugerido", String(30), nullable=True
     )

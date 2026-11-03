@@ -154,6 +154,7 @@ export interface OdontogramLinkedProcedure {
   unit_value: string;
   quantity: string;
   total_value: string;
+  currency_code: string | null;
   scope_type: string;
   zone: string | null;
   tooth: string | null;

@@ -25,10 +25,14 @@ const PRESETS = [
   { value: "custom", label: "Rango personalizado" },
 ];
 
-function money(value: string | number) {
+function money(value: string | number, currency?: string | null) {
+  if (!currency) {
+    return `moneda local · $${Number(value).toLocaleString("es-CO")}`;
+  }
+  if (currency === "COP") return `COP ${Number(value).toLocaleString("es-CO", { maximumFractionDigits: 0 })}`;
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
-    currency: "COP",
+    currency,
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 }
@@ -333,16 +337,16 @@ function FinanceTab({ summary }: { summary: ExecutiveSummary }) {
   return (
     <section className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MiniMetric label="Ingresos rango" value={money(finance.income_range)} />
-        <MiniMetric label="Producción clínica" value={money(finance.clinical_production_range)} />
-        <MiniMetric label="Ventas aprobadas" value={money(finance.approved_sales_range)} />
-        <MiniMetric label="Cartera" value={money(finance.receivables_total)} tone="orange" />
+        <MiniMetric label="Ingresos rango" value={money(finance.income_range, finance.currency_code)} />
+        <MiniMetric label="Producción clínica" value={money(finance.clinical_production_range, finance.currency_code)} />
+        <MiniMetric label="Ventas aprobadas" value={money(finance.approved_sales_range, finance.currency_code)} />
+        <MiniMetric label="Cartera" value={money(finance.receivables_total, finance.currency_code)} tone="orange" />
         <MiniMetric label="Pacientes con saldo" value={String(finance.patients_with_balance)} tone="orange" />
       </div>
       <div className="grid gap-6 xl:grid-cols-3">
-        <ChartCard title="Ingresos por mes" items={finance.income_by_month} moneyValues />
-        <ChartCard title="Cartera por antigüedad" items={finance.receivables_aging} moneyValues />
-        <ChartCard title="Ingresos por medio de pago" items={finance.income_by_method} moneyValues />
+        <ChartCard title="Ingresos por mes" items={finance.income_by_month} moneyValues currency={finance.currency_code} />
+        <ChartCard title="Cartera por antigüedad" items={finance.receivables_aging} moneyValues currency={finance.currency_code} />
+        <ChartCard title="Ingresos por medio de pago" items={finance.income_by_method} moneyValues currency={finance.currency_code} />
       </div>
       <ActionTables items={summary.action_items} financial clinical={false} only="receivables" />
     </section>
@@ -428,10 +432,12 @@ function ChartCard({
   title,
   items,
   moneyValues = false,
+  currency,
 }: {
   title: string;
   items: ReportChartItem[];
   moneyValues?: boolean;
+  currency?: string | null;
 }) {
   const max = Math.max(...items.map((item) => Number(item.value || 0)), 0);
   return (
@@ -444,7 +450,7 @@ function ChartCard({
             <div key={item.label}>
               <div className="mb-1 flex justify-between gap-3 text-xs font-bold text-slate-600">
                 <span>{item.label}</span>
-                <span>{moneyValues ? money(item.value) : number(item.value)}</span>
+                <span>{moneyValues ? money(item.value, currency) : number(item.value)}</span>
               </div>
               <div className="h-2 rounded-full bg-slate-100">
                 <div

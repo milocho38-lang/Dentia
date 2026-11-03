@@ -50,10 +50,12 @@ function statusLabel(status: OdontogramEvent["status"]) {
   return "Resuelto";
 }
 
-function money(value: string | number | null | undefined) {
+function money(value: string | number | null | undefined, currency?: string | null) {
+  if (!currency) return `moneda local · $${Number(value ?? 0).toLocaleString("es")}`;
+  if (currency === "COP") return `COP ${Number(value ?? 0).toLocaleString("es-CO", { maximumFractionDigits: 0 })}`;
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
-    currency: "COP",
+    currency,
     maximumFractionDigits: 0,
   }).format(Number(value ?? 0));
 }
@@ -102,7 +104,7 @@ function LinkedPlannedProcedureCard({
         </div>
         <div>
           <dt className="text-[11px] font-black uppercase tracking-wide text-slate-500">Valor planificado</dt>
-          <dd className="mt-0.5 font-black text-slate-950">{money(procedure.total_value)}</dd>
+          <dd className="mt-0.5 font-black text-slate-950">{money(procedure.total_value, procedure.currency_code)}</dd>
         </div>
       </dl>
       <div className="mt-3 flex flex-wrap gap-2">

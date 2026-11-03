@@ -1,0 +1,1044 @@
+{
+  "catalog_version": "KIMBERLY-2026-10-28-COMMON-173-V1",
+  "source_sha256": "1d77bd1c0723fdfaf05e57f78dd4aed15f04eabc95797a2f7589b1446c8de5df",
+  "items": [
+    {
+      "source_row": 4,
+      "name": "Aplicación Flúor Gel total niños y adultos",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "23000"
+    },
+    {
+      "source_row": 5,
+      "name": "Contención Ortodoncia",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "60000"
+    },
+    {
+      "source_row": 7,
+      "name": "Destartraje supragingival y limpieza coronaria + Barniz de fluor",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "45000"
+    },
+    {
+      "source_row": 10,
+      "name": "Examen inicial, plan de tratamiento y presupuesto",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "10000"
+    },
+    {
+      "source_row": 17,
+      "name": "placa de bruxismo",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "80000"
+    },
+    {
+      "source_row": 45,
+      "name": "Cirugía apical y pararradicular con / sin relleno a retro (incisivos o caninos)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "87000"
+    },
+    {
+      "source_row": 46,
+      "name": "Cirugía apical y pararradicular con / sin relleno a retro (premolares o molares)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "114000"
+    },
+    {
+      "source_row": 47,
+      "name": "Cirugia complementaria a exodoncia complicada (remoción de agujas u otros c/e)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "174000"
+    },
+    {
+      "source_row": 51,
+      "name": "Control de especialidad (Cirugía): post quirúrgico o no y con o sin retiro de sutura.",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "30000"
+    },
+    {
+      "source_row": 58,
+      "name": "Endolaser",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "400000"
+    },
+    {
+      "source_row": 59,
+      "name": "Enucleación de quiste o tumor simple",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "153000"
+    },
+    {
+      "source_row": 60,
+      "name": "Enucleación de quiste o tumor, con tratamiento del lecho operatorio",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "273000"
+    },
+    {
+      "source_row": 61,
+      "name": "Estudio de trismus (clínico - imagenólogia - interconsultas)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "163000"
+    },
+    {
+      "source_row": 62,
+      "name": "Exeresis de calculos salivales (intraoral)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "195000"
+    },
+    {
+      "source_row": 63,
+      "name": "Exéresis de glándulas sublingual",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "325000"
+    },
+    {
+      "source_row": 64,
+      "name": "Exéresis de glándulas submandibular",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "650000"
+    },
+    {
+      "source_row": 65,
+      "name": "Exeresis de mucocele",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "109000"
+    },
+    {
+      "source_row": 76,
+      "name": "Fenestración compleja",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "87000"
+    },
+    {
+      "source_row": 77,
+      "name": "Fenestración simple",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "76000"
+    },
+    {
+      "source_row": 82,
+      "name": "Implante cigomático y otros extra alveolares",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "325000"
+    },
+    {
+      "source_row": 91,
+      "name": "Lipopadada",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "650000"
+    },
+    {
+      "source_row": 92,
+      "name": "Lipopadada Laser",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "650000"
+    },
+    {
+      "source_row": 148,
+      "name": "Tratamiento de comunicación bucosinusal inmediata a exodoncia",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "87000"
+    },
+    {
+      "source_row": 149,
+      "name": "Tratamiento de estomatitis infecciosas (guna, etc)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "56000"
+    },
+    {
+      "source_row": 150,
+      "name": "Tratamiento de fractura dentaria (manejo de urgencia)",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "44000"
+    },
+    {
+      "source_row": 157,
+      "name": "Tratamiento de la disfunción dolorosa de ATM (por sesión)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 169,
+      "name": "Vestibuloplastía",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "109000"
+    },
+    {
+      "source_row": 170,
+      "name": "Vestibuloplastía compleja (con injerto u otros sistemas de contención)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "282000"
+    },
+    {
+      "source_row": 171,
+      "name": "Vestibuloplastía simple",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "109000"
+    },
+    {
+      "source_row": 176,
+      "name": "Control de especialidad (Endodoncia)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "24000"
+    },
+    {
+      "source_row": 177,
+      "name": "Diagnóstico con vitalometría",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "17000"
+    },
+    {
+      "source_row": 194,
+      "name": "Inducción al cierre apical mediata (por sesión)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 196,
+      "name": "Obturación con técnicas termoplásticas",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "44000"
+    },
+    {
+      "source_row": 198,
+      "name": "Radectomia y/o hemisección",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "87000"
+    },
+    {
+      "source_row": 199,
+      "name": "Radiografia retroalveolar control de desobturación parcial o total",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "6000"
+    },
+    {
+      "source_row": 200,
+      "name": "Radiografia retroalveolar control obturación",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "6000"
+    },
+    {
+      "source_row": 201,
+      "name": "Radiografia retroalveolar de conductometría",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "6000"
+    },
+    {
+      "source_row": 202,
+      "name": "Reconstrucción para aislamiento",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 203,
+      "name": "Recubrimiento pulpar directo o indirecto",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "34000"
+    },
+    {
+      "source_row": 216,
+      "name": "Trepanación de incrustaciones y ferulas",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "23000"
+    },
+    {
+      "source_row": 227,
+      "name": "Aditamentos",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "15000"
+    },
+    {
+      "source_row": 230,
+      "name": "Elevación de piso de seno maxilar (para instalación de implantes)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "340000"
+    },
+    {
+      "source_row": 233,
+      "name": "Instalación quirúrgica de implantes oseointegrado (no incluye implante)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "317000"
+    },
+    {
+      "source_row": 234,
+      "name": "Interconsulta prequirúrgica para implantes",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 235,
+      "name": "Manejo de injerto intraoral y extraoral",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "217000"
+    },
+    {
+      "source_row": 237,
+      "name": "Pilar muñón sobre implantes",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "119000"
+    },
+    {
+      "source_row": 238,
+      "name": "Primera consulta, examen y diagnóstico preliminar en Implantologia",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "23000"
+    },
+    {
+      "source_row": 242,
+      "name": "Toma de injerto intraoral (mentón, rama, tuberosidad) (no incluye insumos)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "227000"
+    },
+    {
+      "source_row": 243,
+      "name": "Toma de muestra para examen microbiólogico",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "11000"
+    },
+    {
+      "source_row": 250,
+      "name": "Aplicación de sellantes en pieza temporal",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "17000"
+    },
+    {
+      "source_row": 262,
+      "name": "Desgaste interferencias cuspideas",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "28000"
+    },
+    {
+      "source_row": 263,
+      "name": "Destartraje supragingival y limpieza coronaria",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "30000"
+    },
+    {
+      "source_row": 269,
+      "name": "Fenestración mucosas",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "91000"
+    },
+    {
+      "source_row": 271,
+      "name": "Higiene y profilaxis en niños",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "26000"
+    },
+    {
+      "source_row": 273,
+      "name": "Inmovilización en traumatismo",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "55000"
+    },
+    {
+      "source_row": 285,
+      "name": "Recubrimiento pulpar directo o indirecto en pieza permanente joven o definitiva",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "28000"
+    },
+    {
+      "source_row": 306,
+      "name": "Ferulización de un diente",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 307,
+      "name": "Ferulizaciones de más de un diente (por pieza)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "28000"
+    },
+    {
+      "source_row": 315,
+      "name": "Mantención de Carillas",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "45000"
+    },
+    {
+      "source_row": 318,
+      "name": "Recementación de incrustación con ajuste operatorio",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "68000"
+    },
+    {
+      "source_row": 319,
+      "name": "Recementación de incrustación sin correcciones",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "22000"
+    },
+    {
+      "source_row": 320,
+      "name": "Recementación de incrustación tipo Inlay",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "65000"
+    },
+    {
+      "source_row": 321,
+      "name": "Recementación de incrustación tipo Onlay u Overlay",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "76000"
+    },
+    {
+      "source_row": 322,
+      "name": "Reconstitución de parcial de coronas o carillas, provisoria o definitivas",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "38000"
+    },
+    {
+      "source_row": 323,
+      "name": "Reconstrucción provisoria de corona perdida",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "57000"
+    },
+    {
+      "source_row": 324,
+      "name": "Recubrimiento pulpar indirecto con o sin obturación temporal",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 325,
+      "name": "Recuperación de guia canina por pieza",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "44000"
+    },
+    {
+      "source_row": 326,
+      "name": "Remodelación de pieza dentaria con corona atipica",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "55000"
+    },
+    {
+      "source_row": 327,
+      "name": "Reobturación de piezas antes de un año",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "17000"
+    },
+    {
+      "source_row": 335,
+      "name": "Sensibilidad cervical sin cavidad con vidrio Ionómero y/o barnices",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "32000"
+    },
+    {
+      "source_row": 336,
+      "name": "Tratamiento de Remineralización, hipocalcificadas medicamentosa (por sesión)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 342,
+      "name": "Cementación de aditamentos (no incluye aditamentos)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "11000"
+    },
+    {
+      "source_row": 345,
+      "name": "Continuación Tratamiento externo",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "50000"
+    },
+    {
+      "source_row": 346,
+      "name": "Control de evolución",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "26000"
+    },
+    {
+      "source_row": 354,
+      "name": "Examen y estudio ortodóncico: radiografías, modelos, fotografías, examen de laboratorio, presupuesto, estimación de tiempos, etc.",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "69000"
+    },
+    {
+      "source_row": 355,
+      "name": "Fuerza extraoral",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "42000"
+    },
+    {
+      "source_row": 388,
+      "name": "Máscara de tracción frontal: cualquier tipo (Delaire)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "269000"
+    },
+    {
+      "source_row": 389,
+      "name": "Mentonera",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "42000"
+    },
+    {
+      "source_row": 392,
+      "name": "Montaje en articulador (ortodoncia)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "63000"
+    },
+    {
+      "source_row": 393,
+      "name": "Predicción quirúrgica ortognática",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "131000"
+    },
+    {
+      "source_row": 394,
+      "name": "Primera consulta, examen y diagnóstico preliminar en Ortodoncia",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "26000"
+    },
+    {
+      "source_row": 399,
+      "name": "Reposición de bandas o tubo",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "8000"
+    },
+    {
+      "source_row": 400,
+      "name": "Reposición de brackets cerámicos",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "23000"
+    },
+    {
+      "source_row": 401,
+      "name": "Reposición de brackets lingual o autoligado",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "28000"
+    },
+    {
+      "source_row": 402,
+      "name": "Reposición de brackets metálicos",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "5000"
+    },
+    {
+      "source_row": 403,
+      "name": "Retiro de aparatos fijos",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "120000"
+    },
+    {
+      "source_row": 409,
+      "name": "Biopsia tejidos blandos (no incluye pabellón)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "65000"
+    },
+    {
+      "source_row": 410,
+      "name": "Biopsia tejidos duros (no incluye pabellon)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "87000"
+    },
+    {
+      "source_row": 411,
+      "name": "Control de especialidad (Patología)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "24000"
+    },
+    {
+      "source_row": 412,
+      "name": "Estudio histopatológico T. convencional (no incluye laboratorio)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 413,
+      "name": "Frotis, Sialometria u otros procedimientos menores",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "22000"
+    },
+    {
+      "source_row": 414,
+      "name": "Otras tinciones o técnicas adicionales (no incluye laboratorio)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "22000"
+    },
+    {
+      "source_row": 415,
+      "name": "Primera consulta, examen y diagnóstico preliminar en Patología",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 416,
+      "name": "Tinciones clínicas u otros",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "22000"
+    },
+    {
+      "source_row": 420,
+      "name": "Alargamiento Coronario",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "140000"
+    },
+    {
+      "source_row": 421,
+      "name": "Cirugía de Ancho biológico",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "276000"
+    },
+    {
+      "source_row": 422,
+      "name": "Cirugia ósea resectiva (por sextante)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "87000"
+    },
+    {
+      "source_row": 423,
+      "name": "Cirugía periimplantaria de tejidos blandos (por sitio)",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "98000"
+    },
+    {
+      "source_row": 425,
+      "name": "Colgajo para preservación de papila",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "98000"
+    },
+    {
+      "source_row": 426,
+      "name": "Colgajo periodontal de acceso (por sitio quirúrgico)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "76000"
+    },
+    {
+      "source_row": 427,
+      "name": "Colgajo reposicionado desplazado lateral, coronario o apical",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "91000"
+    },
+    {
+      "source_row": 428,
+      "name": "Control de especialidad (Periodoncia): post quirúrgico o no y con o sin retiro de sutura.",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "24000"
+    },
+    {
+      "source_row": 430,
+      "name": "Destartraje subgingival por sextante",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "18000"
+    },
+    {
+      "source_row": 431,
+      "name": "Destartraje supragingival, limpieza coronaria y Profilaxis (por sesión)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "35000"
+    },
+    {
+      "source_row": 432,
+      "name": "Disección quirurgica del injerto en zona donante",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "55000"
+    },
+    {
+      "source_row": 433,
+      "name": "Eliminación mecánica de factores etiológicos secundarios (por sesión)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "44000"
+    },
+    {
+      "source_row": 434,
+      "name": "Evaluación post-térapeutica (con periodontograma final e indices)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "38000"
+    },
+    {
+      "source_row": 435,
+      "name": "Examen de patología disfuncional",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "22000"
+    },
+    {
+      "source_row": 436,
+      "name": "Examen periodontal y confección de periodontograma",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "38000"
+    },
+    {
+      "source_row": 437,
+      "name": "Examen y estudio periodontal: radiografías, modelos, fotografías, examen de laboratorio, presupuesto, etc.",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "44000"
+    },
+    {
+      "source_row": 438,
+      "name": "Ferulización",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "50000"
+    },
+    {
+      "source_row": 439,
+      "name": "Frenectomía",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "70000"
+    },
+    {
+      "source_row": 440,
+      "name": "Gingivectomía por sextante",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "75000"
+    },
+    {
+      "source_row": 441,
+      "name": "Gingivoplastía en pacientes con compromiso general (por sextante)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "114000"
+    },
+    {
+      "source_row": 444,
+      "name": "Injertos aloplásticos",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "55000"
+    },
+    {
+      "source_row": 445,
+      "name": "Injertos óseos",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "109000"
+    },
+    {
+      "source_row": 448,
+      "name": "Limpieza coronaria (eliminación de pigmentos y manchas de esmalte)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "42000"
+    },
+    {
+      "source_row": 449,
+      "name": "Osteotomía (por sitio quirúrgico)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "394000"
+    },
+    {
+      "source_row": 450,
+      "name": "Otras cirugías mucogingivales",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "76000"
+    },
+    {
+      "source_row": 453,
+      "name": "Pulido Radicular (por grupo)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "30000"
+    },
+    {
+      "source_row": 457,
+      "name": "Refuerzo de técnicas de higiene y motivación",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "40000"
+    },
+    {
+      "source_row": 458,
+      "name": "Regeneración tisular guiada (por sitio)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "109000"
+    },
+    {
+      "source_row": 459,
+      "name": "Sesión de control higiene oral (eliminación de pigmentos y manchas de esmalte)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "12000"
+    },
+    {
+      "source_row": 460,
+      "name": "Sesión de motivación, enseñanza y adiestramiento en técnicas de higiene oral (por sesión)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "38000"
+    },
+    {
+      "source_row": 462,
+      "name": "Terapia de mantención de implantes (por sesión)",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "62000"
+    },
+    {
+      "source_row": 466,
+      "name": "Tratamiento de absceso periodontal",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "29000"
+    },
+    {
+      "source_row": 476,
+      "name": "Barra para protesis sobre implante",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "283000"
+    },
+    {
+      "source_row": 477,
+      "name": "Cambio acondicionador de tejidos",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "22000"
+    },
+    {
+      "source_row": 479,
+      "name": "Control de especialidad (prótesis fija)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "24000"
+    },
+    {
+      "source_row": 486,
+      "name": "Encerado de diagnóstico",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "58000"
+    },
+    {
+      "source_row": 490,
+      "name": "Estabilizador mandibular mediante plano deprogramador (mínimo 3 meses)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "325000"
+    },
+    {
+      "source_row": 491,
+      "name": "Examen y estudio rehabilitador: radiografías, modelos, fotografías, examen de laboratorio, presupuesto, etc.",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "38000"
+    },
+    {
+      "source_row": 492,
+      "name": "Frente estético: Maryland o porcelana",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "119000"
+    },
+    {
+      "source_row": 494,
+      "name": "Inserciones para puente Maryland",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "102000"
+    },
+    {
+      "source_row": 496,
+      "name": "Instalación pilar sobre implante",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "65000"
+    },
+    {
+      "source_row": 497,
+      "name": "Intermediario dento o implantosoportada en Prótesis fija Plural",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "165000"
+    },
+    {
+      "source_row": 498,
+      "name": "Intermediarios para puente Maryland",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "91000"
+    },
+    {
+      "source_row": 515,
+      "name": "Primera consulta, examen y diagnóstico preliminar en Rehabilitación",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "17000"
+    },
+    {
+      "source_row": 516,
+      "name": "Prótesis fija o Corona de porcelana completa o sobre zircónio (casquete cerámico)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "256000"
+    },
+    {
+      "source_row": 524,
+      "name": "Reapriete o cambio de tornillos prótesicos (c/u) (no incluye valor de tornillo)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "30000"
+    },
+    {
+      "source_row": 525,
+      "name": "Recambio de O'ring o Clip de barra (no incluye valor de aditamentos)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "68000"
+    },
+    {
+      "source_row": 526,
+      "name": "Recementación corona con ajuste operatorio",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "46000"
+    },
+    {
+      "source_row": 527,
+      "name": "Recementación corona sin correcciones",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "29000"
+    },
+    {
+      "source_row": 528,
+      "name": "Recementación puente con ajuste operatorio",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "57000"
+    },
+    {
+      "source_row": 529,
+      "name": "Recementación puente definitivo sin correcciones",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "40000"
+    },
+    {
+      "source_row": 531,
+      "name": "Retiro de prótesis fijas existente",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "23000"
+    },
+    {
+      "source_row": 532,
+      "name": "Tallado de retenciones adicionales (cajas, rieleras, etc)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "22000"
+    },
+    {
+      "source_row": 534,
+      "name": "Artificios de anclaje para protesis de complemetación",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "40000"
+    },
+    {
+      "source_row": 535,
+      "name": "Control de especialidad (prótesis removible)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "10000"
+    },
+    {
+      "source_row": 547,
+      "name": "Prótesis bilateral Valplas superior o inferior",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "350000"
+    },
+    {
+      "source_row": 548,
+      "name": "Protesis inmediata",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "200000"
+    },
+    {
+      "source_row": 549,
+      "name": "Prótesis Parcial de base Acrílica superior o inferior",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "200000"
+    },
+    {
+      "source_row": 550,
+      "name": "Prótesis Parcial de base Metálica superior o inferior",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "280000"
+    },
+    {
+      "source_row": 553,
+      "name": "Prótesis Unilateral Valplas superior o inferior",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "250000"
+    },
+    {
+      "source_row": 554,
+      "name": "Rebasado Protesis",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "40000"
+    },
+    {
+      "source_row": 555,
+      "name": "Reparación de prótesis (Agregado de diente)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "35000"
+    },
+    {
+      "source_row": 556,
+      "name": "Reparación de prótesis (Mas de un diente)",
+      "suggested_scope_type": "ZONE",
+      "source_price_clp": "40000"
+    },
+    {
+      "source_row": 560,
+      "name": "Urgencia de Cirugía (1 sesión)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "16000"
+    },
+    {
+      "source_row": 561,
+      "name": "Urgencia endodóntica (1 sesión)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "25000"
+    },
+    {
+      "source_row": 564,
+      "name": "Urgencia Odontopediatría (1 sesión)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "16000"
+    },
+    {
+      "source_row": 565,
+      "name": "Urgencia Ortodóncica (1 sesión)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "15000"
+    },
+    {
+      "source_row": 567,
+      "name": "Urgencia por Implante (1 sesión)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "16000"
+    },
+    {
+      "source_row": 568,
+      "name": "Urgencia trastorno temporomandibular",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "16000"
+    },
+    {
+      "source_row": 569,
+      "name": "Urgencia: Coronas provisorias",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "30000"
+    },
+    {
+      "source_row": 570,
+      "name": "Urgencia: Exodoncia piezas incluidas (incluye control post tratamiento y retiro de suturas)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "108000"
+    },
+    {
+      "source_row": 571,
+      "name": "Urgencia: Exodoncias a colgajo (incluye control post tratamiento y retiro de suturas)",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "51000"
+    },
+    {
+      "source_row": 572,
+      "name": "Urgencia: Exodoncias simples",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "30000"
+    },
+    {
+      "source_row": 573,
+      "name": "Urgencia: Radiografía panorámica de urgencia",
+      "suggested_scope_type": "GENERAL",
+      "source_price_clp": "16000"
+    },
+    {
+      "source_row": 574,
+      "name": "Urgencia: Radiografía retroalveolar",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "5000"
+    },
+    {
+      "source_row": 575,
+      "name": "Urgencia: Recementación de Prótesis fija e incrustaciones",
+      "suggested_scope_type": "TOOTH",
+      "source_price_clp": "33000"
+    },
+    {
+      "source_row": 577,
+      "name": "Urgencia: Restauraciones Composite anterior",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "40000"
+    },
+    {
+      "source_row": 578,
+      "name": "Urgencia: Restauraciones Composite posterior",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "40000"
+    },
+    {
+      "source_row": 579,
+      "name": "Urgencia: Tratamiento inicial (1 sesión)",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "source_price_clp": "12000"
+    }
+  ]
+}

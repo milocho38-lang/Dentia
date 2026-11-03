@@ -59,6 +59,7 @@ class TreatmentReportsResponse(BaseModel):
 
 
 class FinanceReportsResponse(BaseModel):
+    currency_code: str | None
     income_today: Decimal
     income_month: Decimal
     income_range: Decimal

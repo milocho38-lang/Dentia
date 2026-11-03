@@ -1,0 +1,3362 @@
+{
+  "catalog_version": "KIMBERLY-2026-10-28-EXCLUDED-REVIEW-V1",
+  "source_sha256": "1d77bd1c0723fdfaf05e57f78dd4aed15f04eabc95797a2f7589b1446c8de5df",
+  "items": [
+    {
+      "source_row": 2,
+      "name": "ATENCION GENERAL",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 3,
+      "name": "Aplicación de sellantes en pieza definitiva x Cuadrante",
+      "scope_source": "por cara diente",
+      "source_price_clp": "20000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 6,
+      "name": "Corona Ceromero",
+      "scope_source": "por diente",
+      "source_price_clp": "170000",
+      "clinical_note": "corona en jo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 8,
+      "name": "Diagnóstico para Diseño Digital",
+      "scope_source": "por zona",
+      "source_price_clp": "30000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 9,
+      "name": "Diseño de Sonrisa 6 dientes RC",
+      "scope_source": "por diente",
+      "source_price_clp": "540000",
+      "clinical_note": "carillas en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 11,
+      "name": "Pack sellantes x cuandrante (4 Dientes)",
+      "scope_source": "por diente",
+      "source_price_clp": "40000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 12,
+      "name": "Placas Rigidas",
+      "scope_source": "superio o inferior",
+      "source_price_clp": "120000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 13,
+      "name": "Preventivo #1: Diagnóstico, Limpieza, Sellantes Primeros molares y Fluor",
+      "scope_source": "todos",
+      "source_price_clp": "50000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 14,
+      "name": "Radiografias",
+      "scope_source": "0",
+      "source_price_clp": "8000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 21,
+      "name": "CIRUGIA MAXILOFACIAL",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 22,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "130000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 23,
+      "name": "Alveoloplastía (no incluye exodoncias)",
+      "scope_source": "zona",
+      "source_price_clp": "109000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 24,
+      "name": "Anestesista 30%",
+      "scope_source": "generl",
+      "source_price_clp": "1083000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 30,
+      "name": "Bichectomia",
+      "scope_source": "generall",
+      "source_price_clp": "160000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 48,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "975000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 49,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "1299000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 50,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "379000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 52,
+      "name": "Coronoidectomia",
+      "scope_source": "por diente",
+      "source_price_clp": "217000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 53,
+      "name": "Distracción osteogénica alveolar",
+      "scope_source": "por diente",
+      "source_price_clp": "271000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 54,
+      "name": "Distracción osteogénica craneofacial",
+      "scope_source": "por diente",
+      "source_price_clp": "379000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 55,
+      "name": "Distracción osteogénica del recién nacido",
+      "scope_source": "por diente",
+      "source_price_clp": "379000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 56,
+      "name": "Distracción osteogénica mandibular",
+      "scope_source": "por diente",
+      "source_price_clp": "379000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 57,
+      "name": "Distracción osteogénica maxilar",
+      "scope_source": "por diente",
+      "source_price_clp": "325000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 66,
+      "name": "Exodoncia a colgajo (Compleja)",
+      "scope_source": "por diente",
+      "source_price_clp": "50000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 67,
+      "name": "Exodoncia Comlpeja",
+      "scope_source": "por diente",
+      "source_price_clp": "80000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 68,
+      "name": "Exodoncia de piezas incluidas o de implantes previamente instalados",
+      "scope_source": "por diente",
+      "source_price_clp": "95000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 69,
+      "name": "Exodoncia de Terceros molares incluidos",
+      "scope_source": "por diente",
+      "source_price_clp": "20000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 70,
+      "name": "Exodoncia pieza semi incluida",
+      "scope_source": "por diente",
+      "source_price_clp": "120000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 71,
+      "name": "Exodoncia simple",
+      "scope_source": "por diente",
+      "source_price_clp": "40000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 72,
+      "name": "Exodoncia Tercer Molar inferior Erupcionado",
+      "scope_source": "por diente",
+      "source_price_clp": "100000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 73,
+      "name": "Exodoncia Tercer Molar Semi erupcionado",
+      "scope_source": "por diente",
+      "source_price_clp": "120000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 74,
+      "name": "Exodoncia Terceros Molares Superiores Erupcionados",
+      "scope_source": "por diente",
+      "source_price_clp": "60000",
+      "clinical_note": "x roja",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 78,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "325000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 79,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "218000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 80,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "217000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 81,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "866000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 83,
+      "name": "Implante haloplástico (malar, mentón, frontal)",
+      "scope_source": "por diente",
+      "source_price_clp": "325000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 84,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "115000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 85,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "65000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 86,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "44000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 87,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "33000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 88,
+      "name": "Laboratorio Cirugía: Membrana Regenerativa",
+      "scope_source": "por diente",
+      "source_price_clp": "620000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 89,
+      "name": "Laboratorio de Cirugía",
+      "scope_source": "por diente",
+      "source_price_clp": "1968000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 90,
+      "name": "Laboratorio: Plasma rico en Fibrina o en Plaquetas (PRF o PRP)",
+      "scope_source": "por diente",
+      "source_price_clp": "237000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 151,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "217000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 152,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "87000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 153,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "44000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 154,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "174000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 155,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "65000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 156,
+      "name": "Tratamiento de infección periimplantaria (por sesión)",
+      "scope_source": "por diente",
+      "source_price_clp": "74000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 158,
+      "name": "Tratamiento de pericoronaritis, alveolorragia y/o alveolitis",
+      "scope_source": "por diente x cara",
+      "source_price_clp": "36000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 159,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "159000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 160,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "33000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 161,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "325000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 162,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "217000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 163,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "195000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 164,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "433000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 165,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "433000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 166,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "542000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 167,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "40000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 168,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "217000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 174,
+      "name": "ENDODONCIA",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 175,
+      "name": "Blanqueamiento de pieza desvitalizada: tratamiento químico intra cameral (por sesión)",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "46000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 178,
+      "name": "Diagnóstico pulpar",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 179,
+      "name": "Endodoncia en incisivos y caninos",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "160000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 180,
+      "name": "Endodoncia en incisivos y caninos vitales",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "91000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 181,
+      "name": "Endodoncia en incisivos y caninos.",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "200000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 182,
+      "name": "Endodoncia en molar",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "200000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 183,
+      "name": "Endodoncia en molar inferior vital",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "138000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 184,
+      "name": "Endodoncia en molar superior no vital con lesión",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "193000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 185,
+      "name": "Endodoncia en molar superior no vital sin lesión",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "174000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 186,
+      "name": "Endodoncia en molar superior vital",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "148000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 187,
+      "name": "Endodoncia en molar.",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "220000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 188,
+      "name": "Endodoncia premolares",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "180000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 189,
+      "name": "Endodoncia premolares trirradiculares (con lesión)",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "172000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 190,
+      "name": "Endodoncia premolares trirradiculares (sin lesión)",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "148000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 191,
+      "name": "Endodoncia premolares vitales",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "103000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 192,
+      "name": "Endodoncia premolares.",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "200000",
+      "clinical_note": "por caris, fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 193,
+      "name": "Ferulización por grupo (por traumatismo dentoalveolar)",
+      "scope_source": "por zona",
+      "source_price_clp": "109000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 195,
+      "name": "Instrumentación mecanizada",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "37000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 197,
+      "name": "Pulpotomía en pieza permanente joven (parcial o total)",
+      "scope_source": "por diente",
+      "source_price_clp": "55000",
+      "clinical_note": "se marca como obturacion oclusal",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 204,
+      "name": "Retiro de espiga colada o preformada del conducto",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "49000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 205,
+      "name": "Retiro de instrumento fracturado del conducto",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "23000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 206,
+      "name": "Retratamiento incisivos y caninos",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "180000",
+      "clinical_note": "se marca acomo tto de conducto pero en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 207,
+      "name": "Retratamiento incisivos y caninos sin lesión",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "179000",
+      "clinical_note": "se marca acomo tto de conducto pero en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 208,
+      "name": "Retratamiento molar",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "250000",
+      "clinical_note": "se marca acomo tto de conducto pero en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 209,
+      "name": "Retratamiento molar superior o inferior sin lesión apical",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "239000",
+      "clinical_note": "se marca acomo tto de conducto pero en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 210,
+      "name": "Retratamiento premolares",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "220000",
+      "clinical_note": "se marca acomo tto de conducto pero en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 211,
+      "name": "Retratamiento premolares sin lesión",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "190000",
+      "clinical_note": "se marca acomo tto de conducto pero en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 212,
+      "name": "Retratamiento premolares trirradiculares con lesión",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "239000",
+      "clinical_note": "se marca acomo tto de conducto pero en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 213,
+      "name": "Retratamiento premolares trirradiculares sin lesión",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "228000",
+      "clinical_note": "se marca acomo tto de conducto pero en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 214,
+      "name": "Sesión de medicación intraconducto",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "37000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 215,
+      "name": "Tratamiento de revascularización (valor por cada sesión)",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "55000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 217,
+      "name": "Trepanación de urgencia",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "29000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 218,
+      "name": "Vaciamiento de abscesos",
+      "scope_source": "por diente por cara",
+      "source_price_clp": "34000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 221,
+      "name": "IMPLANTOLOGIA",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 222,
+      "name": "2 Implantes para sobredentadura",
+      "scope_source": "por diente",
+      "source_price_clp": "600000",
+      "clinical_note": "implante rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 223,
+      "name": "4 Implantes Inferiores para Prótesis Hibrida",
+      "scope_source": "por diente",
+      "source_price_clp": "1200000",
+      "clinical_note": "implante rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 224,
+      "name": "4 Implantes Superiores para Prótesis Hibrida",
+      "scope_source": "por diente",
+      "source_price_clp": "1200000",
+      "clinical_note": "implante rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 225,
+      "name": "6 Implantes Inferiores para Prótesis Hibrida",
+      "scope_source": "por diente",
+      "source_price_clp": "1800000",
+      "clinical_note": "implante rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 226,
+      "name": "6 Implantes Superiores para Prótesis Hibrida",
+      "scope_source": "por diente",
+      "source_price_clp": "1800000",
+      "clinical_note": "implante rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 228,
+      "name": "Corona Sobre Implante",
+      "scope_source": "por diente",
+      "source_price_clp": "350000",
+      "clinical_note": "se marca la corona en rojo, implante en azul",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 229,
+      "name": "Corona Sobre Implante (Otra marca)",
+      "scope_source": "por diente",
+      "source_price_clp": "400000",
+      "clinical_note": "se marca la corona en rojo, implante en azul",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 231,
+      "name": "Implante",
+      "scope_source": "por diente",
+      "source_price_clp": "300000",
+      "clinical_note": "implante rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 232,
+      "name": "Injerto tejido conectivo (por zona)",
+      "scope_source": "general x que se saca del paladar",
+      "source_price_clp": "93000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 236,
+      "name": "Montaje en articulador y encerado de diagnóstico para implantes (no incluye laboratorio)",
+      "scope_source": "o",
+      "source_price_clp": "57000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 239,
+      "name": "Protesis Fija sobre 2 implantes (3 Coronas)",
+      "scope_source": "por diente",
+      "source_price_clp": "850000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 240,
+      "name": "Protesis Hibrida",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "2500000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 241,
+      "name": "Sobredentadura (Protesis Total)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "800000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 246,
+      "name": "ODONTOPEDIATRIA",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 247,
+      "name": "Adaptación a la atención odontólogica",
+      "scope_source": null,
+      "source_price_clp": "34000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 248,
+      "name": "Adaptación y preparación de pacientes con necesidades especiales (por sesión)",
+      "scope_source": null,
+      "source_price_clp": "33000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 249,
+      "name": "Adaptación y preparación de pacientes de difícil manejo (por sesión)",
+      "scope_source": null,
+      "source_price_clp": "17000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 251,
+      "name": "Aplicación Flúor barniz silano total en niños",
+      "scope_source": "zona sup e inf",
+      "source_price_clp": "60000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 252,
+      "name": "Aplicación tópica de barniz de clorhexidina",
+      "scope_source": "zona sup e inf",
+      "source_price_clp": "44000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 253,
+      "name": "Asesoramiento dietético para control de caries",
+      "scope_source": null,
+      "source_price_clp": "11000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 254,
+      "name": "Atención con anestesia general",
+      "scope_source": null,
+      "source_price_clp": "207000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 255,
+      "name": "Atención con óxido nitroso (por sesión)",
+      "scope_source": null,
+      "source_price_clp": "119000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 256,
+      "name": "Atención con sedación (máximo 4 sesiones) por sesión",
+      "scope_source": null,
+      "source_price_clp": "34000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 257,
+      "name": "Consulta odontopediatrica",
+      "scope_source": null,
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 258,
+      "name": "Consulta urgencia odontopediátrica",
+      "scope_source": null,
+      "source_price_clp": "24000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 259,
+      "name": "Control niño sano",
+      "scope_source": null,
+      "source_price_clp": "20000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 260,
+      "name": "Corona metalica preformada en pieza temporal",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "55000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 261,
+      "name": "Coronas de resinas con anclaje sector anterior en pieza temporal",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "33000",
+      "clinical_note": "coronas en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 264,
+      "name": "Educación en Colegios o institución (hora pedagogica)",
+      "scope_source": null,
+      "source_price_clp": "33000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 265,
+      "name": "Educación en salud oral",
+      "scope_source": null,
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 266,
+      "name": "Estudio del paciente para ortodoncia interceptiva (modelo - radiografias - fotografias)",
+      "scope_source": null,
+      "source_price_clp": "44000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 267,
+      "name": "Exodoncia piezas temporales",
+      "scope_source": "por diente",
+      "source_price_clp": "30000",
+      "clinical_note": "x en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 268,
+      "name": "Exodoncia supernumerario incluido",
+      "scope_source": "por diente",
+      "source_price_clp": "90000",
+      "clinical_note": "x en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 270,
+      "name": "Fenestración óseas",
+      "scope_source": "genral",
+      "source_price_clp": "76000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 272,
+      "name": "Inactivación de caries en cavidad bucal (cuatro cuadrantes)",
+      "scope_source": "por diente y cara, por zonas",
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 274,
+      "name": "Instrucción y control higiene oral en niños",
+      "scope_source": null,
+      "source_price_clp": "17000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 275,
+      "name": "Interconsulta con odontopediatría",
+      "scope_source": null,
+      "source_price_clp": "28000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 276,
+      "name": "Mantenedor de espacio fijo o removible (no incluye laboratorio)",
+      "scope_source": "por zonasuprior o inferior",
+      "source_price_clp": "44000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 277,
+      "name": "Obturación de vidrio ionómero en piezas temporales y permanentes",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "30000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 278,
+      "name": "Obturaciones de minima intervención (Técnica ART)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "33000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 279,
+      "name": "Programa de remineralización de caries incipientes por sesión (incluye radiografías diagnósticas - máximo 4 sesiones)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "22000",
+      "clinical_note": "caries",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 280,
+      "name": "Programa terapeutico para pacientes de alto riesgo cariogenico",
+      "scope_source": null,
+      "source_price_clp": "76000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 281,
+      "name": "Protesis en niños (incluye laboratorio)",
+      "scope_source": "zona sup e inf",
+      "source_price_clp": "76000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 282,
+      "name": "Pulpectomia en pieza temporal anterior",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "28000",
+      "clinical_note": "se maraca como endo en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 283,
+      "name": "Pulpectomia en pieza temporal posterior",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "29000",
+      "clinical_note": "se maraca como endo en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 284,
+      "name": "Pulpotomia en pieza temporal",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "40000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 286,
+      "name": "Resección de frenillos",
+      "scope_source": "zona sup e inf",
+      "source_price_clp": "76000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 287,
+      "name": "Resina infiltrante lesión incipiente en piezas permanentes",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "28000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 288,
+      "name": "Restauración de fractura coronaria con resina compuesta pieza permanente",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "44000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 289,
+      "name": "Restauración de fractura coronaria con resina compuesta pieza temporal",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "33000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 290,
+      "name": "Restauración fotocurado pieza temporal: Compuesta Anterior o posterior",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "66000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 291,
+      "name": "Restauración fotocurado pieza temporal: Simple Anterior o posterior",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "53000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 292,
+      "name": "Tratamiento conducto pieza temporal desvitalizada anterior",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "33000",
+      "clinical_note": "se maraca como endo en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 293,
+      "name": "Tratamiento conducto pieza temporal desvitalizada posterior",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "44000",
+      "clinical_note": "se maraca como endo en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 294,
+      "name": "Tratamiento de mordida abierta o cruzada lateral (no incluye laboratorio)",
+      "scope_source": "por zonasuprior o inferior",
+      "source_price_clp": "80000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 295,
+      "name": "Tratamiento de mordida invertida con o sin aparatos (no incluye laboratorio)",
+      "scope_source": "por zonasuprior o inferior",
+      "source_price_clp": "80000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 298,
+      "name": "OPERATORIA",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 299,
+      "name": "Aplicación sellantes fotocurado pieza definitiva (4 molares)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "40000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 300,
+      "name": "Blanqueamiento dentario con Cubetas (por arcada - estético)",
+      "scope_source": "por zona sup e infe",
+      "source_price_clp": "394000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 301,
+      "name": "Blanqueamiento dentario con Luz (ambas arcadas - estético)",
+      "scope_source": "por zona sup e infe",
+      "source_price_clp": "80000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 302,
+      "name": "Carillas directas",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "119000",
+      "clinical_note": "carillas en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 303,
+      "name": "Cementación y colocación de perno técnica adhesiva",
+      "scope_source": "por diente",
+      "source_price_clp": "55000",
+      "clinical_note": "colocar un perno en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 304,
+      "name": "Cierre de diastema (por sesión)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "60000",
+      "clinical_note": "resinas en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 305,
+      "name": "Corona de ceromero muñon vital",
+      "scope_source": "por diente",
+      "source_price_clp": "103000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 308,
+      "name": "Incrustación Inlay (Cerómero, cerámica y/o porcelana)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "90000",
+      "clinical_note": "como corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 309,
+      "name": "Incrustación Onlay u Overlay (Resina, cerámica y/o porcelana)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "150000",
+      "clinical_note": "como corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 310,
+      "name": "Incrustación Onlay u Overlay metálico",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "82000",
+      "clinical_note": "como corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 311,
+      "name": "Laboratorio de operatoria",
+      "scope_source": "por diente",
+      "source_price_clp": "1968000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 312,
+      "name": "Laboratorio: cubeta o estampado Superior o Inferior (por arcada)",
+      "scope_source": "por zona sup e infe",
+      "source_price_clp": "79000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 313,
+      "name": "Laboratorio: Incrustación cualquier material o tipo por pieza (Inlay, Onlay u Overlay)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "207000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 314,
+      "name": "Laboratorio: Plano o placa de alivio oclusal (cualquier tipo y por arcada)",
+      "scope_source": "por zona sup e infe",
+      "source_price_clp": "197000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 316,
+      "name": "Obturación de vidrio ionómero en pieza permanente",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "44000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 317,
+      "name": "Primera consulta, examen y diagnóstico preliminar en Operatoria",
+      "scope_source": null,
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 328,
+      "name": "Reparación de Carilla",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "40000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 329,
+      "name": "Restauración Cervical (Clase V)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "35000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 330,
+      "name": "Restauración composite Compleja Posterior (Clase II - tres caras)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "50000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 331,
+      "name": "Restauración composite Compuesta Anterior (Clase IV)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "50000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 332,
+      "name": "Restauración composite Compuesta Posterior (Clase II - dos caras)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "45000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 333,
+      "name": "Restauración composite Simple Anterior (Clase III o V)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "40000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 334,
+      "name": "Restauración composite Simple Posterior (Clase I - una cara)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "35000",
+      "clinical_note": "por caries o fractura",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 339,
+      "name": "ORTODONCIA",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 340,
+      "name": "Arco facial",
+      "scope_source": null,
+      "source_price_clp": "42000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 341,
+      "name": "Axiografia",
+      "scope_source": null,
+      "source_price_clp": "34000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 343,
+      "name": "Contención ortodóncica: estampada, Hawley o cualquier tipo",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "44000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 344,
+      "name": "Contención rigida lingual o palatina",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "75000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 347,
+      "name": "Control mensual Alineadores (Invisalign)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "165000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 348,
+      "name": "Control mensual contención",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "32000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 349,
+      "name": "Control mensual fijo adulto",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "25000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 350,
+      "name": "Control mensual fijo niño",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "25000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 351,
+      "name": "Control mensual fijo técnica lingual",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "112000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 352,
+      "name": "Control mensual removible",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "46000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 353,
+      "name": "Deprogramación mediante Jig",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "143000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 356,
+      "name": "Higienización por arcada con retiro de aparatos y composite sobre esmalte",
+      "scope_source": "general",
+      "source_price_clp": "45000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 357,
+      "name": "Instalación aditamentos para anclaje u otros fines: botón de Nance, rejillas linguales o palatinas, etc.",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "119000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 358,
+      "name": "Instalación aparatos fijos: Autoligado",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "298000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 359,
+      "name": "Instalación aparatos fijos: Cerámicos (técnica programada)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "426000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 360,
+      "name": "Instalación aparatos fijos: Lingual",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "624000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 361,
+      "name": "Instalación aparatos fijos: Metálicos (técnica programada)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "150000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 362,
+      "name": "Instalación aparatos removibles (por arcada)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "75000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 363,
+      "name": "Instalación Arco transpalatino o lingual (barra palatina, no incluye laboratorio)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "119000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 364,
+      "name": "Instalación Disyuntor cualquier tipo: hyrax, cementado o esquelético (no incluye laboratorios)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "170000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 365,
+      "name": "Instalación propulsor mandibular: cualquier tipo (Herbst, Jasper, Jumper, etc)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "131000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 366,
+      "name": "Instalación quirúrgica de dispositivos de anclaje temporal: Miniplacas, placas, anclaje esqueletal, etc.",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "591000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 367,
+      "name": "Laboratorio de ortodoncia",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "1968000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 368,
+      "name": "Laboratorio: Activadores, aparatos funcionales, Bionators, Monoblock (por arcada)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "197000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 369,
+      "name": "Laboratorio: Alineadores ambas arcadas",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "1968000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 370,
+      "name": "Laboratorio: Alineadores una arcada",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "1181000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 371,
+      "name": "Laboratorio: Aparato con tornillo",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "99000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 372,
+      "name": "Laboratorio: Aparatos fijos Cerámicos (superior e inferior)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "738000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 373,
+      "name": "Laboratorio: Aparatos fijos Linguales o Autoligado (superior e inferior)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "1968000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 374,
+      "name": "Laboratorio: Aparatos fijos Metálicos (superior e inferior)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "443000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 375,
+      "name": "Laboratorio: Bandas ortodóncicas para piezas definitivas y temporales (por pieza)",
+      "scope_source": "por diente",
+      "source_price_clp": "30000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 376,
+      "name": "Laboratorio: Barra lingual o palatina, Botón Nance, Quadhelix, etc.",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "197000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 377,
+      "name": "Laboratorio: Bionator (por arcada)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "99000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 378,
+      "name": "Laboratorio: Contención o Aparato simple con o sin tornillo",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "117000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 379,
+      "name": "Laboratorio: Dispositivo de Anclaje esqueletal temporal (Miniplacas y tornillos de miniplacas)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "591000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 380,
+      "name": "Laboratorio: Disyuntor cualquier tipo (por arcada)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "276000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 381,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "237000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 382,
+      "name": "Laboratorio: Mantenedor de espacio (por arcada)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "79000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 383,
+      "name": "Laboratorio: Máscara de Tracción Frontal (cualquier modelo)",
+      "scope_source": "general",
+      "source_price_clp": "237000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 384,
+      "name": "Laboratorio: Modelo de yeso Superior o Inferior (por arcada)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "20000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 385,
+      "name": "Laboratorio: Reparación simple o compleja",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "50000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 386,
+      "name": "Laboratorio: Reposición de Bracket, Banda o Tubo",
+      "scope_source": "por diente",
+      "source_price_clp": "45000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 387,
+      "name": "Laboratorio: TADs o Microtornillo de Ortodoncia (por unidad)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "123000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 390,
+      "name": "Microtornillos o TADs: evaluación, instalación y retiro",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "99000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 391,
+      "name": "Mini - implante ortodóntico",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "30000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 395,
+      "name": "Quad - Helix: instalación (no incluye laboratorio)",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "87000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 396,
+      "name": "Reestudios con modelos",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "65000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 397,
+      "name": "Repetición contención ortodóntica",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "50000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 398,
+      "name": "Reposición de arcos",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "20000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 404,
+      "name": "Set Up modelos",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "87000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 405,
+      "name": "Tratamiento clear aligner: tratamiento semestral",
+      "scope_source": "por zona sup o inf",
+      "source_price_clp": "325000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 408,
+      "name": "PATOLOGIA",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 419,
+      "name": "PERIODONCIA",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 424,
+      "name": "Cobertura o placa acrílica palatina post tratamiento",
+      "scope_source": "por zna sup e infe",
+      "source_price_clp": "55000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 429,
+      "name": "Destartraje subgingival por arcada",
+      "scope_source": "zona supe e inf",
+      "source_price_clp": "45000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 442,
+      "name": "Injerto de tejido conectivo (por zona)",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "97000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 443,
+      "name": "Injerto gingival libre por zona a injertar",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "103000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 446,
+      "name": "Interconsulta con informe periodontal escrito (1 sesión)",
+      "scope_source": null,
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 447,
+      "name": "Laboratorio de periodoncia",
+      "scope_source": null,
+      "source_price_clp": "1968000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 451,
+      "name": "Plano de relajación",
+      "scope_source": "zona sup e inf",
+      "source_price_clp": "130000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 452,
+      "name": "Primera consulta, examen y diagnóstico preliminar en Periodoncia",
+      "scope_source": null,
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 454,
+      "name": "Pulido radicular: periodontitis Avanzadas y complejas (por sesión o sextante)",
+      "scope_source": "sextante",
+      "source_price_clp": "76000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 455,
+      "name": "Pulido radicular: periodontitis Incipientes a moderado",
+      "scope_source": "por diente  por zona sup o inf o sextante",
+      "source_price_clp": "50000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 456,
+      "name": "Pulido radicular: periodontitis Moderadas a Avanzada",
+      "scope_source": "por diente  por zona sup o inf o sextante",
+      "source_price_clp": "65000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 461,
+      "name": "Técnica de tunelización para cubrimiento radicular (por grupo)",
+      "scope_source": "sextante o grupos",
+      "source_price_clp": "115000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 463,
+      "name": "Terapia de mantención periodontal con pulido radicular y tratamiento de infección",
+      "scope_source": "por diente  por zona sup o inf o sextante",
+      "source_price_clp": "79000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 464,
+      "name": "Terapia de mantención periodontal en enfermedad inactiva (por sesión)",
+      "scope_source": "por diente  por zona sup o inf o sextante",
+      "source_price_clp": "57000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 465,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 467,
+      "name": "Tratamiento de complicaciones post-quirúrgica (por sesión)",
+      "scope_source": "diente o zona",
+      "source_price_clp": "55000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 468,
+      "name": "Tratamiento de hipersensibilidad dentaria post-terapia (por sesión)",
+      "scope_source": "diente o zona",
+      "source_price_clp": "44000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 469,
+      "name": "Tratamiento de infección periimplantaria (por sesión)",
+      "scope_source": "diente o zona",
+      "source_price_clp": "73000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 470,
+      "name": "Tratamiento químico del saco periodontal (por sextante)",
+      "scope_source": "sextante o grupos",
+      "source_price_clp": "44000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 471,
+      "name": "Tunelización radicular en compromiso de furca",
+      "scope_source": "diente o zona",
+      "source_price_clp": "109000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 474,
+      "name": "REHABILITACION ORAL",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 475,
+      "name": "Artificios como anclaje de precisión",
+      "scope_source": null,
+      "source_price_clp": "38000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 478,
+      "name": "Carillas indirectas (cualquier tipo o material)",
+      "scope_source": "diente y cara, zona",
+      "source_price_clp": "237000",
+      "clinical_note": "carilla en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 480,
+      "name": "Corona Porcelana dientes anteriores y premolares",
+      "scope_source": "por diente",
+      "source_price_clp": "270000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 481,
+      "name": "Corona Porcelana Molares",
+      "scope_source": "por diente",
+      "source_price_clp": "280000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 482,
+      "name": "Corona provisoria sobre implante",
+      "scope_source": "por diente",
+      "source_price_clp": "57000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 483,
+      "name": "Depromación mediante Jig (protesis fija)",
+      "scope_source": "sup e inf",
+      "source_price_clp": "55000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 484,
+      "name": "Desmontaje de prótesis y profilaxis",
+      "scope_source": "sup e inf",
+      "source_price_clp": "91000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 485,
+      "name": "Diseño Digital de Sonrisa",
+      "scope_source": "sup e inf",
+      "source_price_clp": "70000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 487,
+      "name": "Espiga muñón colado bipartito o pasante",
+      "scope_source": "diente",
+      "source_price_clp": "87000",
+      "clinical_note": "perno rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 488,
+      "name": "Espiga muñón colado simple",
+      "scope_source": "diente",
+      "source_price_clp": "76000",
+      "clinical_note": "perno rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 489,
+      "name": "Espiga muñón preformado o postes de fibra de vidrio",
+      "scope_source": "diente",
+      "source_price_clp": "99000",
+      "clinical_note": "perno rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 493,
+      "name": "Incrustación metálica como inserción en Prótesis fija Plural",
+      "scope_source": "diente y cara",
+      "source_price_clp": "119000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 495,
+      "name": "Instalación de broches (O-ring)",
+      "scope_source": "zona sup o inf",
+      "source_price_clp": "174000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 499,
+      "name": "Laboratorio de protesis fija",
+      "scope_source": "diente",
+      "source_price_clp": "1968000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 500,
+      "name": "Laboratorio: Aplicación de Porcelana",
+      "scope_source": "diente",
+      "source_price_clp": "79000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 501,
+      "name": "Laboratorio: Carilla (cualquier tipo: porcelana, disilicato de litio, cerómero, etc.)",
+      "scope_source": "diente",
+      "source_price_clp": "237000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 502,
+      "name": "Laboratorio: Casquete metálico",
+      "scope_source": "diente",
+      "source_price_clp": "79000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 503,
+      "name": "Laboratorio: Casquete zirconio",
+      "scope_source": "diente",
+      "source_price_clp": "99000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 504,
+      "name": "Laboratorio: Corona Provisoria de Acrílico (por pieza)",
+      "scope_source": "diente",
+      "source_price_clp": "79000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 505,
+      "name": "Laboratorio: Encerado (por pieza)",
+      "scope_source": "diente",
+      "source_price_clp": "30000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 506,
+      "name": "Laboratorio: Espiga muñón Colada o Preformada (por pieza)",
+      "scope_source": "diente",
+      "source_price_clp": "79000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 507,
+      "name": "Laboratorio: Incrustación cerómero",
+      "scope_source": "diente y cara",
+      "source_price_clp": "197000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 508,
+      "name": "Laboratorio: Incrustación metálica",
+      "scope_source": "diente y cara",
+      "source_price_clp": "158000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 509,
+      "name": "Laboratorio: Incrustación o corona de Inserción (por pieza)",
+      "scope_source": "diente y cara",
+      "source_price_clp": "119000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 510,
+      "name": "Laboratorio: Incrustación Porcelana, disilicato de litio, etc.",
+      "scope_source": "diente y cara",
+      "source_price_clp": "237000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 511,
+      "name": "Laboratorio: Intermediario prótesis fija (por pieza)",
+      "scope_source": "diente",
+      "source_price_clp": "158000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 512,
+      "name": "Laboratorio: Prótesis Fija Unitaria (coronas cualquier tipo y material)",
+      "scope_source": "diente",
+      "source_price_clp": "237000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 513,
+      "name": "Mock-Up",
+      "scope_source": "sup e inf",
+      "source_price_clp": "79000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 514,
+      "name": "Montaje en articulador (prótesis fija o removible)",
+      "scope_source": "sup e inf",
+      "source_price_clp": "55000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 517,
+      "name": "Prótesis fija o Corona de porcelana sobre metal",
+      "scope_source": "diente",
+      "source_price_clp": "210000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 518,
+      "name": "Prótesis fija o Corona metálica completa o 3/4",
+      "scope_source": "diente",
+      "source_price_clp": "141000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 519,
+      "name": "Protesis fija sobre implante atornillada o cementada",
+      "scope_source": "diente",
+      "source_price_clp": "271000",
+      "clinical_note": "corona en rojo",
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "CLINICAL_NOTE_REQUIRES_REVIEW"
+      ]
+    },
+    {
+      "source_row": 520,
+      "name": "Prótesis Removible provisoria",
+      "scope_source": "sup e inferior",
+      "source_price_clp": "55000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 521,
+      "name": "Prótesis total o parcial implanto retenida",
+      "scope_source": "sup e inferior",
+      "source_price_clp": "394000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 522,
+      "name": "Protesis total o parcial implanto soportada (no incluye broches)",
+      "scope_source": "sup e inf",
+      "source_price_clp": "532000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 523,
+      "name": "Prótesis total sobre implante (Ad Modum)",
+      "scope_source": "sup e inf",
+      "source_price_clp": "1280000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 530,
+      "name": "Retiro de espiga colada o preformada del conducto",
+      "scope_source": "diente",
+      "source_price_clp": "50000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 536,
+      "name": "Laboratorio de protesis removible",
+      "scope_source": "sup o inf",
+      "source_price_clp": "1968000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 537,
+      "name": "Laboratorio: Cubeta Individual",
+      "scope_source": "sup o inf",
+      "source_price_clp": "40000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 538,
+      "name": "Laboratorio: Placa de Altura",
+      "scope_source": "sup o inf",
+      "source_price_clp": "40000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 539,
+      "name": "Laboratorio: Prótesis cucharita",
+      "scope_source": "sup o inf",
+      "source_price_clp": "99000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 540,
+      "name": "Laboratorio: Prótesis inmediata",
+      "scope_source": "sup o inf",
+      "source_price_clp": "237000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 541,
+      "name": "Laboratorio: Prótesis Parcial Acrílica (por arcada)",
+      "scope_source": "sup o inf",
+      "source_price_clp": "197000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 542,
+      "name": "Laboratorio: Prótesis Parcial Metálica (por arcada)",
+      "scope_source": "sup o inf",
+      "source_price_clp": "256000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 543,
+      "name": "Laboratorio: Prótesis total (por arcada)",
+      "scope_source": "sup o inf",
+      "source_price_clp": "197000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 544,
+      "name": "Laboratorio: Prótesis Valplass",
+      "scope_source": "sup o inf",
+      "source_price_clp": "197000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 545,
+      "name": "Laboratorio: Rebasado Total (por prótesis)",
+      "scope_source": "sup o inf",
+      "source_price_clp": "138000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 546,
+      "name": "Laboratorio: Reparación prótesis con o sin toma de impresión (por arcada)",
+      "scope_source": "sup o inf",
+      "source_price_clp": "99000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 551,
+      "name": "Protesis total inferior de acrílico",
+      "scope_source": "sup o inf",
+      "source_price_clp": "250000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 552,
+      "name": "Protesis total superior de acrílico",
+      "scope_source": "sup o inf",
+      "source_price_clp": "250000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 559,
+      "name": "URGENCIAS",
+      "scope_source": null,
+      "source_price_clp": null,
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_OR_INVALID_PRICE",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 562,
+      "name": "Urgencia Laboratorio: Coronas Provisorias",
+      "scope_source": "por diente",
+      "source_price_clp": "16000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 563,
+      "name": "Urgencia Laboratorio: Reparación de prótesis con o sin impresión",
+      "scope_source": "supo inf",
+      "source_price_clp": "39000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "LABORATORY_LINE"
+      ]
+    },
+    {
+      "source_row": 566,
+      "name": "Urgencia periodontal (1 sesión)",
+      "scope_source": "por diente zona sup e inf",
+      "source_price_clp": "16000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 576,
+      "name": "Urgencia: Reparación de prótesis con o sin impresión",
+      "scope_source": "supo inf",
+      "source_price_clp": "55000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 580,
+      "name": "Urgencia: Trepanación de urgencia",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "27000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 581,
+      "name": "Urgencia: Trepanación en pieza permanente joven",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "27000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 582,
+      "name": "Urgencia: Trepanación en pieza temporal",
+      "scope_source": "por diente y cara",
+      "source_price_clp": "27000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173"
+      ]
+    },
+    {
+      "source_row": 583,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    },
+    {
+      "source_row": 584,
+      "name": null,
+      "scope_source": null,
+      "source_price_clp": "22000",
+      "clinical_note": null,
+      "reasons": [
+        "NOT_IN_APPROVED_COMMON_173",
+        "MISSING_NAME",
+        "MISSING_SCOPE"
+      ]
+    }
+  ]
+}

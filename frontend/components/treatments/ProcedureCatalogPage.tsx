@@ -22,11 +22,13 @@ const scopeLabels: Record<string, string> = {
   TOOTH_SURFACE: "Superficie dental",
 };
 
-function money(value: string | null) {
+function money(value: string | null, currency: string | null) {
   if (!value) return "—";
+  if (!currency) return `moneda local · $${Number(value).toLocaleString("es")}`;
+  if (currency === "COP") return `COP ${Number(value).toLocaleString("es-CO", { maximumFractionDigits: 0 })}`;
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
-    currency: "COP",
+    currency,
     maximumFractionDigits: 0,
   }).format(Number(value));
 }
@@ -433,7 +435,14 @@ export function ProcedureCatalogPage() {
                       {item.description && <p className="mt-1 text-xs text-slate-500">{item.description}</p>}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{item.category ?? "—"}</td>
-                    <td className="px-4 py-3 font-bold text-slate-900">{money(item.suggested_value)}</td>
+                    <td className="px-4 py-3 font-bold text-slate-900">
+                      {money(item.suggested_value, item.price_currency)}
+                      {typeof item.price_provenance?.generated_currency === "string" && (
+                        <p className="mt-1 text-[11px] font-medium text-slate-500">
+                          Origen del valor: {item.price_provenance.generated_currency} al importar; la etiqueta visible sigue el país actual.
+                        </p>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">
                       {item.suggested_scope_type ? scopeLabels[item.suggested_scope_type] ?? item.suggested_scope_type : "—"}
                     </td>

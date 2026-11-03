@@ -130,6 +130,7 @@ class TreatmentListItemResponse(BaseModel):
     final_value: Decimal
     paid_value: Decimal
     balance: Decimal
+    currency_code: str | None
     updated_at: datetime
 
 
@@ -292,6 +293,7 @@ class ProcedureResponse(BaseModel):
     unit_value: Decimal
     quantity: Decimal
     total_value: Decimal
+    currency_code: str | None
     status: str
     estimated_date: date | None
     performed_at: datetime | None
@@ -520,6 +522,7 @@ class OdontogramLinkedProcedureResponse(BaseModel):
     unit_value: Decimal
     quantity: Decimal
     total_value: Decimal
+    currency_code: str | None
     scope_type: str
     zone: str | None
     tooth: str | None
@@ -644,6 +647,8 @@ class ProcedureCatalogItemResponse(BaseModel):
     category: str | None
     description: str | None
     suggested_value: Decimal | None
+    price_currency: str | None
+    price_provenance: dict | None
     suggested_scope_type: str | None
     odontogram_behavior: str
     odontogram_scope_type: str | None
@@ -705,6 +710,7 @@ class BudgetDetailResponse(BaseModel):
     quantity: Decimal
     unit_value: Decimal
     total_value: Decimal
+    currency_code: str | None
     order: int
     observations: str | None
     scope_type: str
@@ -733,6 +739,7 @@ class BudgetResponse(BaseModel):
     discount_value: Decimal
     discount_calculated_value: Decimal
     final_value: Decimal
+    currency_code: str | None
     observations: str | None
     issued_at: datetime
     expires_on: date | None
@@ -801,6 +808,7 @@ class PaymentResponse(BaseModel):
     dentist_name: str | None
     paid_at: datetime
     value: Decimal
+    currency_code: str | None
     payment_method: str
     reference: str | None
     observation: str | None
@@ -818,6 +826,7 @@ class PaymentListResponse(BaseModel):
 
 
 class FinanceDashboardResponse(BaseModel):
+    currency_code: str | None
     income_today: Decimal
     income_month: Decimal
     income_year: Decimal
@@ -833,6 +842,7 @@ class FinanceBreakdownItem(BaseModel):
 
 
 class FinanceBreakdownResponse(BaseModel):
+    currency_code: str | None
     items: list[FinanceBreakdownItem]
 
 
@@ -843,4 +853,5 @@ class PatientBalanceItem(BaseModel):
 
 
 class PatientBalancesResponse(BaseModel):
+    currency_code: str | None
     items: list[PatientBalanceItem]

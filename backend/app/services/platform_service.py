@@ -43,6 +43,14 @@ from app.schemas.platform_schema import (
     PlatformUserSummary,
 )
 from app.services.agenda_service import ensure_agenda_seed_data
+from app.services.procedure_catalog_seed_service import (
+    CatalogConversion,
+    ProcedureCatalogSeedError,
+    conversion_from_settings,
+    optional_company_currency,
+    record_unsupported_country_skip,
+    seed_initial_procedure_catalog,
+)
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.organization_service import normalize_tax_id
 from app.services.orthodontics_entitlement_service import (
@@ -1009,6 +1017,16 @@ def create_platform_company(
         admin_user=admin,
         site=site,
     )
+    if settings.procedure_catalog_seed_enabled:
+        currency = optional_company_currency(company.country)
+        if currency:
+            try:
+                conversion = conversion_from_settings() if currency == "COP" else CatalogConversion()
+                seed_initial_procedure_catalog(session, company, admin.id, conversion)
+            except ProcedureCatalogSeedError as exc:
+                raise PlatformError(f"No se pudo preparar el catálogo inicial: {exc}", 422) from exc
+        else:
+            record_unsupported_country_skip(session, company, admin.id)
     now = datetime.now(timezone.utc)
     company.installation_completed_at = now
     _audit(

@@ -52,6 +52,7 @@ export interface TreatmentReports {
 }
 
 export interface FinanceReports {
+  currency_code: string | null;
   income_today: string;
   income_month: string;
   income_range: string;

@@ -20,6 +20,14 @@ from app.models.role import Role
 from app.models.site import Site
 from app.models.user import User
 from app.services.agenda_service import ensure_agenda_seed_data
+from app.services.procedure_catalog_seed_service import (
+    CatalogConversion,
+    conversion_from_settings,
+    optional_company_currency,
+    record_unsupported_country_skip,
+    seed_initial_procedure_catalog,
+)
+from app.core.config import settings
 
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -239,6 +247,13 @@ def bootstrap_installation(
         admin_user=admin,
         site=site,
     )
+    if settings.procedure_catalog_seed_enabled:
+        currency = optional_company_currency(company.country)
+        if currency:
+            conversion = conversion_from_settings() if currency == "COP" else CatalogConversion()
+            seed_initial_procedure_catalog(session, company, admin.id, conversion)
+        else:
+            record_unsupported_country_skip(session, company, admin.id)
 
     completed_at = datetime.now(timezone.utc)
     company.installation_completed_at = completed_at

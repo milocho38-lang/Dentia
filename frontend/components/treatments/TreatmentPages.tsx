@@ -56,10 +56,12 @@ import type {
   TreatmentListItem,
 } from "@/types/treatment";
 
-function money(value: string | number) {
+function money(value: string | number, currency?: string | null) {
+  if (!currency) return `moneda local · $${new Intl.NumberFormat("es").format(Number(value))}`;
+  if (currency === "COP") return `COP ${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 }).format(Number(value))}`;
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
-    currency: "COP",
+    currency,
     maximumFractionDigits: 0,
   }).format(Number(value));
 }
@@ -331,9 +333,9 @@ export function TreatmentListPage() {
                       <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadge(item.status)}`}>{item.status}</span>
                     </td>
                     <td className="px-5 py-4 text-sm text-slate-600">{item.responsible_dentist_name ?? "—"}</td>
-                    <td className="px-5 py-4 text-sm font-bold">{money(item.final_value)}</td>
-                    <td className="px-5 py-4 text-sm">{money(item.paid_value)}</td>
-                    <td className="px-5 py-4 text-sm font-bold text-orange-700">{money(item.balance)}</td>
+                    <td className="px-5 py-4 text-sm font-bold">{money(item.final_value, item.currency_code)}</td>
+                    <td className="px-5 py-4 text-sm">{money(item.paid_value, item.currency_code)}</td>
+                    <td className="px-5 py-4 text-sm font-bold text-orange-700">{money(item.balance, item.currency_code)}</td>
                     <td className="px-5 py-4 text-right">
                       <Link href={`/tratamientos/${item.id}`} className="text-sm font-bold text-green-700 hover:underline">
                         Ver detalle
@@ -643,7 +645,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
     const previous = budgetVersions.find(
       (version) => version.status === "Aprobado" && version.is_current && version.id !== budget.id,
     );
-    if (!window.confirm(`Va a aprobar la versión ${budget.version} por ${money(budget.final_value)}.\n\n${previous ? `La versión ${previous.version} dejará de estar vigente, pero permanecerá en el historial.` : "Esta versión quedará como vigente."}`)) return;
+    if (!window.confirm(`Va a aprobar la versión ${budget.version} por ${money(budget.final_value, budget.currency_code)}.\n\n${previous ? `La versión ${previous.version} dejará de estar vigente, pero permanecerá en el historial.` : "Esta versión quedará como vigente."}`)) return;
     await runBudgetAction(async () => {
       const approved = await approveBudget(budget.id);
       setSelectedBudgetId(approved.id);
@@ -710,9 +712,9 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
       </header>
       {error && <Alert tone="error">{error}</Alert>}
       <section className="grid gap-4 md:grid-cols-4">
-        <Metric label="Valor" value={money(treatment.summary.final_value)} />
-        <Metric label="Pagado" value={money(treatment.summary.paid_value)} />
-        <Metric label="Saldo" value={money(treatment.summary.balance)} tone="orange" />
+        <Metric label="Valor" value={money(treatment.summary.final_value, treatment.currency_code)} />
+        <Metric label="Pagado" value={money(treatment.summary.paid_value, treatment.currency_code)} />
+        <Metric label="Saldo" value={money(treatment.summary.balance, treatment.currency_code)} tone="orange" />
         <Metric label="Avance" value={`${treatment.summary.procedures_done}/${treatment.summary.procedures_total}`} />
       </section>
 
@@ -724,6 +726,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
             <ProcedureForm
               options={options}
               catalog={catalog}
+              currencyCode={treatment.currency_code}
               submitLabel="Agregar procedimiento"
               onCreateCatalog={async (payload) => {
                 const item = await createProcedureCatalogItem(payload);
@@ -773,6 +776,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
               <ProcedureForm
                 options={options}
                 catalog={catalog}
+                currencyCode={treatment.currency_code}
                 initial={editingProcedure}
                 submitLabel="Guardar cambios"
                 onCreateCatalog={async (payload) => {
@@ -824,7 +828,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                       {Number(procedure.quantity)}
                     </td>
                     <td className="px-4 py-3 font-bold text-slate-900">
-                      {money(procedure.total_value)}
+                      {money(procedure.total_value, procedure.currency_code)}
                     </td>
                     <td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${statusBadge(procedure.status)}`}>{procedure.status}</span></td>
                     <td className="px-4 py-3 text-right">
@@ -894,7 +898,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                 <p className="text-sm font-black text-slate-950">
                   {currentApprovedBudget.number ?? "Sin número"} · V{currentApprovedBudget.version}
                 </p>
-                <p className="text-sm font-black text-emerald-800">{money(currentApprovedBudget.final_value)}</p>
+                <p className="text-sm font-black text-emerald-800">{money(currentApprovedBudget.final_value, currentApprovedBudget.currency_code)}</p>
               </div>
             </div>
           )}
@@ -921,14 +925,14 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                   </span>
                 </div>
                 <div className={`grid min-w-full gap-3 sm:grid-cols-2 ${selectedBudgetHasDiscount ? "lg:min-w-[620px] lg:grid-cols-4" : "lg:min-w-[320px] lg:grid-cols-2"}`}>
-                  <BudgetMetric label="Subtotal" value={money(selectedBudget.gross_value)} />
+                  <BudgetMetric label="Subtotal" value={money(selectedBudget.gross_value, selectedBudget.currency_code)} />
                   {selectedBudgetHasDiscount && (
                     <>
-                      <BudgetMetric label="Descuento" value={selectedBudget.discount_type === "porcentaje" ? `${Number(selectedBudget.discount_value)}%` : money(selectedBudget.discount_value)} />
-                      <BudgetMetric label="Valor descuento" value={money(selectedBudget.discount_calculated_value)} />
+                      <BudgetMetric label="Descuento" value={selectedBudget.discount_type === "porcentaje" ? `${Number(selectedBudget.discount_value)}%` : money(selectedBudget.discount_value, selectedBudget.currency_code)} />
+                      <BudgetMetric label="Valor descuento" value={money(selectedBudget.discount_calculated_value, selectedBudget.currency_code)} />
                     </>
                   )}
-                  <BudgetMetric label="Valor final" value={money(selectedBudget.final_value)} highlight />
+                  <BudgetMetric label="Valor final" value={money(selectedBudget.final_value, selectedBudget.currency_code)} highlight />
                 </div>
               </div>
               {selectedBudget.observations && (
@@ -965,7 +969,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                       <tr key={detail.id}>
                         <td className="px-4 py-3 font-bold text-slate-900">{detail.name}</td>
                         <td className="px-4 py-3 text-slate-600">{detail.scope_label}</td>
-                        <td className="px-4 py-3 font-black text-slate-900">{money(detail.total_value)}</td>
+                        <td className="px-4 py-3 font-black text-slate-900">{money(detail.total_value, detail.currency_code)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1035,7 +1039,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                           V{budget.version} · {budget.status}
                           {" · "}{budgetVersionState(budget)}
                         </span>
-                        <span className="font-bold text-slate-600">{money(budget.final_value)}</span>
+                        <span className="font-bold text-slate-600">{money(budget.final_value, budget.currency_code)}</span>
                       </button>
                     ))}
                   </div>
@@ -1047,7 +1051,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
 
       {(hasPermission("payments.view") || hasPermission("payments.create")) && <Panel
         title="Pagos"
-        description={`Saldo actualizado: ${money(treatment.summary.balance)}`}
+        description={`Saldo actualizado: ${money(treatment.summary.balance, treatment.currency_code)}`}
       >
           {hasPermission("payments.create") && <PaymentForm treatment={treatment} procedures={procedures} options={options} onDone={refresh} />}
           <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
@@ -1066,7 +1070,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                   <tr key={payment.id}>
                     <td className="px-4 py-3 text-slate-600">{localDate(payment.paid_at)}</td>
                     <td className="px-4 py-3 font-bold text-slate-700">{payment.receipt_number}</td>
-                    <td className="px-4 py-3 font-black text-slate-900">{money(payment.value)}</td>
+                    <td className="px-4 py-3 font-black text-slate-900">{money(payment.value, payment.currency_code)}</td>
                     <td className="px-4 py-3 text-slate-600">{payment.payment_method}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2 py-1 text-xs font-bold ${statusBadge(payment.status)}`}>{payment.status}</span>
@@ -1445,6 +1449,7 @@ function BudgetMetric({
 function ProcedureForm({
   options,
   catalog,
+  currencyCode,
   initial,
   submitLabel,
   onCreateCatalog,
@@ -1452,6 +1457,7 @@ function ProcedureForm({
 }: {
   options: AgendaOptions | null;
   catalog: ProcedureCatalogItem[];
+  currencyCode: string | null;
   initial?: Procedure;
   submitLabel: string;
   onCreateCatalog: (payload: {
@@ -1752,7 +1758,7 @@ function ProcedureForm({
                           >
                             <span className="block font-bold">{item.name}</span>
                             <span className="mt-0.5 block text-xs text-slate-600">
-                              {[item.category, item.suggested_value ? money(item.suggested_value) : null].filter(Boolean).join(" · ") || "Sin categoría"}
+                              {[item.category, item.suggested_value ? money(item.suggested_value, item.price_currency ?? undefined) : null].filter(Boolean).join(" · ") || "Sin categoría"}
                             </span>
                           </button>
                         </li>
@@ -1911,7 +1917,9 @@ function ProcedureForm({
           </label>
           <label>
             <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
-              Valor unitario
+              Valor unitario {(selectedCatalog?.price_currency ?? currencyCode)
+                ? `(${selectedCatalog?.price_currency ?? currencyCode})`
+                : "(moneda local)"}
             </span>
             <input
               value={value}
@@ -2057,7 +2065,7 @@ function ProcedureForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <label>
               <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
-                Valor sugerido
+                Valor sugerido (la moneda se asigna según el país de la clínica)
               </span>
               <input
                 value={catalogForm.suggested_value}
@@ -2144,6 +2152,8 @@ function BudgetForm({
 
   const selectedProcedures = eligibleProcedures.filter((procedure) => selectedProcedureIds.includes(procedure.id));
   const subtotal = selectedProcedures.reduce((sum, procedure) => sum + Number(procedure.total_value), 0);
+  const selectedCurrencies = new Set(selectedProcedures.map((procedure) => procedure.currency_code));
+  const selectedCurrency = selectedCurrencies.size === 1 ? selectedProcedures[0]?.currency_code : null;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -2198,7 +2208,7 @@ function BudgetForm({
               <span className="min-w-0 flex-1">
                 <span className="block font-black text-slate-900">{procedure.name}</span>
                 <span className="mt-0.5 block text-xs font-semibold text-slate-500">
-                  {procedure.scope_label} · {procedure.status} · Cant. {Number(procedure.quantity)} · {money(procedure.total_value)}
+                  {procedure.scope_label} · {procedure.status} · Cant. {Number(procedure.quantity)} · {money(procedure.total_value, procedure.currency_code)}
                 </span>
               </span>
             </label>
@@ -2237,7 +2247,7 @@ function BudgetForm({
         </label>
         <div className="rounded-xl bg-white px-3 py-2 text-sm">
           <p className="text-xs font-black uppercase tracking-wide text-slate-500">Subtotal seleccionado</p>
-          <p className="font-black text-slate-950">{money(String(subtotal))}</p>
+          <p className="font-black text-slate-950">{money(String(subtotal), selectedCurrency)}</p>
         </div>
         <button
           disabled={!selectedProcedureIds.length || saving}

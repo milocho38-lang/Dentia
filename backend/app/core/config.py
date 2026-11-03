@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     demo_request_rate_limit_max: int = 8
     demo_request_rate_limit_window_seconds: int = 300
     demo_request_duplicate_window_seconds: int = 300
+    procedure_catalog_seed_enabled: bool = False
+    procedure_catalog_clp_to_cop_rate: str | None = None
+    procedure_catalog_rate_source: str | None = None
+    procedure_catalog_rate_observed_at_utc: str | None = None
+    procedure_catalog_rate_is_reference: bool = False
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",

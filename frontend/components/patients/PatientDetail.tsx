@@ -87,10 +87,12 @@ function formatDate(value: string | null, withTime = false) {
   }).format(new Date(value));
 }
 
-function money(value: string | number | null | undefined) {
+function money(value: string | number | null | undefined, currency?: string | null) {
+  if (!currency) return `moneda local · $${Number(value ?? 0).toLocaleString("es")}`;
+  if (currency === "COP") return `COP ${Number(value ?? 0).toLocaleString("es-CO", { maximumFractionDigits: 0 })}`;
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
-    currency: "COP",
+    currency,
     maximumFractionDigits: 0,
   }).format(Number(value ?? 0));
 }
@@ -694,6 +696,7 @@ function PatientSummaryWorkspace({
   onDeleteResponsible: (responsible: Responsible) => Promise<void>;
 }) {
   const patient = summary.patient;
+  const currency = lastPayment?.currency_code ?? patientTreatments[0]?.currency_code ?? null;
   return (
     <div className="space-y-5">
       {workspaceError && <Alert tone="error">{workspaceError}</Alert>}
@@ -758,10 +761,10 @@ function PatientSummaryWorkspace({
         <MetricGroup title="Información financiera">
           <MiniMetric
             label="Último pago"
-            value={lastPayment ? money(lastPayment.value) : "Sin pagos"}
+            value={lastPayment ? money(lastPayment.value, lastPayment.currency_code) : "Sin pagos"}
             hint={lastPayment ? formatDate(lastPayment.paid_at, true) : undefined}
           />
-          <MiniMetric label="Total pagado" value={money(totalPaid)} />
+          <MiniMetric label="Total pagado" value={money(totalPaid, currency)} />
           <MiniMetric label="Presupuestos pendientes" value={String(pendingBudgets)} />
         </MetricGroup>
 
@@ -973,10 +976,10 @@ function PatientTreatmentsWorkspace({
             </div>,
             <StatusBadge key="status" value={item.status} />,
             item.responsible_dentist_name ?? "—",
-            money(item.final_value),
+            money(item.final_value, item.currency_code),
             Number(item.balance) > 0 ? (
               <span key="balance" className="font-bold text-orange-700">
-                Saldo {money(item.balance)}
+                Saldo {money(item.balance, item.currency_code)}
               </span>
             ) : (
               <span key="balance" className="font-bold text-green-700">Al día</span>
@@ -1019,12 +1022,13 @@ function PatientFinanceWorkspace({
   const validPayments = payments.filter((payment) => payment.status === "valido");
   const paid = validPayments.reduce((sum, payment) => sum + Number(payment.value), 0);
   const balance = treatments.reduce((sum, treatment) => sum + Number(treatment.balance), 0);
+  const currency = treatments[0]?.currency_code ?? budgets[0]?.currency_code ?? payments[0]?.currency_code ?? null;
   return (
     <div className="space-y-6">
       {error && <Alert tone="error">{error}</Alert>}
       <div className="grid gap-4 md:grid-cols-3">
-        <MiniMetric label="Total pagado" value={money(paid)} />
-        <MiniMetric label="Saldo pendiente" value={money(balance)} tone={balance > 0 ? "amber" : "green"} />
+        <MiniMetric label="Total pagado" value={money(paid, currency)} />
+        <MiniMetric label="Saldo pendiente" value={money(balance, currency)} tone={balance > 0 ? "amber" : "green"} />
         <MiniMetric label="Comprobantes emitidos" value={String(payments.length)} />
       </div>
 
@@ -1042,7 +1046,7 @@ function PatientFinanceWorkspace({
               formatDate(budget.issued_at, true),
               treatmentName(treatments, budget.treatment_id),
               <StatusBadge key="status" value={budget.status} />,
-              money(budget.final_value),
+              money(budget.final_value, budget.currency_code),
               <button
                 key="pdf"
                 type="button"
@@ -1083,7 +1087,7 @@ function PatientFinanceWorkspace({
               formatDate(payment.paid_at, true),
               payment.treatment_name,
               payment.receipt_number,
-              money(payment.value),
+              money(payment.value, payment.currency_code),
               payment.payment_method,
               <button
                 key="receipt"

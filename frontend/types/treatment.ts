@@ -21,6 +21,7 @@ export interface TreatmentListItem {
   final_value: string;
   paid_value: string;
   balance: string;
+  currency_code: string | null;
   updated_at: string;
 }
 
@@ -55,6 +56,7 @@ export interface Procedure {
   unit_value: string;
   quantity: string;
   total_value: string;
+  currency_code: string | null;
   status: string;
   estimated_date: string | null;
   performed_at: string | null;
@@ -131,6 +133,8 @@ export interface ProcedureCatalogItem {
   category: string | null;
   description: string | null;
   suggested_value: string | null;
+  price_currency: string | null;
+  price_provenance: Record<string, unknown> | null;
   suggested_scope_type: string | null;
   odontogram_behavior: "UNCONFIGURED" | "NO_CHANGE" | "OPTIONAL_DIAGNOSIS" | "REQUIRES_DIAGNOSIS";
   odontogram_scope_type: string | null;
@@ -161,6 +165,7 @@ export interface BudgetDetail {
   quantity: string;
   unit_value: string;
   total_value: string;
+  currency_code: string | null;
   order: number;
   observations: string | null;
   scope_type: string;
@@ -189,6 +194,7 @@ export interface Budget {
   discount_value: string;
   discount_calculated_value: string;
   final_value: string;
+  currency_code: string | null;
   observations: string | null;
   issued_at: string;
   expires_on: string | null;
@@ -211,6 +217,7 @@ export interface Payment {
   dentist_name: string | null;
   paid_at: string;
   value: string;
+  currency_code: string | null;
   payment_method: string;
   reference: string | null;
   observation: string | null;
@@ -223,6 +230,7 @@ export interface Payment {
 }
 
 export interface FinanceDashboard {
+  currency_code: string | null;
   income_today: string;
   income_month: string;
   income_year: string;
