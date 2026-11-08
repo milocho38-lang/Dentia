@@ -26,6 +26,9 @@ from app.models.role import Role
 from app.models.site import Site
 from app.models.user import User
 from app.schemas.platform_schema import (
+    PlatformClinicalCatalogApplyRequest,
+    PlatformClinicalCatalogApplyResponse,
+    PlatformClinicalCatalogPreviewResponse,
     PlatformCompanyActionResponse,
     PlatformCompanyCreateRequest,
     PlatformCompanyCreateResponse,
@@ -50,6 +53,9 @@ from app.services.procedure_catalog_seed_service import (
     seed_initial_procedure_catalog,
 )
 from app.services.procedure_catalog_odontogram_consolidated_seed_service import (
+    CONSOLIDATED_CATALOG_VERSION,
+    CONSOLIDATED_MANIFEST_SHA256,
+    preview_odontogram_consolidated_catalog,
     seed_odontogram_consolidated_catalog,
 )
 from app.services.auth_service import AuthContext, RequestMetadata
@@ -74,6 +80,198 @@ class PlatformError(RuntimeError):
     def __init__(self, message: str, status_code: int = 400):
         super().__init__(message)
         self.status_code = status_code
+
+
+def _require_platform_catalog_gate() -> None:
+    if not settings.procedure_catalog_odontogram_resin_backfill_enabled:
+        raise PlatformError(
+            "El backfill autenticado del catálogo clínico no está habilitado.", 404
+        )
+
+
+def _require_platform_admin_context(context: AuthContext) -> None:
+    if "PLATFORM_ADMIN" not in context.roles:
+        raise PlatformError(
+            "La operación global requiere un Administrador de plataforma real.", 403
+        )
+
+
+def _lock_and_require_live_platform_admin(
+    session: Session, context: AuthContext
+) -> None:
+    now = datetime.now(timezone.utc)
+    auth_session = session.scalar(
+        select(AuthSession)
+        .where(
+            AuthSession.id == context.auth_session.id,
+            AuthSession.user_id == context.user.id,
+            AuthSession.company_id == context.user.company_id,
+            AuthSession.is_active.is_(True),
+            AuthSession.revoked_at.is_(None),
+            AuthSession.expires_at > now,
+        )
+        .with_for_update()
+    )
+    user = session.scalar(
+        select(User)
+        .where(
+            User.id == context.user.id,
+            User.company_id == context.user.company_id,
+            User.is_active.is_(True),
+            User.status == "Activo",
+        )
+        .with_for_update()
+    )
+    memberships = list(
+        session.scalars(
+            select(UserRole)
+            .where(
+                UserRole.company_id == context.user.company_id,
+                UserRole.user_id == context.user.id,
+                UserRole.is_active.is_(True),
+            )
+            .with_for_update()
+        )
+    )
+    role_ids = {membership.role_id for membership in memberships}
+    roles = (
+        list(
+            session.scalars(
+                select(Role)
+                .where(
+                    Role.company_id == context.user.company_id,
+                    Role.id.in_(role_ids),
+                    Role.is_active.is_(True),
+                )
+                .with_for_update()
+            )
+        )
+        if role_ids
+        else []
+    )
+    if auth_session is None or user is None or not any(
+        role.code == "PLATFORM_ADMIN" for role in roles
+    ):
+        raise PlatformError(
+            "La sesión o el rol de Administrador de plataforma ya no está vigente.",
+            403,
+        )
+
+
+def _platform_catalog_preview_data(
+    session: Session, companies: list[Company]
+) -> tuple[PlatformClinicalCatalogPreviewResponse, list[tuple[Company, object]]]:
+    eligible: list[tuple[Company, object]] = []
+    currencies: dict[str, int] = {}
+    skipped = 0
+    for company in companies:
+        if optional_company_currency(company.country) is None:
+            skipped += 1
+            continue
+        try:
+            preview = preview_odontogram_consolidated_catalog(session, company)
+        except (ProcedureCatalogSeedError, RuntimeError) as exc:
+            raise PlatformError(str(exc), 422) from exc
+        eligible.append((company, preview))
+        currencies[preview.currency] = currencies.get(preview.currency, 0) + 1
+    response = PlatformClinicalCatalogPreviewResponse(
+        active_companies=len(companies),
+        eligible_companies=len(eligible),
+        skipped_companies=skipped,
+        complete_companies=sum(
+            1 for _company, preview in eligible if preview.would_insert == 0
+        ),
+        would_insert=sum(preview.would_insert for _company, preview in eligible),
+        collisions=sum(len(preview.collisions) for _company, preview in eligible),
+        currencies=currencies,
+        catalog_version=CONSOLIDATED_CATALOG_VERSION,
+        manifest_sha256=CONSOLIDATED_MANIFEST_SHA256,
+    )
+    return response, eligible
+
+
+def preview_platform_odontogram_clinical_catalog(
+    session: Session, context: AuthContext
+) -> PlatformClinicalCatalogPreviewResponse:
+    _require_platform_catalog_gate()
+    _require_platform_admin_context(context)
+    companies = list(
+        session.scalars(
+            select(Company)
+            .where(Company.is_active.is_(True))
+            .order_by(Company.id)
+        )
+    )
+    response, _eligible = _platform_catalog_preview_data(session, companies)
+    return response
+
+
+def apply_platform_odontogram_clinical_catalog(
+    session: Session,
+    context: AuthContext,
+    payload: PlatformClinicalCatalogApplyRequest,
+    metadata: RequestMetadata,
+) -> PlatformClinicalCatalogApplyResponse:
+    _require_platform_catalog_gate()
+    _require_platform_admin_context(context)
+    try:
+        companies = list(
+            session.scalars(
+                select(Company)
+                .where(Company.is_active.is_(True))
+                .order_by(Company.id)
+                .with_for_update()
+            )
+        )
+        _lock_and_require_live_platform_admin(session, context)
+        preview, eligible = _platform_catalog_preview_data(session, companies)
+        if (
+            payload.expected_catalog_version != preview.catalog_version
+            or payload.expected_manifest_sha256 != preview.manifest_sha256
+        ):
+            raise PlatformError(
+                "La versión o digest confirmado no coincide con el lote disponible. "
+                "Ejecute nuevamente el preview global.",
+                409,
+            )
+        actor_id = context.user.id
+        operator_session_id = context.auth_session.id
+        inserted = skipped_collisions = diagnosis_links = applied = 0
+        complete = 0
+        for company, company_preview in eligible:
+            if company_preview.would_insert == 0:
+                complete += 1
+                continue
+            result = seed_odontogram_consolidated_catalog(
+                session,
+                company,
+                actor_id,
+                operator_session_id=operator_session_id,
+                ip_address=metadata.ip_address,
+                user_agent=metadata.user_agent,
+            )
+            applied += 1
+            inserted += result.inserted
+            skipped_collisions += result.skipped_collisions
+            diagnosis_links += result.diagnosis_links
+        session.commit()
+    except PlatformError:
+        session.rollback()
+        raise
+    except (ProcedureCatalogSeedError, RuntimeError) as exc:
+        session.rollback()
+        raise PlatformError(str(exc), 422) from exc
+    return PlatformClinicalCatalogApplyResponse(
+        eligible_companies=preview.eligible_companies,
+        applied_companies=applied,
+        already_complete_companies=complete,
+        skipped_companies=preview.skipped_companies,
+        inserted=inserted,
+        skipped_collisions=skipped_collisions,
+        diagnosis_links=diagnosis_links,
+        catalog_version=CONSOLIDATED_CATALOG_VERSION,
+        manifest_sha256=CONSOLIDATED_MANIFEST_SHA256,
+    )
 
 
 def _slugify(value: str) -> str:

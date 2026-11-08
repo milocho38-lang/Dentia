@@ -92,6 +92,36 @@ class PlatformCompanyCreateRequest(BaseModel):
         return self
 
 
+class PlatformClinicalCatalogPreviewResponse(BaseModel):
+    active_companies: int
+    eligible_companies: int
+    skipped_companies: int
+    complete_companies: int
+    would_insert: int
+    collisions: int
+    currencies: dict[str, int]
+    catalog_version: str
+    manifest_sha256: str
+
+
+class PlatformClinicalCatalogApplyRequest(BaseModel):
+    expected_catalog_version: str = Field(min_length=1, max_length=160)
+    expected_manifest_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+    confirmation: str = Field(pattern="^APPLY_PLATFORM_ODONTOGRAM_CLINICAL_83$")
+
+
+class PlatformClinicalCatalogApplyResponse(BaseModel):
+    eligible_companies: int
+    applied_companies: int
+    already_complete_companies: int
+    skipped_companies: int
+    inserted: int
+    skipped_collisions: int
+    diagnosis_links: int
+    catalog_version: str
+    manifest_sha256: str
+
+
 class PlatformCompanyListItem(BaseModel):
     id: UUID
     name: str

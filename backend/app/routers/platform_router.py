@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.auth_dependencies import get_request_metadata, require_permission
 from app.database.session import get_db
 from app.schemas.platform_schema import (
+    PlatformClinicalCatalogApplyRequest,
+    PlatformClinicalCatalogApplyResponse,
+    PlatformClinicalCatalogPreviewResponse,
     PlatformCompanyActionResponse,
     PlatformCompanyCreateRequest,
     PlatformCompanyCreateResponse,
@@ -29,10 +32,12 @@ from app.schemas.orthodontics_schema import (
 from app.services.auth_service import AuthContext
 from app.services.platform_service import (
     PlatformError,
+    apply_platform_odontogram_clinical_catalog,
     change_company_status,
     create_platform_company,
     get_platform_company,
     list_platform_companies,
+    preview_platform_odontogram_clinical_catalog,
     update_platform_company_user_roles,
     update_platform_company_dentist_limit,
 )
@@ -58,6 +63,42 @@ def handle_orthodontics(exc: OrthodonticsError) -> HTTPException:
         status_code=exc.status_code,
         detail={"code": exc.code, "message": str(exc)},
     )
+
+
+@router.get(
+    "/procedure-catalog/odontogram-clinical-batch/preview",
+    response_model=PlatformClinicalCatalogPreviewResponse,
+)
+def preview_platform_odontogram_clinical_batch_endpoint(
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+) -> PlatformClinicalCatalogPreviewResponse:
+    try:
+        return preview_platform_odontogram_clinical_catalog(session, context)
+    except PlatformError as exc:
+        raise handle(exc)
+
+
+@router.post(
+    "/procedure-catalog/odontogram-clinical-batch/apply",
+    response_model=PlatformClinicalCatalogApplyResponse,
+)
+def apply_platform_odontogram_clinical_batch_endpoint(
+    payload: PlatformClinicalCatalogApplyRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[
+        AuthContext, Depends(require_permission("platform.companies.manage"))
+    ],
+) -> PlatformClinicalCatalogApplyResponse:
+    try:
+        return apply_platform_odontogram_clinical_catalog(
+            session, context, payload, get_request_metadata(request)
+        )
+    except PlatformError as exc:
+        raise handle(exc)
 
 
 @router.get(
