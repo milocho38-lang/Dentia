@@ -130,7 +130,7 @@ SQL
 }
 
 deploy_assert_pre_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261021_0051}"
+  local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261102_0052}"
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected pre-deploy Alembic revision: $revision (expected $expected)."
@@ -148,7 +148,7 @@ deploy_assert_current_account_identity_invariants() {
 }
 
 deploy_assert_post_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261102_0052}"
+  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261108_0056}"
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected post-deploy Alembic revision: $revision (expected $expected)."
@@ -212,7 +212,7 @@ deploy_validate_recovery_baseline() {
   local clinical_live="$STATE_DIR/deploy_recovery_clinical_permissions_live_${TARGET_SHA}.tsv"
   [ -d "$backup" ] || dentia_fail "Recovery backup directory is missing: $backup"
   "$SCRIPT_DIR/verify_dentia_backup.sh" "$backup" >/dev/null
-  local expected_backup_revision="${DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION:-20261021_0051}"
+  local expected_backup_revision="${DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION:-20261102_0052}"
   grep -Eq '"alembic_revision"[[:space:]]*:[[:space:]]*"'"$expected_backup_revision"'"' "$backup/manifest.json" || \
     dentia_fail "Recovery backup is not from the required pre-migration revision $expected_backup_revision."
   RESTORE_SUFFIX="$(date -u +%Y%m%d_%H%M%S)_$$"
@@ -386,7 +386,7 @@ dentia_assert_storage_path_safe "$HOST_STORAGE_ROOT"
 [ -w "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is not writable: $HOST_STORAGE_ROOT"
 
 if [ -n "$RECOVERY_BACKUP" ]; then
-  EXPECTED_RECOVERY_REVISION="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261102_0052}"
+  EXPECTED_RECOVERY_REVISION="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261108_0056}"
   [ "${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-}" = "$EXPECTED_RECOVERY_REVISION" ] || \
     dentia_fail "Recovery requires the explicit migrated revision guard."
   [ "$(deploy_current_revision)" = "$EXPECTED_RECOVERY_REVISION" ] || \
