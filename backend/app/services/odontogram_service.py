@@ -575,6 +575,45 @@ def _replace_details(
     for detail in details:
         catalog = _catalog_item(session, context, detail.catalog_item_id)
         _validate_detail(detail, catalog)
+        if catalog.code == "FIND_ENDO_DEFECTIVE":
+            prior_raw = (detail.metadata or {}).get("prior_done_endo_event_id")
+            try:
+                prior_id = UUID(str(prior_raw))
+            except (TypeError, ValueError, AttributeError):
+                raise OdontogramError(
+                    "La endodoncia defectuosa debe vincular una endodoncia realizada previa.",
+                    422,
+                ) from None
+            prior = session.scalar(select(OdontogramEvent).where(
+                OdontogramEvent.id == prior_id,
+                OdontogramEvent.company_id == context.user.company_id,
+                OdontogramEvent.patient_id == event.patient_id,
+                OdontogramEvent.status == "CONFIRMED",
+                OdontogramEvent.event_type == "PROCEDURE_PERFORMED",
+            ))
+            prior_details = [] if prior is None else session.scalars(
+                select(OdontogramEventDetail).where(OdontogramEventDetail.event_id == prior.id)
+            ).all()
+            prior_catalog = (
+                session.get(OdontogramCatalogItem, prior_details[0].catalog_item_id)
+                if len(prior_details) == 1
+                else None
+            )
+            if (
+                prior is None
+                or len(prior_details) != 1
+                or prior_catalog is None
+                or prior_catalog.code != "DONE_ENDO"
+                or not prior_catalog.is_active
+                or prior_details[0].layer != "PERFORMED"
+                or prior_details[0].scope_type != "TOOTH"
+                or prior_details[0].tooth_code != detail.tooth_code
+                or prior_details[0].surfaces not in (None, [])
+            ):
+                raise OdontogramError(
+                    "La endodoncia previa debe ser un evento realizado confirmado con un único detalle realizado de pieza completa.",
+                    409,
+                )
         dentition = detail.dentition or _tooth_dentition(detail.tooth_code)
         session.add(
             OdontogramEventDetail(

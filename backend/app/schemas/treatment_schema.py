@@ -56,6 +56,7 @@ PROCEDURE_ODONTOGRAM_BEHAVIORS = {
     "NO_CHANGE",
     "OPTIONAL_DIAGNOSIS",
     "REQUIRES_DIAGNOSIS",
+    "PLANNED_RESULT",
 }
 PROCEDURE_DIAGNOSIS_MODES = {"NONE", "CREATE_NEW", "USE_EXISTING"}
 
@@ -290,6 +291,7 @@ class ProcedureResponse(BaseModel):
     site_name: str | None
     appointment_id: UUID | None
     source_odontogram_event_id: UUID | None = None
+    planned_odontogram_event_id: UUID | None = None
     unit_value: Decimal
     quantity: Decimal
     total_value: Decimal
@@ -313,7 +315,12 @@ class ProcedureWithDiagnosisCreateRequest(ProcedureCreateRequest):
     existing_odontogram_event_id: UUID | None = None
     dentition: str = "PERMANENT"
     diagnosis_observation: str | None = Field(default=None, max_length=3000)
+    diagnosis_scope_type: str | None = None
+    diagnosis_zone: str | None = Field(default=None, max_length=40)
+    diagnosis_tooth: str | None = Field(default=None, max_length=30)
+    diagnosis_surfaces: list[str] | None = None
     allow_existing_duplicate: bool = False
+    prior_implant_event_id: UUID | None = None
 
     @field_validator("idempotency_key", "diagnosis_observation")
     @classmethod
@@ -336,6 +343,16 @@ class ProcedureWithDiagnosisCreateRequest(ProcedureCreateRequest):
         normalized = value.strip().upper()
         if normalized not in {"PERMANENT", "PRIMARY", "SUPERNUMERARY"}:
             raise ValueError("Dentición no válida.")
+        return normalized
+
+    @field_validator("diagnosis_scope_type")
+    @classmethod
+    def valid_diagnosis_scope_type(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if normalized not in PROCEDURE_SCOPE_TYPES:
+            raise ValueError("Tipo de alcance diagnóstico no válido.")
         return normalized
 
 
@@ -387,6 +404,14 @@ class ProcedureClinicalCompletionRequest(BaseModel):
         normalized = value.strip().upper()
         if normalized not in PROCEDURE_SCOPE_TYPES:
             raise ValueError("Tipo de alcance dental no válido.")
+        return normalized
+
+    @field_validator("dentition")
+    @classmethod
+    def valid_completion_dentition(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"PERMANENT", "PRIMARY"}:
+            raise ValueError("Dentición no válida.")
         return normalized
 
     @field_validator("zone")
@@ -655,6 +680,7 @@ class ProcedureCatalogItemResponse(BaseModel):
     allowed_diagnosis_catalog_item_ids: list[UUID]
     allowed_diagnoses: list[dict] = Field(default_factory=list)
     default_performed_catalog_item_id: UUID | None
+    default_performed_code: str | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -663,6 +689,51 @@ class ProcedureCatalogItemResponse(BaseModel):
 class ProcedureCatalogListResponse(BaseModel):
     items: list[ProcedureCatalogItemResponse]
     total: int
+
+
+class OdontogramResinCatalogCollisionResponse(BaseModel):
+    existing_id: UUID
+    existing_name: str
+    existing_value: str | None
+    source_row: int
+    source_name: str
+
+
+class OdontogramResinCatalogPreviewResponse(BaseModel):
+    would_insert: int
+    collisions: list[OdontogramResinCatalogCollisionResponse]
+    currency: str
+    catalog_version: str
+    manifest_sha256: str
+
+
+class OdontogramResinCatalogApplyRequest(BaseModel):
+    expected_catalog_version: str = Field(min_length=1, max_length=160)
+    expected_manifest_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+    confirmation: str = Field(pattern="^APPLY_ODONTOGRAM_RESIN_BATCH$")
+
+
+class OdontogramResinCatalogApplyResponse(BaseModel):
+    inserted: int
+    skipped_collisions: int
+    diagnosis_links: int
+    currency: str
+    catalog_version: str
+    manifest_sha256: str
+
+
+class OdontogramClinicalCatalogPreviewResponse(OdontogramResinCatalogPreviewResponse):
+    pass
+
+
+class OdontogramClinicalCatalogApplyRequest(BaseModel):
+    expected_catalog_version: str = Field(min_length=1, max_length=160)
+    expected_manifest_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+    confirmation: str = Field(pattern="^APPLY_ODONTOGRAM_CLINICAL_83$")
+
+
+class OdontogramClinicalCatalogApplyResponse(OdontogramResinCatalogApplyResponse):
+    pass
 
 
 class BudgetCreateRequest(BaseModel):

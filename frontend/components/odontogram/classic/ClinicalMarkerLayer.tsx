@@ -46,7 +46,7 @@ export function AnatomicalClinicalMarkerLayer({ markers }: { markers: ClinicalMa
               ry={geometry.ry}
               fill="none"
               stroke={marker.stroke}
-              strokeDasharray="4 3"
+              strokeDasharray={marker.status === "PLANNED" ? "4 3" : undefined}
               strokeWidth="2.8"
             />
           );

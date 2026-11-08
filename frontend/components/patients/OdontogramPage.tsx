@@ -122,6 +122,7 @@ export function OdontogramPage({
   const [message, setMessage] = useState<string | null>(null);
   const [eventType, setEventType] = useState(EVENT_OPTIONS[1].eventType);
   const [catalogItemId, setCatalogItemId] = useState("");
+  const [priorEndodonticEventId, setPriorEndodonticEventId] = useState("");
   const [observation, setObservation] = useState("");
   const [saveAsConfirmed, setSaveAsConfirmed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -228,6 +229,31 @@ export function OdontogramPage({
     () => catalog.filter((item) => item.type === selectedOption.catalogType),
     [catalog, selectedOption.catalogType],
   );
+  const requiresPriorEndodonticEvent = catalog.find((item) => item.id === catalogItemId)?.code === "FIND_ENDO_DEFECTIVE";
+  const priorEndodonticOptions = useMemo(() => history.filter((event) => {
+    if (event.status !== "CONFIRMED" || event.event_type !== "PROCEDURE_PERFORMED" || event.details.length !== 1) return false;
+    const detail = event.details[0];
+    return detail.catalog_code === "DONE_ENDO" && detail.layer === "PERFORMED" && detail.scope_type === "TOOTH" && detail.tooth_code === selectedTooth && !(detail.surfaces?.length);
+  }).map((event) => ({ id: event.id, label: `Endodoncia realizada · ${new Date(event.clinical_date).toLocaleDateString("es")}` })), [history, selectedTooth]);
+  const hasValidPriorEndodonticEvent = priorEndodonticOptions.some(
+    (item) => item.id === priorEndodonticEventId,
+  );
+
+  useEffect(() => {
+    setPriorEndodonticEventId("");
+  }, [patientId, selectedTooth, catalogItemId]);
+
+  useEffect(() => {
+    if (priorEndodonticEventId && !hasValidPriorEndodonticEvent) {
+      setPriorEndodonticEventId("");
+    }
+  }, [hasValidPriorEndodonticEvent, priorEndodonticEventId]);
+
+  useEffect(() => {
+    if (requiresPriorEndodonticEvent && selectedSurfaces.length) {
+      setSelectedSurfaces([]);
+    }
+  }, [requiresPriorEndodonticEvent, selectedSurfaces.length]);
 
   useEffect(() => {
     if (!availableCatalog.some((item) => item.id === catalogItemId)) {
@@ -264,10 +290,14 @@ export function OdontogramPage({
       setError("Selecciona un elemento del catálogo.");
       return;
     }
+    if (requiresPriorEndodonticEvent && !hasValidPriorEndodonticEvent) {
+      setError("Selecciona la endodoncia realizada previa que presenta el defecto.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
-    const useSurfaces = selectedSurfaces.length > 0;
+    const useSurfaces = !requiresPriorEndodonticEvent && selectedSurfaces.length > 0;
     const payload: OdontogramEventInput = {
       event_type: eventType,
       status: saveAsConfirmed ? "CONFIRMED" : "DRAFT",
@@ -280,6 +310,9 @@ export function OdontogramPage({
           dentition: toothDentition(selectedTooth),
           surfaces: useSurfaces ? selectedSurfaces : null,
           layer: selectedOption.layer,
+          metadata: requiresPriorEndodonticEvent
+            ? { prior_done_endo_event_id: priorEndodonticEventId }
+            : null,
         },
       ],
     };
@@ -287,6 +320,7 @@ export function OdontogramPage({
       await createOdontogramEvent(patientId, payload);
       setObservation("");
       setSelectedSurfaces([]);
+      setPriorEndodonticEventId("");
       setMessage(saveAsConfirmed ? "Evento confirmado." : "Borrador guardado.");
       await load();
       await loadHistory();
@@ -522,6 +556,10 @@ export function OdontogramPage({
                   eventType={eventType}
                   catalogItemId={catalogItemId}
                   availableCatalog={availableCatalog}
+                  priorEndodonticOptions={priorEndodonticOptions}
+                  priorEndodonticEventId={priorEndodonticEventId}
+                  requiresPriorEndodonticEvent={requiresPriorEndodonticEvent}
+                  canViewHistory={hasPermission("odontogram.history")}
                   observation={observation}
                   saveAsConfirmed={saveAsConfirmed}
                   saving={saving}
@@ -530,6 +568,7 @@ export function OdontogramPage({
                   closeButtonRef={drawerCloseButtonRef}
                   onClose={closeClinicalDrawer}
                   onToggleSurface={(value) => {
+                    if (requiresPriorEndodonticEvent) return;
                     setSelectedSurfaces((prev) =>
                       prev.includes(value)
                         ? prev.filter((surface) => surface !== value)
@@ -538,6 +577,7 @@ export function OdontogramPage({
                   }}
                   onEventTypeChange={setEventType}
                   onCatalogItemChange={setCatalogItemId}
+                  onPriorEndodonticEventChange={setPriorEndodonticEventId}
                   onObservationChange={setObservation}
                   onSaveAsConfirmedChange={setSaveAsConfirmed}
                   onSaveEvent={saveEvent}

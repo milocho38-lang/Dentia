@@ -25,8 +25,13 @@ export function AnatomicalToothView({ viewModel }: { viewModel: DualClinicalToot
   const crown = structuralMarkers.find((marker) => marker.kind === "CROWN");
   const veneer = structuralMarkers.find((marker) => marker.kind === "VENEER");
   const implant = structuralMarkers.find((marker) => marker.kind === "IMPLANT");
-  const endodontics = structuralMarkers.find((marker) => marker.kind === "ENDODONTICS");
+  const post = structuralMarkers.find((marker) => marker.kind === "POST");
+  const endodontics = structuralMarkers.find(
+    (marker) => marker.kind === "ENDODONTICS" && marker.variant === "DEFECTIVE_ZIGZAG",
+  ) ?? structuralMarkers.find((marker) => marker.kind === "ENDODONTICS");
   const missing = isAbsent;
+  const absentMarker = structuralMarkers.find((marker) => marker.kind === "ABSENT" || marker.kind === "EXTRACTION");
+  const absentStroke = absentMarker?.stroke ?? "#94A3B8";
 
   return (
     <svg
@@ -51,7 +56,17 @@ export function AnatomicalToothView({ viewModel }: { viewModel: DualClinicalToot
       />
       {!missing && <path d={crownPath(model.family)} fill="#FFFFFF" fillOpacity="0.42" stroke="#CBD5E1" strokeWidth="0.8" />}
       {!missing && <AnatomicalClinicalMarkerLayer markers={surfaceMarkers} />}
-      {crown && !missing && <path d={crownPath(model.family)} fill={crown.color} fillOpacity="0.9" stroke={crown.stroke} strokeWidth="1.8" />}
+      {crown && !missing && (
+        <ellipse
+          cx="50"
+          cy="49"
+          rx="31"
+          ry="43"
+          fill="none"
+          stroke={crown.stroke}
+          strokeWidth="3"
+        />
+      )}
       {veneer && !crown && !missing && (
         <path
           d={crownPath(model.family)}
@@ -62,7 +77,14 @@ export function AnatomicalToothView({ viewModel }: { viewModel: DualClinicalToot
           strokeWidth="1.8"
         />
       )}
-      {endodontics && !missing && (
+      {endodontics && !missing && endodontics.variant === "DEFECTIVE_ZIGZAG" && (
+        <g stroke={endodontics.stroke} strokeLinecap="round" strokeLinejoin="round" fill="none">
+          <path d="M50 20 L46 30 L53 40 L47 50 L53 60 L47 70 L50 86" strokeWidth="3.2" />
+          {model.family === "MOLAR" && <path d="M42 28 L38 38 L43 48 L37 58 L41 68 L37 77" strokeWidth="2.6" />}
+          {model.family !== "INCISOR" && <path d="M58 28 L62 38 L57 48 L63 58 L59 68 L63 77" strokeWidth="2.6" />}
+        </g>
+      )}
+      {endodontics && !missing && endodontics.variant !== "DEFECTIVE_ZIGZAG" && (
         <g stroke={endodontics.stroke} strokeLinecap="round" fill="none">
           <path d="M50 20 C49 38 49 59 50 86" strokeWidth="3.2" />
           {model.family === "MOLAR" && <path d="M42 28 C40 46 39 60 37 77" strokeWidth="2.6" />}
@@ -75,7 +97,13 @@ export function AnatomicalToothView({ viewModel }: { viewModel: DualClinicalToot
           <path d="M43 68 H57 M42 76 H58 M41 84 H59" strokeWidth="1.4" />
         </g>
       )}
-      {missing && <path d="M32 24 L68 72 M68 24 L32 72" stroke="#94A3B8" strokeLinecap="round" strokeWidth="2" />}
+      {post && !missing && (
+        <g stroke={post.stroke} fill="none" strokeLinecap="round">
+          <path d="M50 24 L50 74" strokeWidth="5" strokeDasharray={post.status === "PLANNED" ? "5 4" : undefined} />
+          <path d="M42 27 H58" strokeWidth="4" />
+        </g>
+      )}
+      {missing && <path d="M32 24 L68 72 M68 24 L32 72" stroke={absentStroke} strokeLinecap="round" strokeWidth="3" />}
     </svg>
   );
 }

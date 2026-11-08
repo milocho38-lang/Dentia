@@ -3,17 +3,20 @@ import { getSurfaceOrientation, normalizeSurfaceForTooth, surfaceToRole } from "
 import type { ClinicalLocalization, ClinicalMarker, DualClinicalEvent, DualClinicalToothModel, DualClinicalToothViewModel, ToothSurface } from "./types";
 
 function markerPattern(event: DualClinicalEvent): ClinicalMarker["pattern"] {
+  if (event.kind === "PULPOTOMY") return "OUTLINE";
   if (event.kind === "ABSENT") return "DASHED";
   if (event.kind === "FRACTURE") return "LINE";
   if (event.kind === "INFORMATION") return "SYMBOL";
   if (event.status === "PLANNED") return "OUTLINE";
-  if (event.kind === "ENDODONTICS" || event.kind === "IMPLANT") return "SYMBOL";
+  if (event.kind === "ENDODONTICS" || event.kind === "IMPLANT" || event.kind === "POST") return "SYMBOL";
   return "SOLID";
 }
 
 function markerSymbol(event: DualClinicalEvent) {
   if (event.kind === "ENDODONTICS") return "∿";
   if (event.kind === "IMPLANT") return "⌁";
+  if (event.kind === "POST") return "P|";
+  if (event.kind === "PULPOTOMY") return "○";
   if (event.kind === "FRACTURE") return "Ⅱ";
   if (event.kind === "ABSENT" || event.kind === "EXTRACTION") return "×";
   if (event.kind === "CROWN") return "♛";
@@ -33,6 +36,10 @@ function eventLocalization(event: DualClinicalEvent): ClinicalLocalization {
 
 function eventColors(event: DualClinicalEvent) {
   const localization = eventLocalization(event);
+  if (event.status === "PLANNED" && ["PLAN_CROWN", "PLAN_IMPLANT", "PLAN_ENDO", "PLAN_POST", "PLAN_EXTRACTION", "PLAN_VENEER", "PLAN_RESIN"].includes(event.sourceCode ?? "")) {
+    return STATUS_COLORS.DIAGNOSIS;
+  }
+  if (event.sourceCode === "DONE_EXTRACTION") return STATUS_COLORS.COMPLETED;
   if (event.kind === "ABSENT") return CLASSIC_COLORS.ABSENT;
   if (event.kind === "INFORMATION" || localization === "NON_SURFACE") return CLASSIC_COLORS.INFORMATION;
   return STATUS_COLORS[event.status] ?? CLASSIC_COLORS[event.kind];
@@ -46,6 +53,7 @@ function eventSurfaces(event: DualClinicalEvent, model: DualClinicalToothModel):
     return event.surfaces.map((surface) => normalizeSurfaceForTooth(surface, orientation));
   }
   if (event.kind === "ENDODONTICS") return ["PULPAL_RADICULAR"];
+  if (event.kind === "POST") return ["WHOLE_TOOTH"];
   if (WHOLE_TOOTH_EVENT_KINDS.includes(event.kind)) return ["WHOLE_TOOTH"];
   return [];
 }
@@ -66,6 +74,7 @@ function createMarker(event: DualClinicalEvent, model: DualClinicalToothModel, s
     pattern: markerPattern(event),
     symbol: markerSymbol(event),
     localization: eventLocalization(event),
+    variant: event.variant,
   };
 }
 
@@ -84,6 +93,7 @@ function createGeneralMarker(event: DualClinicalEvent): ClinicalMarker {
     pattern: markerPattern(event),
     symbol: event.localization === "SURFACE_UNSPECIFIED" ? "?" : markerSymbol(event),
     localization: eventLocalization(event),
+    variant: event.variant,
   };
 }
 

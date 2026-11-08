@@ -23,6 +23,10 @@ export type DentalInspectorProps = {
   eventType: string;
   catalogItemId: string;
   availableCatalog: OdontogramCatalogItem[];
+  priorEndodonticOptions: Array<{ id: string; label: string }>;
+  priorEndodonticEventId: string;
+  requiresPriorEndodonticEvent: boolean;
+  canViewHistory: boolean;
   observation: string;
   saveAsConfirmed: boolean;
   saving: boolean;
@@ -33,6 +37,7 @@ export type DentalInspectorProps = {
   onToggleSurface: (surface: string) => void;
   onEventTypeChange: (value: string) => void;
   onCatalogItemChange: (value: string) => void;
+  onPriorEndodonticEventChange: (value: string) => void;
   onObservationChange: (value: string) => void;
   onSaveAsConfirmedChange: (value: boolean) => void;
   onSaveEvent: () => void;

@@ -1,0 +1,14 @@
+{
+  "catalog_version":"KIMBERLY-2026-11-08-ODONTOGRAM-ESTHETIC-4-DRAFT",
+  "source_sha256":"1d77bd1c0723fdfaf05e57f78dd4aed15f04eabc95797a2f7589b1446c8de5df",
+  "source_sheet":"prestaciones ",
+  "reconciliation_sha256":"10f0e7cbe0fedd2666ee4dba730b991a080c7ce5e2322f8397f3253de32f02a4",
+  "currency_policy":{"source_currency":"CLP","clp_to_cop_rate":"3.291243","rounding":"NEAREST_1000_COP_HALF_UP","runtime_conversion":false},
+  "execution":{"connected_to_runtime":false,"onboarding_enabled":false,"backfill_api_enabled":false,"cli_apply_enabled":false,"production_authorized":false},
+  "items":[
+    {"source_row":9,"name":"Diseño de Sonrisa 6 dientes RC","source_note":"carillas en rojo","source_scope":"por diente","source_price_clp":"540000","fixed_price_cop":"1777000","family":"VENEER_MULTI_TARGET","suggested_scope_type":"ZONE","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_VENEER","default_performed_code":"DONE_VENEER","graphical_targets":{"dentition":"PERMANENT","teeth":["11","12","13","21","22","23"]},"billing_multiplier":1},
+    {"source_row":302,"name":"Carillas directas","source_note":"carillas en rojo","source_scope":"por diente y cara","source_price_clp":"119000","fixed_price_cop":"392000","family":"VENEER","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_VENEER","default_performed_code":"DONE_VENEER"},
+    {"source_row":304,"name":"Cierre de diastema (por sesión)","source_note":"resinas en rojo","source_scope":"por diente y cara","source_price_clp":"60000","fixed_price_cop":"197000","family":"DIASTEMA_RESTORATION","suggested_scope_type":"TOOTH_SURFACE","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_RESIN","default_performed_code":"DONE_RESIN","diagnosis_mode":"NONE"},
+    {"source_row":478,"name":"Carillas indirectas (cualquier tipo o material)","source_note":"carilla en rojo","source_scope":"diente y cara, zona ","source_price_clp":"237000","fixed_price_cop":"780000","family":"VENEER","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_VENEER","default_performed_code":"DONE_VENEER"}
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "catalog_version": "KIMBERLY-2026-11-08-ODONTOGRAM-PLANNED-13-DRAFT",
+  "source_sha256": "1d77bd1c0723fdfaf05e57f78dd4aed15f04eabc95797a2f7589b1446c8de5df",
+  "source_sheet": "prestaciones ",
+  "reconciliation_sha256": "10f0e7cbe0fedd2666ee4dba730b991a080c7ce5e2322f8397f3253de32f02a4",
+  "currency_policy": {
+    "source_currency": "CLP",
+    "clp_to_cop_rate": "3.291243",
+    "rounding": "NEAREST_1000_COP_HALF_UP",
+    "runtime_conversion": false
+  },
+  "execution": {
+    "connected_to_runtime": false,
+    "onboarding_enabled": false,
+    "backfill_api_enabled": false,
+    "cli_apply_enabled": false,
+    "production_authorized": false
+  },
+  "items": [
+    {"source_row":6,"name":"Corona Ceromero","source_note":"corona en jo","source_scope":"por diente","source_price_clp":"170000","fixed_price_cop":"560000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":231,"name":"Implante","source_note":"implante rojo","source_scope":"por diente","source_price_clp":"300000","fixed_price_cop":"987000","family":"IMPLANT","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_IMPLANT","default_performed_code":"DONE_IMPLANT"},
+    {"source_row":260,"name":"Corona metalica preformada en pieza temporal","source_note":"corona en rojo","source_scope":"por diente y cara ","source_price_clp":"55000","fixed_price_cop":"181000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":261,"name":"Coronas de resinas con anclaje sector anterior en pieza temporal","source_note":"coronas en rojo","source_scope":"por diente y cara ","source_price_clp":"33000","fixed_price_cop":"109000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":305,"name":"Corona de ceromero muñon vital","source_note":"corona en rojo","source_scope":"por diente  ","source_price_clp":"103000","fixed_price_cop":"339000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":308,"name":"Incrustación Inlay (Cerómero, cerámica y/o porcelana)","source_note":"como corona en rojo","source_scope":"por diente y cara","source_price_clp":"90000","fixed_price_cop":"296000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":309,"name":"Incrustación Onlay u Overlay (Resina, cerámica y/o porcelana)","source_note":"como corona en rojo","source_scope":"por diente y cara","source_price_clp":"150000","fixed_price_cop":"494000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":310,"name":"Incrustación Onlay u Overlay metálico","source_note":"como corona en rojo","source_scope":"por diente y cara","source_price_clp":"82000","fixed_price_cop":"270000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":480,"name":"Corona Porcelana dientes anteriores y premolares","source_note":"corona en rojo","source_scope":"por diente","source_price_clp":"270000","fixed_price_cop":"889000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":481,"name":"Corona Porcelana Molares","source_note":"corona en rojo","source_scope":"por diente","source_price_clp":"280000","fixed_price_cop":"922000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":493,"name":"Incrustación metálica como inserción en Prótesis fija Plural","source_note":"corona en rojo","source_scope":"diente y cara","source_price_clp":"119000","fixed_price_cop":"392000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":517,"name":"Prótesis fija o Corona de porcelana sobre metal","source_note":"corona en rojo","source_scope":"diente ","source_price_clp":"210000","fixed_price_cop":"691000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"},
+    {"source_row":518,"name":"Prótesis fija o Corona metálica completa o 3/4","source_note":"corona en rojo","source_scope":"diente ","source_price_clp":"141000","fixed_price_cop":"464000","family":"CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN"}
+  ]
+}

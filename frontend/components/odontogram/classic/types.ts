@@ -17,6 +17,8 @@ export type ClinicalEventKind =
   | "CROWN"
   | "VENEER"
   | "IMPLANT"
+  | "POST"
+  | "PULPOTOMY"
   | "FRACTURE"
   | "EXTRACTION"
   | "ABSENT"
@@ -41,6 +43,7 @@ export type DualClinicalEvent = {
   sourceCode?: string;
   sourceName?: string;
   unmapped?: boolean;
+  variant?: "DEFECTIVE_ZIGZAG";
 };
 
 export type ToothDentition = "PERMANENT" | "PRIMARY";
@@ -90,6 +93,7 @@ export type ClinicalMarker = {
   pattern: "SOLID" | "OUTLINE" | "DASHED" | "LINE" | "SYMBOL";
   symbol: string;
   localization: ClinicalLocalization;
+  variant?: "DEFECTIVE_ZIGZAG";
 };
 
 export type DualClinicalToothViewModel = {

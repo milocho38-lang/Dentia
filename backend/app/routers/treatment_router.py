@@ -16,6 +16,12 @@ from app.schemas.treatment_schema import (
     FinanceBreakdownResponse,
     FinanceDashboardResponse,
     LinkProcedureAppointmentRequest,
+    OdontogramClinicalCatalogApplyRequest,
+    OdontogramClinicalCatalogApplyResponse,
+    OdontogramClinicalCatalogPreviewResponse,
+    OdontogramResinCatalogApplyRequest,
+    OdontogramResinCatalogApplyResponse,
+    OdontogramResinCatalogPreviewResponse,
     PatientBalancesResponse,
     PaymentCreateRequest,
     PaymentListResponse,
@@ -41,6 +47,8 @@ from app.schemas.treatment_schema import (
 from app.services.auth_service import AuthContext
 from app.services.treatment_service import (
     TreatmentError,
+    apply_authenticated_odontogram_clinical_catalog,
+    apply_authenticated_odontogram_resin_catalog,
     cancel_procedure,
     change_procedure_catalog_status,
     change_budget_status,
@@ -72,6 +80,8 @@ from app.services.treatment_service import (
     list_treatments,
     mark_procedure_done,
     patient_balances,
+    preview_authenticated_odontogram_clinical_catalog,
+    preview_authenticated_odontogram_resin_catalog,
     reverse_payment,
     update_budget,
     update_procedure,
@@ -116,6 +126,76 @@ def create_procedure_catalog_endpoint(
 ) -> ProcedureCatalogItemResponse:
     try:
         return create_procedure_catalog_item(
+            session,
+            context,
+            payload,
+            get_request_metadata(request),
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.get(
+    "/api/procedure-catalog/odontogram-resin-batch/preview",
+    response_model=OdontogramResinCatalogPreviewResponse,
+)
+def preview_odontogram_resin_batch_endpoint(
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.manage"))],
+) -> OdontogramResinCatalogPreviewResponse:
+    try:
+        return preview_authenticated_odontogram_resin_catalog(session, context)
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.post(
+    "/api/procedure-catalog/odontogram-resin-batch/apply",
+    response_model=OdontogramResinCatalogApplyResponse,
+)
+def apply_odontogram_resin_batch_endpoint(
+    payload: OdontogramResinCatalogApplyRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.manage"))],
+) -> OdontogramResinCatalogApplyResponse:
+    try:
+        return apply_authenticated_odontogram_resin_catalog(
+            session,
+            context,
+            payload,
+            get_request_metadata(request),
+        )
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.get(
+    "/api/procedure-catalog/odontogram-clinical-batch/preview",
+    response_model=OdontogramClinicalCatalogPreviewResponse,
+)
+def preview_odontogram_clinical_batch_endpoint(
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.manage"))],
+) -> OdontogramClinicalCatalogPreviewResponse:
+    try:
+        return preview_authenticated_odontogram_clinical_catalog(session, context)
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.post(
+    "/api/procedure-catalog/odontogram-clinical-batch/apply",
+    response_model=OdontogramClinicalCatalogApplyResponse,
+)
+def apply_odontogram_clinical_batch_endpoint(
+    payload: OdontogramClinicalCatalogApplyRequest,
+    request: Request,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("procedure_catalog.manage"))],
+) -> OdontogramClinicalCatalogApplyResponse:
+    try:
+        return apply_authenticated_odontogram_clinical_catalog(
             session,
             context,
             payload,

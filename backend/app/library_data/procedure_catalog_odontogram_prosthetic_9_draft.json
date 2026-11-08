@@ -1,0 +1,19 @@
+{
+  "catalog_version": "KIMBERLY-2026-11-08-ODONTOGRAM-PROSTHETIC-9-DRAFT",
+  "source_sha256": "1d77bd1c0723fdfaf05e57f78dd4aed15f04eabc95797a2f7589b1446c8de5df",
+  "source_sheet": "prestaciones ",
+  "reconciliation_sha256": "10f0e7cbe0fedd2666ee4dba730b991a080c7ce5e2322f8397f3253de32f02a4",
+  "currency_policy": {"source_currency":"CLP","clp_to_cop_rate":"3.291243","rounding":"NEAREST_1000_COP_HALF_UP","runtime_conversion":false},
+  "execution": {"connected_to_runtime":false,"onboarding_enabled":false,"backfill_api_enabled":false,"cli_apply_enabled":false,"production_authorized":false},
+  "items": [
+    {"source_row":197,"name":"Pulpotomía en pieza permanente joven (parcial o total)","source_note":"se marca como obturacion oclusal","source_scope":"por diente ","source_price_clp":"55000","fixed_price_cop":"181000","family":"PULPOTOMY","suggested_scope_type":"TOOTH","odontogram_behavior":"OPTIONAL_DIAGNOSIS","default_performed_code":"DONE_PULPOTOMY"},
+    {"source_row":228,"name":"Corona Sobre Implante","source_note":"se marca la corona en rojo, implante en azul","source_scope":"por diente","source_price_clp":"350000","fixed_price_cop":"1152000","family":"IMPLANT_CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN","requires_prior_code":"DONE_IMPLANT"},
+    {"source_row":229,"name":"Corona Sobre Implante (Otra marca)","source_note":"se marca la corona en rojo, implante en azul","source_scope":"por diente","source_price_clp":"400000","fixed_price_cop":"1316000","family":"IMPLANT_CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN","requires_prior_code":"DONE_IMPLANT"},
+    {"source_row":303,"name":"Cementación y colocación de perno técnica adhesiva","source_note":"colocar un perno en rojo","source_scope":"por diente  ","source_price_clp":"55000","fixed_price_cop":"181000","family":"POST","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_POST","default_performed_code":"DONE_POST"},
+    {"source_row":482,"name":"Corona provisoria sobre implante","source_note":"corona en rojo","source_scope":"por diente","source_price_clp":"57000","fixed_price_cop":"188000","family":"IMPLANT_CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN","requires_prior_code":"DONE_IMPLANT"},
+    {"source_row":487,"name":"Espiga muñón colado bipartito o pasante","source_note":"perno rojo","source_scope":"diente ","source_price_clp":"87000","fixed_price_cop":"286000","family":"POST","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_POST","default_performed_code":"DONE_POST"},
+    {"source_row":488,"name":"Espiga muñón colado simple","source_note":"perno rojo","source_scope":"diente ","source_price_clp":"76000","fixed_price_cop":"250000","family":"POST","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_POST","default_performed_code":"DONE_POST"},
+    {"source_row":489,"name":"Espiga muñón preformado o postes de fibra de vidrio","source_note":"perno rojo","source_scope":"diente ","source_price_clp":"99000","fixed_price_cop":"326000","family":"POST","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_POST","default_performed_code":"DONE_POST"},
+    {"source_row":519,"name":"Protesis fija sobre implante atornillada o cementada","source_note":"corona en rojo","source_scope":"diente ","source_price_clp":"271000","fixed_price_cop":"892000","family":"IMPLANT_CROWN","suggested_scope_type":"TOOTH","odontogram_behavior":"PLANNED_RESULT","planned_code":"PLAN_CROWN","default_performed_code":"DONE_CROWN","requires_prior_code":"DONE_IMPLANT"}
+  ]
+}

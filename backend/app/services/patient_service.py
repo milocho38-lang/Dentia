@@ -272,7 +272,6 @@ def check_duplicates(
         if payload.document_type == "Sin documento"
         else normalize_document(payload.document)
     )
-    normalized_mobile = normalize_phone(payload.mobile)
     normalized_name = normalize_text(
         f"{payload.first_names} {payload.last_names}"
     )
@@ -289,7 +288,6 @@ def check_duplicates(
                     Patient.normalized_document == normalized_doc
                     if normalized_doc
                     else False,
-                    Patient.normalized_mobile == normalized_mobile,
                     Patient.search_text.ilike(
                         f"%{normalize_text(payload.first_names)}%"
                     ),
@@ -322,8 +320,6 @@ def check_duplicates(
             and candidate.birth_date == payload.birth_date
         ):
             reasons.append("Fecha de nacimiento coincidente")
-        if normalized_mobile and candidate.normalized_mobile == normalized_mobile:
-            reasons.append("Celular compartido")
         if reasons:
             approximate.append(_duplicate_candidate(candidate, reasons))
     return DuplicateCheckResponse(exact=exact, approximate=approximate)

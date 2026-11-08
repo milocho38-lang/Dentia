@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const page=readFileSync(new URL("../components/patients/OdontogramPage.tsx",import.meta.url),"utf8");
+const inspector=readFileSync(new URL("../components/odontogram/inspector/DentalInspector.tsx",import.meta.url),"utf8");
+const treatments=readFileSync(new URL("../components/treatments/TreatmentPages.tsx",import.meta.url),"utf8");
+for(const token of ['event.status !== "CONFIRMED"','event.event_type !== "PROCEDURE_PERFORMED"','event.details.length !== 1','detail.catalog_code === "DONE_ENDO"','detail.layer === "PERFORMED"','detail.scope_type === "TOOTH"','detail.tooth_code === selectedTooth','prior_done_endo_event_id: priorEndodonticEventId']) assert.ok(page.includes(token),token);
+assert.ok(inspector.includes('Selecciona un antecedente confirmado'));
+assert.ok(inspector.includes('priorEndodonticOptions.some((item) => item.id === priorEndodonticEventId)'));
+assert.ok(inspector.includes('disabled={requiresPriorEndodonticEvent}'));
+assert.ok(inspector.includes('No tienes permiso para consultar el historial necesario'));
+for(const token of ['const useSurfaces = !requiresPriorEndodonticEvent','setPriorEndodonticEventId("")','if (requiresPriorEndodonticEvent && selectedSurfaces.length)','hasValidPriorEndodonticEvent']) assert.ok(page.includes(token),token);
+for(const token of ['detail.catalog_code === "FIND_ENDO_DEFECTIVE"','requiresResolution ? "RESOLVE_ON_SIGN" : "KEEP_ACTIVE"','!sourceRequiresResolution && <option value="KEEP_ACTIVE"']) assert.ok(treatments.includes(token),token);
+console.log('defective endodontic UI contract: filtering, current-membership validation, tooth-only payload, permission message, reset and forced resolution passed');

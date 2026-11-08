@@ -49,6 +49,9 @@ from app.services.procedure_catalog_seed_service import (
     record_unsupported_country_skip,
     seed_initial_procedure_catalog,
 )
+from app.services.procedure_catalog_odontogram_consolidated_seed_service import (
+    seed_odontogram_consolidated_catalog,
+)
 from app.services.auth_service import AuthContext, RequestMetadata
 from app.services.organization_service import normalize_tax_id
 from app.services.orthodontics_entitlement_service import (
@@ -1024,6 +1027,12 @@ def create_platform_company(
                 raise PlatformError(f"No se pudo preparar el catálogo inicial: {exc}", 422) from exc
         else:
             record_unsupported_country_skip(session, company, admin.id)
+    if settings.procedure_catalog_odontogram_resin_seed_enabled:
+        if optional_company_currency(company.country):
+            try:
+                seed_odontogram_consolidated_catalog(session, company, admin.id)
+            except ProcedureCatalogSeedError as exc:
+                raise PlatformError(f"No se pudo preparar el catálogo clínico de resinas: {exc}", 422) from exc
     now = datetime.now(timezone.utc)
     company.installation_completed_at = now
     _audit(

@@ -22,9 +22,9 @@ from app.models.clinical_record import (
     ClinicalTimelineEvent,
 )
 from app.models.company import Company
-from app.models.odontogram import OdontogramEvent, OdontogramEventDetail
+from app.models.odontogram import OdontogramCatalogItem, OdontogramEvent, OdontogramEventDetail
 from app.models.site import Site
-from app.models.treatment import Treatment, TreatmentProcedure
+from app.models.treatment import ProcedureCatalogDiagnosis, ProcedureCatalogItem, Treatment, TreatmentProcedure
 from app.models.user import User
 from app.schemas.clinical_record_schema import (
     AllergyInput,
@@ -1316,7 +1316,272 @@ def _confirm_reviewed_odontogram_events_for_evolution(
         event.content_hash = _content_hash(_canonical_odontogram_event_payload(session, event))
         confirmed_ids.append(event.id)
 
-        if event.source_odontogram_event_id and event.source_diagnosis_action == "RESOLVE_ON_SIGN":
+        completion_details_for_plan = session.scalars(
+            select(OdontogramEventDetail).where(
+                OdontogramEventDetail.event_id == event.id
+            )
+        ).all()
+        procedure_for_completion = session.scalar(select(TreatmentProcedure).where(
+            TreatmentProcedure.id == event.procedure_id,
+            TreatmentProcedure.company_id == context.user.company_id,
+            TreatmentProcedure.patient_id == evolution.patient_id,
+        ))
+        if procedure_for_completion is None:
+            raise ClinicalRecordError(
+                "El procedimiento de la realización ya no está disponible.", 409
+            )
+        preview_configuration = (
+            session.get(ProcedureCatalogItem, procedure_for_completion.catalog_procedure_id)
+            if procedure_for_completion.catalog_procedure_id else None
+        )
+        preview_targets = (
+            ((preview_configuration.price_provenance or {}).get("graphical_targets") or {})
+            if preview_configuration else {}
+        )
+        preview_teeth = list(preview_targets.get("teeth") or [])
+        expected_detail_count = len(preview_teeth) if preview_teeth else 1
+        if len(completion_details_for_plan) != expected_detail_count:
+            raise ClinicalRecordError(
+                "La realización no contiene todos los detalles clínicos verificables.", 409
+            )
+        if preview_teeth and (
+            {detail.tooth_code for detail in completion_details_for_plan} != set(preview_teeth)
+            or any(
+                detail.scope_type != "TOOTH"
+                or detail.zone is not None
+                or detail.surfaces not in (None, [])
+                or detail.dentition != preview_targets.get("dentition")
+                for detail in completion_details_for_plan
+            )
+        ):
+            raise ClinicalRecordError(
+                "Los objetivos gráficos de la realización múltiple cambiaron.", 409
+            )
+        completion_metadata = completion_details_for_plan[0].detail_metadata or {}
+        configuration_mode = completion_metadata.get("completion_configuration_mode")
+        snapshot_catalog_id = completion_metadata.get("configured_catalog_procedure_id")
+        configured_procedure = None
+        if configuration_mode not in {None, "CATALOG", "MANUAL"}:
+            raise ClinicalRecordError(
+                "El modo de configuración de la realización no es válido. La evolución no fue firmada.", 409
+            )
+        if configuration_mode == "MANUAL":
+            if snapshot_catalog_id or procedure_for_completion.catalog_procedure_id is not None:
+                raise ClinicalRecordError(
+                    "El procedimiento manual cambió su vínculo de catálogo. La evolución no fue firmada.", 409
+                )
+        else:
+            if procedure_for_completion.catalog_procedure_id is None:
+                raise ClinicalRecordError(
+                    "No fue posible comprobar el origen manual o de catálogo de esta realización anterior. "
+                    "La evolución no fue firmada.", 409
+                )
+            if configuration_mode == "CATALOG" and (
+                not snapshot_catalog_id
+                or str(procedure_for_completion.catalog_procedure_id) != snapshot_catalog_id
+            ):
+                raise ClinicalRecordError(
+                    "El catálogo vinculado al procedimiento cambió. La evolución no fue firmada.", 409
+                )
+            configured_procedure = session.scalar(select(ProcedureCatalogItem).where(
+                ProcedureCatalogItem.id == procedure_for_completion.catalog_procedure_id,
+                ProcedureCatalogItem.company_id == context.user.company_id,
+                ProcedureCatalogItem.is_active.is_(True),
+            ))
+            if configured_procedure is None:
+                raise ClinicalRecordError(
+                    "La configuración de catálogo ya no está activa. La evolución no fue firmada.", 409
+                )
+            if any(
+                detail.catalog_item_id != configured_procedure.default_performed_catalog_item_id
+                for detail in completion_details_for_plan
+            ):
+                raise ClinicalRecordError(
+                    "El resultado odontográfico no coincide con el procedimiento. La evolución no fue firmada.",
+                    409,
+                )
+            required_dentition = (configured_procedure.price_provenance or {}).get("required_dentition")
+            if required_dentition and any(
+                detail.dentition != required_dentition
+                for detail in completion_details_for_plan
+            ):
+                raise ClinicalRecordError(
+                    "La dentición realizada no coincide con la configuración del procedimiento. La evolución no fue firmada.",
+                    409,
+                )
+        planned_raw = (
+            (completion_details_for_plan[0].detail_metadata or {}).get(
+                "planned_odontogram_event_id"
+            )
+            if completion_details_for_plan
+            else None
+        )
+        if planned_raw:
+            try:
+                planned_id = UUID(str(planned_raw))
+            except (TypeError, ValueError, AttributeError):
+                raise ClinicalRecordError(
+                    "La realización perdió el vínculo con su marca planificada.", 409
+                ) from None
+            procedure_for_plan = session.scalar(
+                select(TreatmentProcedure).where(
+                    TreatmentProcedure.id == event.procedure_id,
+                    TreatmentProcedure.company_id == context.user.company_id,
+                    TreatmentProcedure.patient_id == evolution.patient_id,
+                    TreatmentProcedure.planned_odontogram_event_id == planned_id,
+                )
+            )
+            planned_event = session.scalar(
+                select(OdontogramEvent).where(
+                    OdontogramEvent.id == planned_id,
+                    OdontogramEvent.company_id == context.user.company_id,
+                    OdontogramEvent.patient_id == evolution.patient_id,
+                    OdontogramEvent.procedure_id == event.procedure_id,
+                    OdontogramEvent.event_type == "PLANNED_PROCEDURE_ADDED",
+                    OdontogramEvent.status == "CONFIRMED",
+                ).with_for_update()
+            )
+            plan_details = [] if planned_event is None else session.scalars(
+                select(OdontogramEventDetail).where(
+                    OdontogramEventDetail.event_id == planned_event.id
+                )
+            ).all()
+            plan_catalog = (
+                session.get(OdontogramCatalogItem, plan_details[0].catalog_item_id)
+                if plan_details
+                else None
+            )
+            result_catalog = session.get(
+                OdontogramCatalogItem,
+                completion_details_for_plan[0].catalog_item_id,
+            )
+            expected_plan_code = {
+                "DONE_CROWN": "PLAN_CROWN",
+                "DONE_IMPLANT": "PLAN_IMPLANT",
+                "DONE_ENDO": "PLAN_ENDO",
+                "DONE_POST": "PLAN_POST",
+                "DONE_EXTRACTION": "PLAN_EXTRACTION",
+                "DONE_VENEER": "PLAN_VENEER",
+                "DONE_RESIN": "PLAN_RESIN",
+            }.get(result_catalog.code if result_catalog else None)
+            plan_scope = (
+                plan_details[0].scope_type,
+                plan_details[0].zone,
+                plan_details[0].tooth_code,
+                tuple(sorted(plan_details[0].surfaces or [])),
+                plan_details[0].dentition,
+            ) if len(plan_details) == 1 else None
+            result_scope = (
+                completion_details_for_plan[0].scope_type,
+                completion_details_for_plan[0].zone,
+                completion_details_for_plan[0].tooth_code,
+                tuple(sorted(completion_details_for_plan[0].surfaces or [])),
+                completion_details_for_plan[0].dentition,
+            )
+            multi_scope_matches = bool(
+                preview_teeth
+                and len(plan_details) == len(preview_teeth)
+                and {detail.tooth_code for detail in plan_details} == set(preview_teeth)
+                and {detail.tooth_code for detail in completion_details_for_plan} == set(preview_teeth)
+                and all(
+                    detail.catalog_item_id == plan_details[0].catalog_item_id
+                    and detail.layer == "PLANNED"
+                    and detail.scope_type == "TOOTH"
+                    and detail.zone is None
+                    and detail.surfaces in (None, [])
+                    and detail.dentition == preview_targets.get("dentition")
+                    for detail in plan_details
+                )
+            )
+            if (
+                procedure_for_plan is None
+                or planned_event is None
+                or plan_catalog is None
+                or not plan_catalog.is_active
+                or plan_catalog.code != expected_plan_code
+                or not (
+                    multi_scope_matches
+                    if preview_teeth
+                    else plan_details[0].layer == "PLANNED" and plan_scope == result_scope
+                )
+            ):
+                raise ClinicalRecordError(
+                    "La marca planificada cambió y no puede resolverse al firmar.", 409
+                )
+            plan_metadata = plan_details[0].detail_metadata or {}
+            current_prior_requirement = (
+                (configured_procedure.price_provenance or {}).get("requires_prior_code")
+                if configured_procedure is not None else None
+            )
+            snapshot_prior_requirement = plan_metadata.get("requires_prior_code")
+            if current_prior_requirement != snapshot_prior_requirement:
+                raise ClinicalRecordError(
+                    "La obligación de antecedente clínico cambió desde la planificación.", 409
+                )
+            prior_implant_raw = plan_metadata.get(
+                "prior_implant_event_id"
+            )
+            if current_prior_requirement == "DONE_IMPLANT" and not prior_implant_raw:
+                raise ClinicalRecordError(
+                    "La corona planificada perdió el vínculo obligatorio con su implante antecedente.", 409
+                )
+            if prior_implant_raw:
+                try:
+                    prior_implant_id = UUID(str(prior_implant_raw))
+                except (TypeError, ValueError, AttributeError):
+                    raise ClinicalRecordError(
+                        "La corona planificada perdió el vínculo con su implante antecedente.", 409
+                    ) from None
+                prior_implant = session.scalar(select(OdontogramEvent).where(
+                    OdontogramEvent.id == prior_implant_id,
+                    OdontogramEvent.company_id == context.user.company_id,
+                    OdontogramEvent.patient_id == evolution.patient_id,
+                    OdontogramEvent.status == "CONFIRMED",
+                    OdontogramEvent.event_type == "PROCEDURE_PERFORMED",
+                ).with_for_update())
+                prior_details = [] if prior_implant is None else session.scalars(
+                    select(OdontogramEventDetail).where(
+                        OdontogramEventDetail.event_id == prior_implant.id
+                    )
+                ).all()
+                prior_catalog = (
+                    session.get(OdontogramCatalogItem, prior_details[0].catalog_item_id)
+                    if len(prior_details) == 1 else None
+                )
+                if (
+                    prior_implant is None
+                    or len(prior_details) != 1
+                    or prior_catalog is None
+                    or not prior_catalog.is_active
+                    or prior_catalog.code != "DONE_IMPLANT"
+                    or prior_details[0].layer != "PERFORMED"
+                    or prior_details[0].scope_type != "TOOTH"
+                    or prior_details[0].tooth_code != plan_details[0].tooth_code
+                    or prior_details[0].dentition != plan_details[0].dentition
+                    or prior_details[0].surfaces not in (None, [])
+                ):
+                    raise ClinicalRecordError(
+                        "El implante antecedente cambió; la corona no puede confirmarse.", 409
+                    )
+            planned_event.status = "VOIDED_BY_COMPENSATING_EVENT"
+            planned_event.updated_by = context.user.id
+            planned_event.version += 1
+            _audit(
+                session,
+                context,
+                metadata,
+                action="PLANNED_ODONTOGRAM_EVENT_RESOLVED",
+                entity="odontogram_event",
+                entity_id=planned_event.id,
+                patient_id=evolution.patient_id,
+                detail={
+                    "planned_odontogram_event_id": str(planned_event.id),
+                    "completion_event_id": str(event.id),
+                    "procedure_id": str(event.procedure_id),
+                },
+            )
+
+        if event.source_odontogram_event_id:
             source_event = session.scalar(
                 select(OdontogramEvent)
                 .where(
@@ -1324,12 +1589,33 @@ def _confirm_reviewed_odontogram_events_for_evolution(
                     OdontogramEvent.company_id == context.user.company_id,
                     OdontogramEvent.patient_id == evolution.patient_id,
                     OdontogramEvent.status == "CONFIRMED",
+                    OdontogramEvent.event_type.in_(["DIAGNOSIS_ADDED", "FINDING_ADDED"]),
                 )
                 .with_for_update()
             )
             if source_event is None:
                 raise ClinicalRecordError(
-                    "No fue posible resolver el diagnóstico odontográfico de origen. La evolución no fue firmada.",
+                    "No fue posible revalidar el diagnóstico odontográfico de origen. La evolución no fue firmada.",
+                    409,
+                )
+            procedure = session.scalar(select(TreatmentProcedure).where(
+                TreatmentProcedure.id == event.procedure_id,
+                TreatmentProcedure.company_id == context.user.company_id,
+                TreatmentProcedure.patient_id == evolution.patient_id,
+                TreatmentProcedure.source_odontogram_event_id == source_event.id,
+            ))
+            linked_procedure_ids = session.scalars(select(TreatmentProcedure.id).where(
+                TreatmentProcedure.company_id == context.user.company_id,
+                TreatmentProcedure.patient_id == evolution.patient_id,
+                TreatmentProcedure.source_odontogram_event_id == source_event.id,
+            )).all()
+            if (
+                event.source_diagnosis_action == "RESOLVE_ON_SIGN"
+                and procedure is not None
+                and any(linked_id != procedure.id for linked_id in linked_procedure_ids)
+            ):
+                raise ClinicalRecordError(
+                    "El diagnóstico de origen quedó compartido y no puede resolverse al firmar.",
                     409,
                 )
             source_details = session.scalars(
@@ -1337,45 +1623,162 @@ def _confirm_reviewed_odontogram_events_for_evolution(
                 .where(OdontogramEventDetail.event_id == source_event.id)
                 .order_by(OdontogramEventDetail.created_at, OdontogramEventDetail.id)
             ).all()
+            source_catalog = (
+                session.get(OdontogramCatalogItem, source_details[0].catalog_item_id)
+                if len(source_details) == 1
+                else None
+            )
+            shared_keep_active = (
+                source_catalog is not None
+                and source_catalog.code != "FIND_ENDO_DEFECTIVE"
+                and event.source_diagnosis_action == "KEEP_ACTIVE"
+                and procedure is not None
+                and procedure.id in linked_procedure_ids
+            )
+            unique_unowned_source_link = (
+                procedure is not None
+                and source_event.procedure_id is None
+                and linked_procedure_ids == [procedure.id]
+            )
+            if procedure is None or (
+                source_event.procedure_id != procedure.id
+                and not unique_unowned_source_link
+                and not shared_keep_active
+            ):
+                raise ClinicalRecordError(
+                    "El diagnóstico de origen ya no está vinculado al procedimiento. La evolución no fue firmada.",
+                    409,
+                )
             completion_details = session.scalars(
                 select(OdontogramEventDetail)
                 .where(OdontogramEventDetail.event_id == event.id)
                 .order_by(OdontogramEventDetail.created_at, OdontogramEventDetail.id)
             ).all()
-            source_event.status = "VOIDED_BY_COMPENSATING_EVENT"
-            source_event.updated_by = context.user.id
-            source_event.version += 1
-            _audit(
-                session,
-                context,
-                metadata,
-                action="SOURCE_ODONTOGRAM_DIAGNOSIS_RESOLVED",
-                entity="odontogram_event",
-                entity_id=source_event.id,
-                patient_id=evolution.patient_id,
-                detail={
-                    "source_odontogram_event_id": str(source_event.id),
-                    "completion_event_id": str(event.id),
-                    "evolution_id": str(evolution.id),
-                    "procedure_id": str(event.procedure_id) if event.procedure_id else None,
-                    "tooth_codes": sorted({
-                        detail.tooth_code for detail in source_details if detail.tooth_code
-                    }),
-                    "surfaces": sorted({
-                        surface
-                        for detail in source_details
-                        for surface in (detail.surfaces or [])
-                    }),
-                    "completion_tooth_codes": sorted({
-                        detail.tooth_code for detail in completion_details if detail.tooth_code
-                    }),
-                    "completion_surfaces": sorted({
-                        surface
-                        for detail in completion_details
-                        for surface in (detail.surfaces or [])
-                    }),
-                },
+            source_scopes = {
+                (detail.scope_type, detail.zone, detail.tooth_code, tuple(sorted(detail.surfaces or [])))
+                for detail in source_details
+            }
+            completion_scopes = {
+                (detail.scope_type, detail.zone, detail.tooth_code, tuple(sorted(detail.surfaces or [])))
+                for detail in completion_details
+            }
+            completion_catalog = (
+                session.get(OdontogramCatalogItem, completion_details[0].catalog_item_id)
+                if len(completion_details) == 1
+                else None
             )
+            endodontic_surface_source = bool(
+                completion_catalog is not None
+                and completion_catalog.code == "DONE_ENDO"
+                and event.source_diagnosis_action == "KEEP_ACTIVE"
+                and len(source_details) == 1
+                and len(completion_details) == 1
+                and source_details[0].scope_type == "TOOTH_SURFACE"
+                and bool(source_details[0].surfaces)
+                and completion_details[0].scope_type == "TOOTH"
+                and completion_details[0].surfaces in (None, [])
+                and source_details[0].tooth_code == completion_details[0].tooth_code
+                and source_details[0].dentition == completion_details[0].dentition
+            )
+            if (
+                len(source_details) != 1
+                or len(completion_details) != 1
+                or (not endodontic_surface_source and source_scopes != completion_scopes)
+            ):
+                raise ClinicalRecordError(
+                    "La realización no cubre exactamente el único detalle del diagnóstico. La evolución no fue firmada.",
+                    409,
+                )
+            if configured_procedure is not None:
+                allowed_diagnosis_ids = set(session.scalars(select(
+                    ProcedureCatalogDiagnosis.odontogram_catalog_item_id
+                ).where(
+                    ProcedureCatalogDiagnosis.company_id == context.user.company_id,
+                    ProcedureCatalogDiagnosis.procedure_catalog_id == configured_procedure.id,
+                    ProcedureCatalogDiagnosis.is_active.is_(True),
+                )).all())
+                if source_details[0].catalog_item_id not in allowed_diagnosis_ids:
+                    raise ClinicalRecordError(
+                        "El diagnóstico ya no está permitido para el procedimiento. La evolución no fue firmada.",
+                        409,
+                    )
+            if source_catalog and source_catalog.code == "FIND_ENDO_DEFECTIVE":
+                if event.source_diagnosis_action != "RESOLVE_ON_SIGN":
+                    raise ClinicalRecordError(
+                        "El retratamiento debe resolver el marcador defectuoso al firmar.", 409
+                    )
+                prior_raw = (source_details[0].detail_metadata or {}).get(
+                    "prior_done_endo_event_id"
+                )
+                try:
+                    prior_id = UUID(str(prior_raw))
+                except (TypeError, ValueError, AttributeError):
+                    raise ClinicalRecordError(
+                        "El marcador defectuoso perdió el vínculo con la endodoncia previa.", 409
+                    ) from None
+                prior = session.scalar(select(OdontogramEvent).where(
+                    OdontogramEvent.id == prior_id,
+                    OdontogramEvent.company_id == context.user.company_id,
+                    OdontogramEvent.patient_id == evolution.patient_id,
+                    OdontogramEvent.status == "CONFIRMED",
+                    OdontogramEvent.event_type == "PROCEDURE_PERFORMED",
+                ))
+                prior_details = [] if prior is None else session.scalars(
+                    select(OdontogramEventDetail).where(
+                        OdontogramEventDetail.event_id == prior.id
+                    )
+                ).all()
+                prior_catalog = (
+                    session.get(OdontogramCatalogItem, prior_details[0].catalog_item_id)
+                    if len(prior_details) == 1 else None
+                )
+                if (
+                    prior is None or len(prior_details) != 1 or prior_catalog is None
+                    or prior_catalog.code != "DONE_ENDO" or not prior_catalog.is_active
+                    or prior_details[0].layer != "PERFORMED"
+                    or prior_details[0].scope_type != "TOOTH"
+                    or prior_details[0].tooth_code != source_details[0].tooth_code
+                    or prior_details[0].surfaces not in (None, [])
+                ):
+                    raise ClinicalRecordError(
+                        "La endodoncia previa vinculada ya no es un evento realizado confirmado válido de esa pieza.",
+                        409,
+                    )
+            if event.source_diagnosis_action == "RESOLVE_ON_SIGN":
+                source_event.status = "VOIDED_BY_COMPENSATING_EVENT"
+                source_event.updated_by = context.user.id
+                source_event.version += 1
+                _audit(
+                    session,
+                    context,
+                    metadata,
+                    action="SOURCE_ODONTOGRAM_DIAGNOSIS_RESOLVED",
+                    entity="odontogram_event",
+                    entity_id=source_event.id,
+                    patient_id=evolution.patient_id,
+                    detail={
+                        "source_odontogram_event_id": str(source_event.id),
+                        "completion_event_id": str(event.id),
+                        "evolution_id": str(evolution.id),
+                        "procedure_id": str(event.procedure_id) if event.procedure_id else None,
+                        "tooth_codes": sorted({
+                            detail.tooth_code for detail in source_details if detail.tooth_code
+                        }),
+                        "surfaces": sorted({
+                            surface
+                            for detail in source_details
+                            for surface in (detail.surfaces or [])
+                        }),
+                        "completion_tooth_codes": sorted({
+                            detail.tooth_code for detail in completion_details if detail.tooth_code
+                        }),
+                        "completion_surfaces": sorted({
+                            surface
+                            for detail in completion_details
+                            for surface in (detail.surfaces or [])
+                        }),
+                    },
+                )
 
         _audit(
             session,

@@ -7,7 +7,7 @@ import { createToothModel, DUAL_TOOTH_PRESET_OPTIONS, DUAL_TOOTH_PRESETS, type D
 import { familyFromTooth, getSurfaceOrientation, isValidFdiTooth, surfaceToRole } from "./orientation";
 import type { ClinicalEventKind, ClinicalEventStatus, ToothFamily, ToothSurface } from "./types";
 
-const eventKinds: ClinicalEventKind[] = ["CARIES", "RESTORATION", "ENDODONTICS", "CROWN", "VENEER", "IMPLANT", "FRACTURE", "EXTRACTION", "ABSENT"];
+const eventKinds: ClinicalEventKind[] = ["CARIES", "RESTORATION", "ENDODONTICS", "CROWN", "VENEER", "IMPLANT", "POST", "PULPOTOMY", "FRACTURE", "EXTRACTION", "ABSENT"];
 const statuses: ClinicalEventStatus[] = ["DIAGNOSIS", "COMPLETED", "PLANNED"];
 const families: ToothFamily[] = ["INCISOR", "CANINE", "PREMOLAR", "MOLAR"];
 
@@ -20,6 +20,7 @@ export function DualClinicalToothPlayground() {
   const [kind, setKind] = useState<ClinicalEventKind>(preset.events[0]?.kind ?? "CARIES");
   const [status, setStatus] = useState<ClinicalEventStatus>(preset.events[0]?.status ?? "DIAGNOSIS");
   const [surfaces, setSurfaces] = useState<ToothSurface[]>(preset.events[0]?.surfaces ?? ["VESTIBULAR"]);
+  const [sourceCode, setSourceCode] = useState(preset.events[0]?.sourceCode);
 
   function applyPreset(key: DualToothPresetKey) {
     const next = DUAL_TOOTH_PRESETS[key];
@@ -29,22 +30,26 @@ export function DualClinicalToothPlayground() {
     setKind(next.events[0]?.kind ?? "CARIES");
     setStatus(next.events[0]?.status ?? "DIAGNOSIS");
     setSurfaces(next.events[0]?.surfaces ?? []);
+    setSourceCode(next.events[0]?.sourceCode);
   }
 
   const fdiValid = isValidFdiTooth(toothNumber);
   const safeToothNumber = fdiValid ? toothNumber : preset.toothNumber;
   const customModel = useMemo(
     () =>
-      createToothModel(safeToothNumber, [
+      preset.events.length > 1
+        ? preset
+        : createToothModel(safeToothNumber, [
         {
           id: "custom-event",
           kind,
           status,
           surfaces,
           label: CLASSIC_COLORS[kind].text,
+          sourceCode,
         },
       ], fdiValid ? family : preset.family),
-    [family, fdiValid, kind, preset.family, safeToothNumber, status, surfaces],
+    [family, fdiValid, kind, preset, safeToothNumber, sourceCode, status, surfaces],
   );
   const orientation = getSurfaceOrientation(customModel.toothNumber, customModel.family);
 

@@ -10,6 +10,9 @@ export function TreatmentLayer({
 }) {
   const states = renderState.visualStates;
   const crownFill = states.has("TEMPORARY_CROWN") ? `url(#${id}-crown-temp)` : `url(#${id}-crown-blue)`;
+  const postColor = states.has("PLANNED_TREATMENT") ? "#DC2626" : DDS_COLORS.treatment;
+  const isPlanned = states.has("PLANNED_TREATMENT");
+  const veneerColor = isPlanned ? "#DC2626" : "#2563EB";
 
   if (states.has("MISSING")) {
     return (
@@ -17,11 +20,12 @@ export function TreatmentLayer({
         <path
           d="M20 18 C21 6 32 7 39 16 C46 7 57 6 58 18 C63 31 63 43 56 52 C54 61 52 75 47 79 C42 82 40 62 39 55 C38 62 36 82 31 79 C26 75 24 61 22 52 C15 43 15 31 20 18 Z"
           fill="none"
-          stroke={DDS_COLORS.neutral}
+          stroke={isPlanned ? "#DC2626" : DDS_COLORS.treatment}
           strokeDasharray="5 4"
           strokeWidth="1.55"
           opacity="0.78"
         />
+        <path d="M24 22 L54 72 M54 22 L24 72" fill="none" stroke={isPlanned ? "#DC2626" : DDS_COLORS.treatment} strokeWidth="3" strokeLinecap="round" />
       </g>
     );
   }
@@ -38,7 +42,7 @@ export function TreatmentLayer({
         </>
       )}
 
-      {(states.has("DEFINITIVE_CROWN") || states.has("TEMPORARY_CROWN")) && !states.has("IMPLANT") && !states.has("MISSING") && (
+      {(states.has("DEFINITIVE_CROWN") || states.has("TEMPORARY_CROWN")) && !states.has("MISSING") && (
         <>
           <path d="M20 18 C22 7 32 8 39 16 C46 8 56 7 58 18 C61 28 60 40 54 48 C45 53 33 53 24 48 C18 40 17 28 20 18 Z" fill={crownFill} fillOpacity="0.9" stroke="#0F5CA8" strokeOpacity="0.55" strokeWidth="1.2" />
           <path d="M27 20 C32 15 46 15 51 20" stroke="#FFFFFF" strokeOpacity="0.7" strokeWidth="1.9" strokeLinecap="round" fill="none" />
@@ -51,9 +55,9 @@ export function TreatmentLayer({
         <>
           <path
             d="M22 19 C27 11 51 11 56 19 C58 27 57 38 52 45 C44 49 34 49 26 45 C21 38 20 27 22 19 Z"
-            fill="#DBEAFE"
+            fill={isPlanned ? "none" : "#DBEAFE"}
             fillOpacity="0.82"
-            stroke="#2563EB"
+            stroke={veneerColor}
             strokeDasharray="3 2"
             strokeWidth="1.25"
           />
@@ -75,7 +79,7 @@ export function TreatmentLayer({
         </>
       )}
 
-      {(states.has("ENDODONTICS") || states.has("POST")) && !states.has("MISSING") && (
+      {states.has("ENDODONTICS") && !states.has("MISSING") && (
         <>
           <path d="M39 19 C38 31 38 48 39 66" stroke={DDS_COLORS.treatment} strokeWidth="1.9" strokeLinecap="round" fill="none" />
           <path d="M34 64 C36 68 42 68 44 64" stroke={DDS_COLORS.treatment} strokeWidth="1.35" strokeLinecap="round" fill="none" />
@@ -83,7 +87,13 @@ export function TreatmentLayer({
       )}
 
       {states.has("POST") && (
-        <path d="M37.4 30 L40.6 30 L41.2 62 L36.8 62 Z" fill={DDS_COLORS.neutral} opacity="0.72" />
+        <path
+          d="M37.4 30 L40.6 30 L41.2 62 L36.8 62 Z"
+          fill={postColor}
+          stroke={postColor}
+          strokeWidth="1"
+          opacity="0.9"
+        />
       )}
 
       {states.has("SEALANT") && (

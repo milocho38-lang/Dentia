@@ -25,6 +25,9 @@ from app.services.procedure_catalog_seed_service import (
     record_unsupported_country_skip,
     seed_initial_procedure_catalog,
 )
+from app.services.procedure_catalog_odontogram_consolidated_seed_service import (
+    seed_odontogram_consolidated_catalog,
+)
 from app.core.config import settings
 
 
@@ -255,6 +258,9 @@ def bootstrap_installation(
             seed_initial_procedure_catalog(session, company, admin.id)
         else:
             record_unsupported_country_skip(session, company, admin.id)
+    if settings.procedure_catalog_odontogram_resin_seed_enabled:
+        if optional_company_currency(company.country):
+            seed_odontogram_consolidated_catalog(session, company, admin.id)
 
     completed_at = datetime.now(timezone.utc)
     company.installation_completed_at = completed_at

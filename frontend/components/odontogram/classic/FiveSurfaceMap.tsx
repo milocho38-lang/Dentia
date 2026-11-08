@@ -16,8 +16,10 @@ function markersForRole(markers: ClinicalMarker[], role: SurfaceRole) {
 
 export function FiveSurfaceMap({ viewModel }: { viewModel: DualClinicalToothViewModel }) {
   const { model, surfaceMarkers, structuralMarkers, isAbsent } = viewModel;
-  const wholeMarker = structuralMarkers.find((marker) => marker.role === "WHOLE");
-  const pulpMarker = structuralMarkers.find((marker) => marker.role === "PULP");
+  const wholeMarkers = structuralMarkers.filter((marker) => marker.role === "WHOLE");
+  const pulpMarkers = structuralMarkers.filter((marker) => marker.role === "PULP");
+  const absentMarker = wholeMarkers.find((marker) => marker.kind === "ABSENT" || marker.kind === "EXTRACTION");
+  const absentStroke = absentMarker?.stroke ?? "#94A3B8";
 
   return (
     <svg
@@ -36,10 +38,10 @@ export function FiveSurfaceMap({ viewModel }: { viewModel: DualClinicalToothView
           <g key={role}>
             <path
               d={ROLE_PATHS[role]}
-              fill={baseMarker ? baseMarker.color : "#FFFFFF"}
+              fill={baseMarker?.kind === "PULPOTOMY" ? "none" : baseMarker ? baseMarker.color : "#FFFFFF"}
               fillOpacity={baseMarker ? (baseMarker.status === "PLANNED" ? 0.22 : 0.9) : 0.72}
               stroke={baseMarker ? baseMarker.stroke : "#CBD5E1"}
-              strokeWidth={baseMarker ? 1.8 : 1}
+              strokeWidth={baseMarker?.kind === "PULPOTOMY" ? 3 : baseMarker ? 1.8 : 1}
             />
             {plannedMarkers.map((marker) => (
               <path
@@ -54,12 +56,19 @@ export function FiveSurfaceMap({ viewModel }: { viewModel: DualClinicalToothView
           </g>
         );
       })}
-      {wholeMarker && !isAbsent && (
-        <circle cx="50" cy="50" r="38" fill="none" stroke={wholeMarker.stroke} strokeDasharray={wholeMarker.status === "PLANNED" ? "5 4" : undefined} strokeWidth="5" />
-      )}
-      {pulpMarker && <circle cx="50" cy="50" r="13" fill={pulpMarker.color} fillOpacity="0.9" stroke={pulpMarker.stroke} strokeWidth="1.5" />}
+      {!isAbsent && wholeMarkers.map((marker, index) => (
+        marker.kind === "POST" ? (
+          <g key={marker.id} stroke={marker.stroke} fill="none" strokeLinecap="round">
+            <path d="M50 25 L50 69" strokeWidth="5" strokeDasharray={marker.status === "PLANNED" ? "5 4" : undefined} />
+            <path d="M43 28 H57" strokeWidth="4" />
+          </g>
+        ) : (
+          <circle key={marker.id} cx="50" cy="50" r={38 - index * 5} fill="none" stroke={marker.stroke} strokeDasharray={marker.status === "PLANNED" ? "5 4" : undefined} strokeWidth="4" />
+        )
+      ))}
+      {pulpMarkers.map((marker, index) => <circle key={marker.id} cx="50" cy="50" r={13 - index * 3} fill={marker.color} fillOpacity="0.9" stroke={marker.stroke} strokeWidth="1.5" />)}
       {isAbsent && (
-        <g stroke="#94A3B8" strokeLinecap="round" strokeWidth="2.2">
+        <g stroke={absentStroke} strokeLinecap="round" strokeWidth="2.8">
           <path d="M31 31 L69 69" />
           <path d="M69 31 L31 69" />
         </g>

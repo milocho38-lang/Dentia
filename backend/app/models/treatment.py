@@ -109,6 +109,7 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_proc_catalogo", "catalogo_procedimiento_id"),
         Index("ix_proc_cita", "cita_id"),
         Index("ix_proc_odontograma_evento_origen", "odontograma_evento_origen_id"),
+        Index("ix_proc_odontograma_evento_plan", "odontograma_evento_plan_id"),
         Index(
             "ix_proc_empresa_odontograma_evento_origen",
             "empresa_id",
@@ -180,6 +181,17 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey(
             "odontograma_eventos.id",
             name="fk_proc_odontograma_evento_origen",
+            ondelete="SET NULL",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    planned_odontogram_event_id: Mapped[UUID | None] = mapped_column(
+        "odontograma_evento_plan_id",
+        PGUUID(as_uuid=True),
+        ForeignKey(
+            "odontograma_eventos.id",
+            name="fk_proc_odontograma_evento_plan",
             ondelete="SET NULL",
             use_alter=True,
         ),

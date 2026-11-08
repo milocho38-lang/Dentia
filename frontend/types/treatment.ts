@@ -53,6 +53,7 @@ export interface Procedure {
   site_name: string | null;
   appointment_id: string | null;
   source_odontogram_event_id?: string | null;
+  planned_odontogram_event_id?: string | null;
   unit_value: string;
   quantity: string;
   total_value: string;
@@ -80,6 +81,7 @@ export interface ProcedureClinicalCompletionInput {
   tooth?: string | null;
   surfaces?: string[] | null;
   dentition?: string;
+  prior_implant_event_id?: string | null;
   observation?: string | null;
 }
 
@@ -100,6 +102,10 @@ export interface ProcedureWithDiagnosisInput {
   diagnosis_catalog_item_id?: string | null;
   existing_odontogram_event_id?: string | null;
   diagnosis_observation?: string | null;
+  diagnosis_scope_type?: string | null;
+  diagnosis_zone?: string | null;
+  diagnosis_tooth?: string | null;
+  diagnosis_surfaces?: string[] | null;
   allow_existing_duplicate?: boolean;
   dentition?: string;
   name: string;
@@ -136,7 +142,7 @@ export interface ProcedureCatalogItem {
   price_currency: string | null;
   price_provenance: Record<string, unknown> | null;
   suggested_scope_type: string | null;
-  odontogram_behavior: "UNCONFIGURED" | "NO_CHANGE" | "OPTIONAL_DIAGNOSIS" | "REQUIRES_DIAGNOSIS";
+  odontogram_behavior: "UNCONFIGURED" | "NO_CHANGE" | "OPTIONAL_DIAGNOSIS" | "REQUIRES_DIAGNOSIS" | "PLANNED_RESULT";
   odontogram_scope_type: string | null;
   allowed_diagnosis_catalog_item_ids: string[];
   allowed_diagnoses: Array<{
@@ -147,6 +153,7 @@ export interface ProcedureCatalogItem {
     category: string | null;
   }>;
   default_performed_catalog_item_id: string | null;
+  default_performed_code?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

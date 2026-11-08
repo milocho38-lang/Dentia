@@ -1,8 +1,8 @@
 import { archFromQuadrant, dentitionFromTooth, familyFromTooth, quadrantFromTooth } from "./orientation";
 import type { ClinicalEventKind, ClinicalEventStatus, DualClinicalEvent, DualClinicalToothModel, ToothFamily, ToothSurface } from "./types";
 
-function event(id: string, kind: ClinicalEventKind, surfaces: ToothSurface[], status: ClinicalEventStatus, label: string): DualClinicalEvent {
-  return { id, kind, surfaces, status, label };
+function event(id: string, kind: ClinicalEventKind, surfaces: ToothSurface[], status: ClinicalEventStatus, label: string, sourceCode?: string): DualClinicalEvent {
+  return { id, kind, surfaces, status, label, sourceCode };
 }
 
 export function createToothModel(
@@ -61,8 +61,41 @@ export const DUAL_TOOTH_PRESETS = {
   endodontics36: createToothModel("36", [
     event("endodontics-36", "ENDODONTICS", ["PULPAL_RADICULAR"], "COMPLETED", "Endodoncia"),
   ]),
+  defectiveEndodontics36: createToothModel("36", [
+    event("prior-endodontics-36", "ENDODONTICS", ["PULPAL_RADICULAR"], "COMPLETED", "Endodoncia previa"),
+    {
+      ...event("defective-endodontics-36", "ENDODONTICS", ["PULPAL_RADICULAR"], "COMPLETED", "Endodoncia previa en mal estado"),
+      variant: "DEFECTIVE_ZIGZAG",
+    },
+  ]),
   crown15: createToothModel("15", [
     event("crown-15", "CROWN", ["WHOLE_TOOTH"], "COMPLETED", "Corona"),
+  ]),
+  plannedCrown15: createToothModel("15", [
+    event("planned-crown-15", "CROWN", ["WHOLE_TOOTH"], "PLANNED", "Corona planificada", "PLAN_CROWN"),
+  ]),
+  plannedImplant46: createToothModel("46", [
+    event("planned-implant-46", "IMPLANT", ["WHOLE_TOOTH"], "PLANNED", "Implante planificado", "PLAN_IMPLANT"),
+  ]),
+  completedImplant46: createToothModel("46", [
+    event("completed-implant-46", "IMPLANT", ["WHOLE_TOOTH"], "COMPLETED", "Implante realizado", "DONE_IMPLANT"),
+  ]),
+  implantCrown46: createToothModel("46", [
+    event("completed-implant-crown-46", "IMPLANT", ["WHOLE_TOOTH"], "COMPLETED", "Implante realizado", "DONE_IMPLANT"),
+    event("planned-crown-implant-46", "CROWN", ["WHOLE_TOOTH"], "PLANNED", "Corona sobre implante planificada", "PLAN_CROWN"),
+  ]),
+  completedImplantCrown46: createToothModel("46", [
+    event("completed-implant-crown2-46", "IMPLANT", ["WHOLE_TOOTH"], "COMPLETED", "Implante realizado", "DONE_IMPLANT"),
+    event("completed-crown-implant-46", "CROWN", ["WHOLE_TOOTH"], "COMPLETED", "Corona sobre implante realizada", "DONE_CROWN"),
+  ]),
+  plannedPost36: createToothModel("36", [
+    event("planned-post-36", "POST", ["WHOLE_TOOTH"], "PLANNED", "Perno planificado", "PLAN_POST"),
+  ]),
+  completedPost36: createToothModel("36", [
+    event("completed-post-36", "POST", ["WHOLE_TOOTH"], "COMPLETED", "Perno realizado", "DONE_POST"),
+  ]),
+  pulpotomy16: createToothModel("16", [
+    event("pulpotomy-16", "PULPOTOMY", ["OCCLUSAL"], "COMPLETED", "Pulpotomía realizada", "DONE_PULPOTOMY"),
   ]),
   absent46: createToothModel("46", [
     event("absent-46", "ABSENT", ["WHOLE_TOOTH"], "COMPLETED", "Ausente"),
@@ -99,7 +132,16 @@ export const DUAL_TOOTH_PRESET_OPTIONS: Array<{ key: DualToothPresetKey; label: 
   { key: "cariesOcclusal36", label: "Caries oclusal", description: "36 · Oclusal" },
   { key: "restorationMultiSurface36", label: "Restauración mult superficie", description: "36 · Mesial + Oclusal + Distal" },
   { key: "endodontics36", label: "Endodoncia", description: "36 · Pulpar / radicular" },
+  { key: "defectiveEndodontics36", label: "Retratamiento pendiente", description: "36 · Zigzag azul sobre endodoncia previa" },
   { key: "crown15", label: "Corona", description: "15 · Pieza completa" },
+  { key: "plannedCrown15", label: "Corona planificada", description: "15 · Contorno rojo" },
+  { key: "plannedImplant46", label: "Implante planificado", description: "46 · Símbolo rojo" },
+  { key: "completedImplant46", label: "Implante realizado", description: "46 · Símbolo azul" },
+  { key: "implantCrown46", label: "Implante + corona pendiente", description: "46 · Implante azul + aro rojo" },
+  { key: "completedImplantCrown46", label: "Implante + corona realizada", description: "46 · Implante azul + aro azul" },
+  { key: "plannedPost36", label: "Perno planificado", description: "36 · Perno rojo sin conducto inventado" },
+  { key: "completedPost36", label: "Perno realizado", description: "36 · Perno azul" },
+  { key: "pulpotomy16", label: "Pulpotomía realizada", description: "16 · Círculo oclusal azul sin raíz" },
   { key: "absent46", label: "Ausente", description: "46 · Pieza completa" },
   { key: "mesial46", label: "Mesial 46", description: "46 · Mesial hacia línea media" },
   { key: "temporal51", label: "Temporal 51", description: "51 · Incisal temporal" },

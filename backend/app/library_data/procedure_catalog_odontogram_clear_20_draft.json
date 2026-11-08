@@ -1,0 +1,321 @@
+{
+  "catalog_version": "KIMBERLY-2026-11-08-ODONTOGRAM-CLEAR-20-DRAFT",
+  "source_sha256": "1d77bd1c0723fdfaf05e57f78dd4aed15f04eabc95797a2f7589b1446c8de5df",
+  "source_sheet": "prestaciones ",
+  "source_verification": "LOCAL_BINARY_SHA256_AND_LITERAL_CELLS_VERIFIED",
+  "review_manifest_sha256": "2e7e16f5128da529a360bf12beecb93e785176352ce32989d04b111498908c48",
+  "currency_policy": {
+    "source_currency": "CLP",
+    "colombia_currency": "COP",
+    "clp_to_cop_rate": "3.291243",
+    "rate_source": "https://www.xe.com/es/currencyconverter/convert/?Amount=1&From=CLP&To=COP",
+    "rate_observed_at_utc": "2026-11-03T03:33:00Z",
+    "rounding": "NEAREST_1000_COP_HALF_UP",
+    "runtime_conversion": false,
+    "prices_editable_after_seed": true
+  },
+  "execution": {
+    "connected_to_runtime": false,
+    "onboarding_enabled": false,
+    "backfill_api_enabled": false,
+    "cli_apply_enabled": false,
+    "production_authorized": false
+  },
+  "items": [
+    {
+      "source_row": 206,
+      "name": "Retratamiento incisivos y caninos",
+      "source_note": "se marca acomo tto de conducto pero en rojo ",
+      "source_scope": "por diente por cara",
+      "source_price_clp": "180000",
+      "fixed_price_cop": "592000",
+      "suggested_scope_type": "TOOTH",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_ENDO_DEFECTIVE"
+      ],
+      "default_performed_code": "DONE_ENDO",
+      "requires_existing_diagnosis": true
+    },
+    {
+      "source_row": 207,
+      "name": "Retratamiento incisivos y caninos sin lesión",
+      "source_note": "se marca acomo tto de conducto pero en rojo ",
+      "source_scope": "por diente por cara",
+      "source_price_clp": "179000",
+      "fixed_price_cop": "589000",
+      "suggested_scope_type": "TOOTH",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_ENDO_DEFECTIVE"
+      ],
+      "default_performed_code": "DONE_ENDO",
+      "requires_existing_diagnosis": true
+    },
+    {
+      "source_row": 208,
+      "name": "Retratamiento molar",
+      "source_note": "se marca acomo tto de conducto pero en rojo ",
+      "source_scope": "por diente por cara",
+      "source_price_clp": "250000",
+      "fixed_price_cop": "823000",
+      "suggested_scope_type": "TOOTH",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_ENDO_DEFECTIVE"
+      ],
+      "default_performed_code": "DONE_ENDO",
+      "requires_existing_diagnosis": true
+    },
+    {
+      "source_row": 209,
+      "name": "Retratamiento molar superior o inferior sin lesión apical",
+      "source_note": "se marca acomo tto de conducto pero en rojo ",
+      "source_scope": "por diente por cara",
+      "source_price_clp": "239000",
+      "fixed_price_cop": "787000",
+      "suggested_scope_type": "TOOTH",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_ENDO_DEFECTIVE"
+      ],
+      "default_performed_code": "DONE_ENDO",
+      "requires_existing_diagnosis": true
+    },
+    {
+      "source_row": 210,
+      "name": "Retratamiento premolares",
+      "source_note": "se marca acomo tto de conducto pero en rojo ",
+      "source_scope": "por diente por cara",
+      "source_price_clp": "220000",
+      "fixed_price_cop": "724000",
+      "suggested_scope_type": "TOOTH",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_ENDO_DEFECTIVE"
+      ],
+      "default_performed_code": "DONE_ENDO",
+      "requires_existing_diagnosis": true
+    },
+    {
+      "source_row": 211,
+      "name": "Retratamiento premolares sin lesión",
+      "source_note": "se marca acomo tto de conducto pero en rojo ",
+      "source_scope": "por diente por cara",
+      "source_price_clp": "190000",
+      "fixed_price_cop": "625000",
+      "suggested_scope_type": "TOOTH",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_ENDO_DEFECTIVE"
+      ],
+      "default_performed_code": "DONE_ENDO",
+      "requires_existing_diagnosis": true
+    },
+    {
+      "source_row": 212,
+      "name": "Retratamiento premolares trirradiculares con lesión",
+      "source_note": "se marca acomo tto de conducto pero en rojo ",
+      "source_scope": "por diente por cara",
+      "source_price_clp": "239000",
+      "fixed_price_cop": "787000",
+      "suggested_scope_type": "TOOTH",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_ENDO_DEFECTIVE"
+      ],
+      "default_performed_code": "DONE_ENDO",
+      "requires_existing_diagnosis": true
+    },
+    {
+      "source_row": 213,
+      "name": "Retratamiento premolares trirradiculares sin lesión",
+      "source_note": "se marca acomo tto de conducto pero en rojo ",
+      "source_scope": "por diente por cara",
+      "source_price_clp": "228000",
+      "fixed_price_cop": "750000",
+      "suggested_scope_type": "TOOTH",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_ENDO_DEFECTIVE"
+      ],
+      "default_performed_code": "DONE_ENDO",
+      "requires_existing_diagnosis": true
+    },
+    {
+      "source_row": 222,
+      "name": "2 Implantes para sobredentadura",
+      "source_note": "implante rojo",
+      "source_scope": "por diente",
+      "source_price_clp": "600000",
+      "fixed_price_cop": "1975000",
+      "suggested_scope_type": "GENERAL",
+      "odontogram_behavior": "NO_CHANGE",
+      "allowed_diagnosis_codes": [],
+      "default_performed_code": null,
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 223,
+      "name": "4 Implantes Inferiores para Prótesis Hibrida",
+      "source_note": "implante rojo",
+      "source_scope": "por diente",
+      "source_price_clp": "1200000",
+      "fixed_price_cop": "3949000",
+      "suggested_scope_type": "GENERAL",
+      "odontogram_behavior": "NO_CHANGE",
+      "allowed_diagnosis_codes": [],
+      "default_performed_code": null,
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 224,
+      "name": "4 Implantes Superiores para Prótesis Hibrida",
+      "source_note": "implante rojo",
+      "source_scope": "por diente",
+      "source_price_clp": "1200000",
+      "fixed_price_cop": "3949000",
+      "suggested_scope_type": "GENERAL",
+      "odontogram_behavior": "NO_CHANGE",
+      "allowed_diagnosis_codes": [],
+      "default_performed_code": null,
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 225,
+      "name": "6 Implantes Inferiores para Prótesis Hibrida",
+      "source_note": "implante rojo",
+      "source_scope": "por diente",
+      "source_price_clp": "1800000",
+      "fixed_price_cop": "5924000",
+      "suggested_scope_type": "GENERAL",
+      "odontogram_behavior": "NO_CHANGE",
+      "allowed_diagnosis_codes": [],
+      "default_performed_code": null,
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 226,
+      "name": "6 Implantes Superiores para Prótesis Hibrida",
+      "source_note": "implante rojo",
+      "source_scope": "por diente",
+      "source_price_clp": "1800000",
+      "fixed_price_cop": "5924000",
+      "suggested_scope_type": "GENERAL",
+      "odontogram_behavior": "NO_CHANGE",
+      "allowed_diagnosis_codes": [],
+      "default_performed_code": null,
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 277,
+      "name": "Obturación de vidrio ionómero en piezas temporales y permanentes",
+      "source_note": "por caries o fractura",
+      "source_scope": "por diente y cara ",
+      "source_price_clp": "30000",
+      "fixed_price_cop": "99000",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_CARIES",
+        "FIND_FRACTURE"
+      ],
+      "default_performed_code": "DONE_RESIN",
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 278,
+      "name": "Obturaciones de minima intervención (Técnica ART)",
+      "source_note": "por caries o fractura",
+      "source_scope": "por diente y cara ",
+      "source_price_clp": "33000",
+      "fixed_price_cop": "109000",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_CARIES",
+        "FIND_FRACTURE"
+      ],
+      "default_performed_code": "DONE_RESIN",
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 279,
+      "name": "Programa de remineralización de caries incipientes por sesión (incluye radiografías diagnósticas - máximo 4 sesiones)",
+      "source_note": "caries ",
+      "source_scope": "por diente y cara ",
+      "source_price_clp": "22000",
+      "fixed_price_cop": "72000",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "odontogram_behavior": "NO_CHANGE",
+      "allowed_diagnosis_codes": [],
+      "default_performed_code": null,
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 287,
+      "name": "Resina infiltrante lesión incipiente en piezas permanentes",
+      "source_note": "por caries o fractura",
+      "source_scope": "por diente y cara ",
+      "source_price_clp": "28000",
+      "fixed_price_cop": "92000",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_CARIES",
+        "FIND_FRACTURE"
+      ],
+      "default_performed_code": "DONE_RESIN",
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 288,
+      "name": "Restauración de fractura coronaria con resina compuesta pieza permanente",
+      "source_note": "por caries o fractura",
+      "source_scope": "por diente y cara ",
+      "source_price_clp": "44000",
+      "fixed_price_cop": "145000",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_CARIES",
+        "FIND_FRACTURE"
+      ],
+      "default_performed_code": "DONE_RESIN",
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 289,
+      "name": "Restauración de fractura coronaria con resina compuesta pieza temporal",
+      "source_note": "por caries o fractura",
+      "source_scope": "por diente y cara ",
+      "source_price_clp": "33000",
+      "fixed_price_cop": "109000",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_CARIES",
+        "FIND_FRACTURE"
+      ],
+      "default_performed_code": "DONE_RESIN",
+      "requires_existing_diagnosis": false
+    },
+    {
+      "source_row": 316,
+      "name": "Obturación de vidrio ionómero en pieza permanente",
+      "source_note": "por caries o fractura",
+      "source_scope": "por diente y cara",
+      "source_price_clp": "44000",
+      "fixed_price_cop": "145000",
+      "suggested_scope_type": "TOOTH_SURFACE",
+      "odontogram_behavior": "REQUIRES_DIAGNOSIS",
+      "allowed_diagnosis_codes": [
+        "FIND_CARIES",
+        "FIND_FRACTURE"
+      ],
+      "default_performed_code": "DONE_RESIN",
+      "requires_existing_diagnosis": false
+    }
+  ]
+}
+

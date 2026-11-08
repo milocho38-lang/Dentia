@@ -89,6 +89,11 @@ export function classifyToothDetail(detail: ToothDetail): ToothVisualState {
   const text = normalized(`${detail.catalogCode} ${detail.catalogName} ${detail.catalogType ?? ""}`);
   const layer = normalized(detail.layer);
 
+  // PLAN_POST must retain the post glyph. buildToothRenderState also records
+  // PLANNED_TREATMENT from the layer so the glyph can use its pending color.
+  if (layer === "PLANNED" && includesAny(text, ["PLAN_POST", "POSTE", "POST"])) return "POST";
+  if (layer === "PLANNED" && includesAny(text, ["PLAN_EXTRACTION", "EXTRAC"])) return "MISSING";
+  if (layer === "PLANNED" && includesAny(text, ["PLAN_VENEER", "CARILLA", "VENEER"])) return "VENEER";
   if (layer === "PLANNED") return "PLANNED_TREATMENT";
   if (includesAny(text, ["AUSENTE", "EXTRAC", "EXFOLIADO", "MISSING"])) return "MISSING";
   if (includesAny(text, ["IMPLANTE", "IMPLANT"])) return "IMPLANT";

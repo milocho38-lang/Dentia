@@ -9,10 +9,12 @@ import { Modal } from "@/components/shared/Modal";
 import { Spinner } from "@/components/shared/Spinner";
 import { useAuth } from "@/hooks/useAuth";
 import { secureRandomUuid } from "@/lib/secureRandomUuid.mjs";
+import { resolveCatalogClinicalTargets } from "@/lib/catalogClinicalTargets.mjs";
+import { resolveClinicalCompletionCatalog } from "@/lib/clinicalCompletionCatalog.mjs";
 import { ApiError } from "@/services/apiClient";
 import { getAgendaOptions } from "@/services/agendaService";
 import { listClinicalEvolutions } from "@/services/clinicalRecordService";
-import { getOdontogramCatalog, getOdontogramEvent } from "@/services/odontogramService";
+import { getOdontogramCatalog, getOdontogramEvent, listOdontogramEvents } from "@/services/odontogramService";
 import { searchPatients } from "@/services/patientService";
 import {
   approveBudget,
@@ -52,6 +54,7 @@ import type {
   Payment,
   Procedure,
   ProcedureCatalogItem,
+  ProcedureWithDiagnosisResponse,
   Treatment,
   TreatmentListItem,
 } from "@/types/treatment";
@@ -72,6 +75,10 @@ function localDate(value: string | null) {
     dateStyle: "medium",
     timeStyle: value.includes("T") ? "short" : undefined,
   }).format(new Date(value));
+}
+
+function dentitionForTooth(tooth?: string | null) {
+  return tooth && /^[5-8][1-5]$/.test(tooth) ? "PRIMARY" : "PERMANENT";
 }
 
 const SURFACE_LABELS: Record<string, string> = {
@@ -169,6 +176,10 @@ const toothOptions = [
   "21", "22", "23", "24", "25", "26", "27", "28",
   "31", "32", "33", "34", "35", "36", "37", "38",
   "41", "42", "43", "44", "45", "46", "47", "48",
+  "51", "52", "53", "54", "55",
+  "61", "62", "63", "64", "65",
+  "71", "72", "73", "74", "75",
+  "81", "82", "83", "84", "85",
 ];
 
 const surfaceOptions = [
@@ -199,8 +210,13 @@ type ProcedurePayload = {
   diagnosis_catalog_item_id?: string | null;
   existing_odontogram_event_id?: string | null;
   diagnosis_observation?: string | null;
+  diagnosis_scope_type?: string | null;
+  diagnosis_zone?: string | null;
+  diagnosis_tooth?: string | null;
+  diagnosis_surfaces?: string[] | null;
   allow_existing_duplicate?: boolean;
   dentition?: string;
+  prior_implant_event_id?: string | null;
 };
 
 function procedureToPayload(procedure: Procedure): ProcedurePayload {
@@ -724,6 +740,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
       >
           {hasPermission("treatments.update") && (
             <ProcedureForm
+              patientId={treatment.patient_id}
               options={options}
               catalog={catalog}
               currencyCode={treatment.currency_code}
@@ -734,29 +751,19 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                 return item;
               }}
               onSubmit={async (payload) => {
-                if (payload.idempotency_key && payload.diagnosis_mode && payload.diagnosis_mode !== "NONE" && payload.catalog_procedure_id) {
+                if (payload.idempotency_key && payload.diagnosis_mode && payload.catalog_procedure_id) {
                   const response = await createProcedureWithDiagnosis(treatmentId, {
                     ...payload,
                     catalog_procedure_id: payload.catalog_procedure_id,
                     idempotency_key: payload.idempotency_key,
                     diagnosis_mode: payload.diagnosis_mode,
                   });
-                  if (!response.procedure && response.compatible_existing_event_id) {
-                    const reuse = window.confirm(`${response.message}\n\n¿Reutilizar el diagnóstico existente?`);
-                    if (reuse) {
-                      await createProcedureWithDiagnosis(treatmentId, {
-                        ...payload,
-                        catalog_procedure_id: payload.catalog_procedure_id,
-                        idempotency_key: `${payload.idempotency_key}-reuse`,
-                        diagnosis_mode: "USE_EXISTING",
-                        existing_odontogram_event_id: response.compatible_existing_event_id,
-                      });
-                    }
-                  }
+                  if (!response.procedure && response.compatible_existing_event_id) return response;
                 } else {
                   await createProcedure(treatmentId, payload);
                 }
                 await refresh();
+                return undefined;
               }}
             />
           )}
@@ -774,6 +781,7 @@ export function TreatmentDetailPage({ treatmentId }: { treatmentId: string }) {
                 <button onClick={() => setEditingProcedure(null)} className="text-sm font-bold text-slate-500 hover:text-slate-900">Cancelar</button>
               </div>
               <ProcedureForm
+                patientId={treatment.patient_id}
                 options={options}
                 catalog={catalog}
                 currencyCode={treatment.currency_code}
@@ -1206,17 +1214,31 @@ function ClinicalCompletionDialog({
     const sourcePromise = procedure.source_odontogram_event_id
       ? getOdontogramEvent(procedure.source_odontogram_event_id)
       : Promise.resolve(null);
-    Promise.all([listClinicalEvolutions(patientId), getOdontogramCatalog(), sourcePromise])
-      .then(([evolutionResponse, catalogItems, loadedSourceEvent]) => {
+    const procedureCatalogPromise = procedure.catalog_procedure_id
+      ? listProcedureCatalog("?activo=true").then(
+          (response) => response.items.find((item) => item.id === procedure.catalog_procedure_id) ?? null,
+        )
+      : Promise.resolve(null);
+    Promise.all([listClinicalEvolutions(patientId), getOdontogramCatalog(), sourcePromise, procedureCatalogPromise])
+      .then(([evolutionResponse, catalogItems, loadedSourceEvent, catalogProcedure]) => {
         const draftEvolutions = evolutionResponse.items.filter((item) => item.status === "DRAFT");
         const performedCatalog = catalogItems.filter((item) => item.type === "PERFORMED_PROCEDURE" && item.is_active);
+        const completionCatalog = resolveClinicalCompletionCatalog(performedCatalog, catalogProcedure);
         setEvolutions(draftEvolutions);
-        setCatalog(performedCatalog);
+        setCatalog(completionCatalog.items);
         setSourceEvent(loadedSourceEvent);
         setEvolutionId(draftEvolutions[0]?.id ?? "");
-        setCatalogItemId(performedCatalog[0]?.id ?? "");
-        setSourceAction("KEEP_ACTIVE");
+        setCatalogItemId(completionCatalog.selectedId);
+        const requiresResolution = loadedSourceEvent?.details.some(
+          (detail) => detail.catalog_code === "FIND_ENDO_DEFECTIVE",
+        ) ?? false;
+        setSourceAction(requiresResolution ? "RESOLVE_ON_SIGN" : "KEEP_ACTIVE");
         setObservation("");
+        if (procedure.catalog_procedure_id && !catalogProcedure) {
+          setError("La configuración de catálogo vinculada ya no está disponible.");
+        } else if (completionCatalog.error) {
+          setError(completionCatalog.error);
+        }
       })
       .catch((err) => setError(errorMessage(err, "No fue posible cargar el contexto clínico.")))
       .finally(() => setLoading(false));
@@ -1242,7 +1264,7 @@ function ClinicalCompletionDialog({
         zone: procedure.zone,
         tooth: procedure.tooth,
         surfaces: procedure.surfaces,
-        dentition: "PERMANENT",
+        dentition: dentitionForTooth(procedure.tooth),
         observation: observation || null,
       });
       await onDone();
@@ -1255,6 +1277,9 @@ function ClinicalCompletionDialog({
 
   const selectedEvolution = evolutions.find((item) => item.id === evolutionId);
   const selectedCatalog = catalog.find((item) => item.id === catalogItemId);
+  const sourceRequiresResolution = sourceEvent?.details.some(
+    (detail) => detail.catalog_code === "FIND_ENDO_DEFECTIVE",
+  ) ?? false;
 
   return (
     <Modal open={open} title="Registrar realización clínica" onClose={onClose}>
@@ -1346,7 +1371,7 @@ function ClinicalCompletionDialog({
                       onChange={(event) => setSourceAction(event.target.value as "KEEP_ACTIVE" | "RESOLVE_ON_SIGN")}
                       className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3"
                     >
-                      <option value="KEEP_ACTIVE">Mantener diagnóstico activo</option>
+                      {!sourceRequiresResolution && <option value="KEEP_ACTIVE">Mantener diagnóstico activo</option>}
                       <option value="RESOLVE_ON_SIGN">Resolver diagnóstico al firmar</option>
                     </select>
                   </label>
@@ -1447,6 +1472,7 @@ function BudgetMetric({
 }
 
 function ProcedureForm({
+  patientId,
   options,
   catalog,
   currencyCode,
@@ -1455,6 +1481,7 @@ function ProcedureForm({
   onCreateCatalog,
   onSubmit,
 }: {
+  patientId: string;
   options: AgendaOptions | null;
   catalog: ProcedureCatalogItem[];
   currencyCode: string | null;
@@ -1467,7 +1494,7 @@ function ProcedureForm({
     suggested_scope_type?: string | null;
     is_active?: boolean;
   }) => Promise<ProcedureCatalogItem>;
-  onSubmit: (payload: ProcedurePayload) => Promise<void>;
+  onSubmit: (payload: ProcedurePayload) => Promise<void | ProcedureWithDiagnosisResponse>;
 }) {
   const [catalogProcedureId, setCatalogProcedureId] = useState(initial?.catalog_procedure_id ?? "");
   const [name, setName] = useState(initial?.name ?? "");
@@ -1484,6 +1511,16 @@ function ProcedureForm({
   const [diagnosisMode, setDiagnosisMode] = useState<"NONE" | "CREATE_NEW">("NONE");
   const [diagnosisCatalogItemId, setDiagnosisCatalogItemId] = useState("");
   const [diagnosisObservation, setDiagnosisObservation] = useState("");
+  const [diagnosisSurfaces, setDiagnosisSurfaces] = useState<string[]>([]);
+  const [compatibleExisting, setCompatibleExisting] = useState<{
+    eventId: string;
+    message: string;
+    payload: ProcedurePayload;
+  } | null>(null);
+  const [reusingExisting, setReusingExisting] = useState(false);
+  const [priorImplantEventId, setPriorImplantEventId] = useState("");
+  const [implantAntecedents, setImplantAntecedents] = useState<OdontogramEvent[]>([]);
+  const [implantAntecedentsLoading, setImplantAntecedentsLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [showCatalogModal, setShowCatalogModal] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -1513,20 +1550,63 @@ function ProcedureForm({
     setDiagnosisMode("NONE");
     setDiagnosisCatalogItemId("");
     setDiagnosisObservation("");
+    setDiagnosisSurfaces([]);
+    setCompatibleExisting(null);
     setFormError(null);
   }, [initial]);
 
   const selectedCatalog = catalog.find((item) => item.id === catalogProcedureId) ?? null;
+  const resolvedClinicalTargets = resolveCatalogClinicalTargets(selectedCatalog?.price_provenance, tooth);
+  const fixedGraphicalTargets = resolvedClinicalTargets.fixedTeeth;
+  const isFixedSmileDesign = fixedGraphicalTargets.length > 0;
+  const requiredDentition = resolvedClinicalTargets.requiredDentition;
+  const requiresImplantAntecedent =
+    selectedCatalog?.price_provenance?.requires_prior_code === "DONE_IMPLANT";
   const odontogramBehavior = selectedCatalog?.odontogram_behavior ?? "UNCONFIGURED";
+  const allowedDiagnoses = selectedCatalog?.allowed_diagnoses ?? [];
+  const isEndodonticPlan =
+    odontogramBehavior === "PLANNED_RESULT"
+    && selectedCatalog?.default_performed_code === "DONE_ENDO";
   const needsDiagnosis =
     !initial && odontogramBehavior === "REQUIRES_DIAGNOSIS";
   const canAttachDiagnosis =
-    !initial && ["REQUIRES_DIAGNOSIS", "OPTIONAL_DIAGNOSIS"].includes(odontogramBehavior);
-  const allowedDiagnoses = selectedCatalog?.allowed_diagnoses ?? [];
+    !initial && (
+      ["REQUIRES_DIAGNOSIS", "OPTIONAL_DIAGNOSIS"].includes(odontogramBehavior)
+      || (isEndodonticPlan && allowedDiagnoses.length > 0)
+    );
+  const createsPlannedMark = !initial && odontogramBehavior === "PLANNED_RESULT";
   const exactCatalogMatch = catalog.find((item) => item.name.toLowerCase() === name.trim().toLowerCase()) ?? null;
   const visibleCatalog = catalog
     .filter((item) => item.name.toLowerCase().includes(name.trim().toLowerCase()))
     .slice(0, 8);
+
+  useEffect(() => {
+    setPriorImplantEventId("");
+    setImplantAntecedents([]);
+    if (!requiresImplantAntecedent || !tooth) return;
+    let cancelled = false;
+    setImplantAntecedentsLoading(true);
+    listOdontogramEvents(patientId, "CONFIRMED")
+      .then((response) => {
+        if (cancelled) return;
+        const dentition = dentitionForTooth(tooth);
+        setImplantAntecedents(response.items.filter((event) =>
+          event.event_type === "PROCEDURE_PERFORMED"
+          && event.details.length === 1
+          && event.details[0].catalog_code === "DONE_IMPLANT"
+          && event.details[0].layer === "PERFORMED"
+          && event.details[0].scope_type === "TOOTH"
+          && event.details[0].tooth_code === tooth
+          && event.details[0].dentition === dentition
+          && !(event.details[0].surfaces?.length),
+        ));
+      })
+      .catch(() => {
+        if (!cancelled) setFormError("No fue posible consultar los implantes realizados. Verifique permisos y vuelva a intentar.");
+      })
+      .finally(() => { if (!cancelled) setImplantAntecedentsLoading(false); });
+    return () => { cancelled = true; };
+  }, [patientId, requiresImplantAntecedent, tooth]);
 
   function applyCatalogItem(item: ProcedureCatalogItem) {
     setCatalogProcedureId(item.id);
@@ -1541,20 +1621,23 @@ function ProcedureForm({
     }
     if (item.odontogram_scope_type) {
       setScopeType(item.odontogram_scope_type);
-      setZone("");
+      const targets = resolveCatalogClinicalTargets(item.price_provenance, null);
+      setZone(targets.zone ?? "");
       setTooth("");
       setSurfaces([]);
     }
     if (item.odontogram_behavior === "REQUIRES_DIAGNOSIS") {
       setDiagnosisMode("CREATE_NEW");
       setDiagnosisCatalogItemId(item.allowed_diagnoses[0]?.id ?? "");
-    } else if (item.odontogram_behavior === "OPTIONAL_DIAGNOSIS") {
+    } else if (item.odontogram_behavior === "OPTIONAL_DIAGNOSIS" || (item.odontogram_behavior === "PLANNED_RESULT" && item.default_performed_code === "DONE_ENDO" && item.allowed_diagnoses.length > 0)) {
       setDiagnosisMode("NONE");
       setDiagnosisCatalogItemId(item.allowed_diagnoses[0]?.id ?? "");
     } else {
       setDiagnosisMode("NONE");
       setDiagnosisCatalogItemId("");
     }
+    setDiagnosisSurfaces([]);
+    setPriorImplantEventId("");
     setFormError(null);
   }
 
@@ -1632,6 +1715,35 @@ function ProcedureForm({
     );
   }
 
+  function toggleDiagnosisSurface(surface: string) {
+    setDiagnosisSurfaces((current) =>
+      current.includes(surface)
+        ? current.filter((item) => item !== surface)
+        : [...current, surface],
+    );
+  }
+
+  function resetProcedureForm() {
+    setCatalogProcedureId("");
+    setName("");
+    setCategory("");
+    setValue("0");
+    setQuantity("1");
+    setDentistId("");
+    setSiteId("");
+    setScopeType("GENERAL");
+    setZone("");
+    setTooth("");
+    setSurfaces([]);
+    setObservations("");
+    setDiagnosisMode("NONE");
+    setDiagnosisCatalogItemId("");
+    setDiagnosisObservation("");
+    setDiagnosisSurfaces([]);
+    setCompatibleExisting(null);
+    setFormError(null);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
@@ -1641,6 +1753,10 @@ function ProcedureForm({
     }
     if (diagnosisMode !== "NONE" && !diagnosisCatalogItemId) {
       setFormError("Seleccione el diagnóstico odontográfico que justifica el procedimiento.");
+      return;
+    }
+    if (diagnosisMode !== "NONE" && isEndodonticPlan && (!tooth || diagnosisSurfaces.length === 0)) {
+      setFormError("Seleccione la pieza y las caras explícitas del diagnóstico superficial.");
       return;
     }
     if (diagnosisMode !== "NONE" && !siteId) {
@@ -1658,13 +1774,38 @@ function ProcedureForm({
         "",
         `Procedimiento: ${name}`,
         `Diagnóstico: ${diagnosisName}`,
-        `Alcance: ${scopeType}${tooth ? ` · Diente ${tooth}` : ""}${surfaces.length ? ` · ${surfaces.join(", ")}` : ""}`,
+        `Alcance: ${isEndodonticPlan ? "TOOTH_SURFACE" : scopeType}${tooth ? ` · Diente ${tooth}` : ""}${(isEndodonticPlan ? diagnosisSurfaces : surfaces).length ? ` · ${(isEndodonticPlan ? diagnosisSurfaces : surfaces).join(", ")}` : ""}`,
         "",
         "No se creará presupuesto, pago, evolución ni procedimiento realizado.",
       ].join("\n");
       if (!window.confirm(confirmText)) return;
     }
-    await onSubmit({
+    if (createsPlannedMark) {
+      const hasAuthoritativeTarget = isFixedSmileDesign
+        ? scopeType === "ZONE" && zone === "ANTERIOR"
+        : Boolean(tooth);
+      if (!siteId || !dentistId || !hasAuthoritativeTarget) {
+        setFormError(isFixedSmileDesign
+          ? "El diseño requiere sede, odontólogo y la zona anterior configurada."
+          : "La marca planificada requiere sede, odontólogo y pieza dental.");
+        return;
+      }
+      const confirmed = window.confirm([
+        "Se creará el procedimiento y su marca odontográfica planificada.",
+        "",
+        `Procedimiento: ${name}`,
+        isFixedSmileDesign
+          ? `Piezas gráficas: ${fixedGraphicalTargets.join(", ")} · cobro único`
+          : `Diente: ${tooth}`,
+        "La marca planificada se conservará hasta firmar la realización clínica.",
+      ].join("\n"));
+      if (!confirmed) return;
+    }
+    if (requiresImplantAntecedent && !priorImplantEventId) {
+      setFormError("Seleccione el implante realizado que soporta esta corona.");
+      return;
+    }
+    const submittedPayload: ProcedurePayload = {
       catalog_procedure_id: catalogProcedureId || null,
       name,
       category: category || null,
@@ -1678,31 +1819,30 @@ function ProcedureForm({
       tooth: scopeType === "TOOTH" || scopeType === "TOOTH_SURFACE" ? tooth : null,
       surfaces: scopeType === "TOOTH_SURFACE" ? surfaces : null,
       idempotency_key:
-        diagnosisMode !== "NONE"
+        diagnosisMode !== "NONE" || createsPlannedMark
           ? idempotencyKey("treatment-procedure-diagnosis")
           : undefined,
       diagnosis_mode: diagnosisMode,
       diagnosis_catalog_item_id: diagnosisMode !== "NONE" ? diagnosisCatalogItemId : null,
       diagnosis_observation: diagnosisMode !== "NONE" ? diagnosisObservation || null : null,
-      dentition: "PERMANENT",
-    });
+      diagnosis_scope_type: diagnosisMode !== "NONE" && isEndodonticPlan ? "TOOTH_SURFACE" : null,
+      diagnosis_zone: null,
+      diagnosis_tooth: diagnosisMode !== "NONE" && isEndodonticPlan ? tooth : null,
+      diagnosis_surfaces: diagnosisMode !== "NONE" && isEndodonticPlan ? diagnosisSurfaces : null,
+      dentition: resolvedClinicalTargets.dentition,
+      prior_implant_event_id: requiresImplantAntecedent ? priorImplantEventId : null,
+    };
+    const result = await onSubmit(submittedPayload);
+    if (result?.compatible_existing_event_id) {
+      setCompatibleExisting({
+        eventId: result.compatible_existing_event_id,
+        message: result.message,
+        payload: submittedPayload,
+      });
+      return;
+    }
     if (!initial) {
-      setCatalogProcedureId("");
-      setName("");
-      setCategory("");
-      setValue("0");
-      setQuantity("1");
-      setDentistId("");
-      setSiteId("");
-      setScopeType("GENERAL");
-      setZone("");
-      setTooth("");
-      setSurfaces([]);
-      setObservations("");
-      setDiagnosisMode("NONE");
-      setDiagnosisCatalogItemId("");
-      setDiagnosisObservation("");
-      setFormError(null);
+      resetProcedureForm();
     }
   }
 
@@ -1710,6 +1850,39 @@ function ProcedureForm({
     <>
       <form onSubmit={submit} className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
         {formError && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{formError}</div>}
+        {compatibleExisting && (
+          <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+            <p className="font-bold">{compatibleExisting.message}</p>
+            <p className="mt-1 text-xs">Seleccione explícitamente si desea reutilizar ese diagnóstico confirmado; no se creará otro en forma automática.</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-black text-white"
+                disabled={reusingExisting}
+                onClick={async () => {
+                  if (reusingExisting) return;
+                  setReusingExisting(true);
+                  try {
+                    await onSubmit({
+                      ...compatibleExisting.payload,
+                      idempotency_key: `${compatibleExisting.payload.idempotency_key}-reuse`,
+                      diagnosis_mode: "USE_EXISTING",
+                      existing_odontogram_event_id: compatibleExisting.eventId,
+                    });
+                    resetProcedureForm();
+                  } finally {
+                    setReusingExisting(false);
+                  }
+                }}
+              >
+                {reusingExisting ? "Reutilizando…" : "Reutilizar diagnóstico seleccionado"}
+              </button>
+              <button type="button" className="rounded-lg border border-blue-300 px-3 py-2 text-xs font-black" onClick={() => setCompatibleExisting(null)}>
+                No reutilizar
+              </button>
+            </div>
+          </div>
+        )}
         <div className="grid gap-4 lg:grid-cols-3">
           <label className="relative">
             <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
@@ -1810,6 +1983,16 @@ function ProcedureForm({
                 </button>
               ) : null}
             </div>
+            {isFixedSmileDesign && (
+              <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                <strong>Marcas gráficas fijas:</strong> piezas {fixedGraphicalTargets.join(", ")}. El precio corresponde a un cobro único y no se multiplica por la cantidad de marcas.
+              </div>
+            )}
+            {requiredDentition && (
+              <div className="mt-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                Dentición requerida: <strong>{requiredDentition === "PRIMARY" ? "temporal" : "supernumeraria"}</strong>.
+              </div>
+            )}
           </label>
           <label>
             <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
@@ -1896,6 +2079,28 @@ function ProcedureForm({
                     placeholder="Detalle breve del diagnóstico confirmado"
                   />
                 </label>
+                {isEndodonticPlan && (
+                  <div className="lg:col-span-2 rounded-xl border border-orange-200 bg-white p-3">
+                    <p className="text-xs font-black uppercase tracking-wide text-orange-800">
+                      Diagnóstico superficial · pieza {tooth || "sin seleccionar"}
+                    </p>
+                    <p className="mt-1 text-xs text-orange-700">
+                      Las caras pertenecen al diagnóstico. El conducto se registra por pieza y no hereda estas caras.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {surfaceOptions.map((surface) => (
+                        <label key={`diagnosis-${surface.value}`} className="flex items-center gap-2 rounded-lg border border-orange-200 px-3 py-2 text-xs font-bold text-orange-900">
+                          <input
+                            type="checkbox"
+                            checked={diagnosisSurfaces.includes(surface.value)}
+                            onChange={() => toggleDiagnosisSurface(surface.value)}
+                          />
+                          {surface.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1935,6 +2140,7 @@ function ProcedureForm({
             </span>
             <select
               value={scopeType}
+              disabled={isFixedSmileDesign}
               onChange={(event) => {
                 setScopeType(event.target.value);
                 setZone("");
@@ -1958,6 +2164,7 @@ function ProcedureForm({
               </span>
               <select
                 value={zone}
+                disabled={isFixedSmileDesign}
                 onChange={(event) => setZone(event.target.value)}
                 className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
                 required
@@ -1985,6 +2192,38 @@ function ProcedureForm({
                   <option key={option} value={option}>Diente {option}</option>
                 ))}
               </select>
+            </label>
+          )}
+          {requiresImplantAntecedent && (
+            <label className="lg:col-span-2">
+              <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">
+                Implante realizado antecedente
+              </span>
+              <select
+                value={priorImplantEventId}
+                onChange={(event) => setPriorImplantEventId(event.target.value)}
+                disabled={!tooth || implantAntecedentsLoading}
+                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-100"
+                required
+              >
+                <option value="">
+                  {implantAntecedentsLoading
+                    ? "Consultando implantes…"
+                    : !tooth
+                      ? "Seleccione primero la pieza"
+                      : implantAntecedents.length
+                        ? "Seleccione el implante confirmado"
+                        : "No hay implante confirmado compatible"}
+                </option>
+                {implantAntecedents.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    Implante pieza {event.details[0].tooth_code} · {new Date(event.clinical_date).toLocaleDateString()}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">
+                La corona conserva este implante y no crea uno nuevo.
+              </span>
             </label>
           )}
           {scopeType === "TOOTH_SURFACE" && (

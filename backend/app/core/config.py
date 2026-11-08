@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     demo_request_rate_limit_window_seconds: int = 300
     demo_request_duplicate_window_seconds: int = 300
     procedure_catalog_seed_enabled: bool = False
+    procedure_catalog_odontogram_resin_seed_enabled: bool = False
+    procedure_catalog_odontogram_resin_backfill_enabled: bool = False
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",

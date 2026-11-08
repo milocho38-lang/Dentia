@@ -36,6 +36,8 @@ function fallbackKind(detail: OdontogramEventDetail) {
   if (haystack.includes("CORONA")) return detail.layer === "PLANNED" ? mappingByCode("PLAN_CROWN") : mappingByCode("DONE_CROWN");
   if (haystack.includes("CARILLA") || haystack.includes("VENEER")) return mappingByCode("FIND_VENEER");
   if (haystack.includes("IMPLANT")) return detail.layer === "PLANNED" ? mappingByCode("PLAN_IMPLANT") : mappingByCode("DONE_IMPLANT");
+  if (haystack.includes("PERNO") || haystack.includes("POSTE") || haystack.includes("ESPIGA")) return detail.layer === "PLANNED" ? mappingByCode("PLAN_POST") : mappingByCode("DONE_POST");
+  if (haystack.includes("PULPOTOM")) return mappingByCode("DONE_PULPOTOMY");
   if (haystack.includes("AUSEN") || haystack.includes("EXTRAC")) return detail.layer === "PLANNED" ? mappingByCode("PLAN_EXTRACTION") : mappingByCode("DONE_EXTRACTION");
   if (haystack.includes("FRACT")) return mappingByCode("FIND_FRACTURE");
   if (["DIAGNOSIS", "OBSERVATION"].includes(detail.layer)) return mappingByCode("OBS_GENERAL");
@@ -50,6 +52,9 @@ function localizationForDetail(
   if (realSurfaces.some((surface) => surface === "PULPAL_RADICULAR")) return "PULPAL_RADICULAR";
   if (realSurfaces.some((surface) => surface === "WHOLE_TOOTH")) return "WHOLE_TOOTH";
   if (realSurfaces.length) return "SURFACE_SPECIFIC";
+  // Pulpotomy has an authoritative occlusal rendering target even though the
+  // clinical result is stored at TOOTH scope and carries no billable surface.
+  if (mapping.kind === "PULPOTOMY" && mapping.defaultSurfaces?.length) return "SURFACE_SPECIFIC";
   if (mapping.defaultSurfaces?.some((surface) => surface === "PULPAL_RADICULAR")) return "PULPAL_RADICULAR";
   if (mapping.defaultSurfaces?.some((surface) => surface === "WHOLE_TOOTH")) return "WHOLE_TOOTH";
   if (mapping.superficial) return "SURFACE_UNSPECIFIED";
@@ -57,6 +62,7 @@ function localizationForDetail(
 }
 
 function statusFromLayer(detail: OdontogramEventDetail, fallback: ClinicalEventStatus): ClinicalEventStatus {
+  if (normalizedClinicalCode(detail.catalog_code) === "FIND_ENDO_DEFECTIVE") return "COMPLETED";
   if (detail.layer === "PLANNED") return "PLANNED";
   if (detail.layer === "PERFORMED") return "COMPLETED";
   if (detail.layer === "FINDING" && normalizedClinicalCode(detail.catalog_code) === "FIND_VENEER") {
@@ -86,6 +92,9 @@ function adaptDetail(detail: OdontogramEventDetail): DualClinicalEvent | null {
     sourceCode: normalizedClinicalCode(detail.catalog_code),
     sourceName: detail.catalog_name,
     unmapped: false,
+    variant: normalizedClinicalCode(detail.catalog_code) === "FIND_ENDO_DEFECTIVE"
+      ? "DEFECTIVE_ZIGZAG"
+      : undefined,
   };
 }
 
