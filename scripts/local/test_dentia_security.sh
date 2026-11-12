@@ -119,8 +119,9 @@ fi
 run_db_suite() {
   local compose_file="docker-compose.test.yml"
   local project="dentia-test"
-  local database_url="postgresql+psycopg://dentia_test:dentia_test_password@127.0.0.1:55432/dentia_test"
+  local database_url="${DENTIA_SECURITY_EXTERNAL_DATABASE_URL:-postgresql+psycopg://dentia_test:dentia_test_password@127.0.0.1:55432/dentia_test}"
   local storage_root="${TMPDIR:-/tmp}/dentia-security-storage"
+  local external_database=false
   local pytest_args=(
     "backend/tests/security"
     "backend/tests/multitenancy"
@@ -135,25 +136,51 @@ run_db_suite() {
     dentia_fail "pytest is not installed. Run: backend/.venv/bin/pip install -r backend/requirements-test.txt"
   fi
 
-  dentia_info "Using isolated PostgreSQL service: dentia-test-db"
+  if [ -n "${DENTIA_SECURITY_EXTERNAL_DATABASE_URL:-}" ]; then
+    if ! DENTIA_SECURITY_EXTERNAL_DATABASE_URL="$database_url" "$DENTIA_PYTHON" - <<'PY'
+import os
+from urllib.parse import urlsplit
+
+parsed = urlsplit(os.environ["DENTIA_SECURITY_EXTERNAL_DATABASE_URL"])
+valid = (
+    parsed.scheme == "postgresql+psycopg"
+    and parsed.username == "dentia_test"
+    and parsed.hostname == "127.0.0.1"
+    and parsed.port is not None
+    and parsed.path == "/dentia_test"
+    and not parsed.query
+    and not parsed.fragment
+)
+raise SystemExit(0 if valid else 1)
+PY
+    then
+      dentia_fail "External security database must be loopback dentia_test with user dentia_test."
+    fi
+    external_database=true
+    dentia_info "Using pre-provisioned isolated PostgreSQL service."
+  else
+    dentia_info "Using isolated PostgreSQL service: dentia-test-db"
+  fi
   dentia_info "Using isolated database: dentia_test"
   dentia_info "Using isolated storage root: $storage_root"
 
-  docker compose -f "$compose_file" -p "$project" up -d dentia-test-db
-  if [ "$KEEP_DB" = false ]; then
-    trap 'docker compose -f docker-compose.test.yml -p dentia-test down -v >/dev/null 2>&1 || true' EXIT
-  else
-    dentia_info "Keeping dentia-test resources because --keep-db was provided."
-  fi
-
-  dentia_info "Waiting for dentia-test-db health..."
-  for _ in $(seq 1 60); do
-    if docker compose -f "$compose_file" -p "$project" exec -T dentia-test-db pg_isready -U dentia_test -d dentia_test >/dev/null 2>&1; then
-      break
+  if [ "$external_database" = false ]; then
+    docker compose -f "$compose_file" -p "$project" up -d dentia-test-db
+    if [ "$KEEP_DB" = false ]; then
+      trap 'docker compose -f docker-compose.test.yml -p dentia-test down -v >/dev/null 2>&1 || true' EXIT
+    else
+      dentia_info "Keeping dentia-test resources because --keep-db was provided."
     fi
-    sleep 1
-  done
-  docker compose -f "$compose_file" -p "$project" exec -T dentia-test-db pg_isready -U dentia_test -d dentia_test >/dev/null
+
+    dentia_info "Waiting for dentia-test-db health..."
+    for _ in $(seq 1 60); do
+      if docker compose -f "$compose_file" -p "$project" exec -T dentia-test-db pg_isready -U dentia_test -d dentia_test >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    docker compose -f "$compose_file" -p "$project" exec -T dentia-test-db pg_isready -U dentia_test -d dentia_test >/dev/null
+  fi
 
   dentia_info "Running Alembic migrations against dentia_test..."
   APP_ENV=test \

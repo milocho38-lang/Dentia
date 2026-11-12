@@ -66,6 +66,8 @@ jobs:
         run: npm ci --prefix frontend
 
       - name: Run official security and hardening suites
+        env:
+          DENTIA_SECURITY_EXTERNAL_DATABASE_URL: postgresql+psycopg://dentia_test:dentia_test_password@127.0.0.1:5432/dentia_test
         run: |
           ./scripts/local/test_deploy_dentia_maintenance.sh
           ./scripts/local/test_dentia_security.sh --full
