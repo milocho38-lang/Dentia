@@ -88,6 +88,7 @@ PERMISSIONS = (
     PermissionDefinition("treatments.view", "Ver tratamientos", "treatments", "Consultar tratamientos."),
     PermissionDefinition("treatments.create", "Crear tratamientos", "treatments", "Crear tratamientos."),
     PermissionDefinition("treatments.update", "Actualizar tratamientos", "treatments", "Gestionar etapas y procedimientos."),
+    PermissionDefinition("treatments.prepare_budget", "Preparar tratamientos para presupuesto", "treatments", "Crear tratamientos y administrar procedimientos pendientes sin integración clínica."),
     PermissionDefinition("treatments.close", "Cerrar tratamientos", "treatments", "Finalizar tratamientos y registrar cierre."),
     PermissionDefinition("treatments.cancel", "Cancelar tratamientos", "treatments", "Cancelar tratamientos con trazabilidad."),
     PermissionDefinition("procedure_catalog.view", "Ver catálogo de procedimientos", "treatments", "Consultar el catálogo de procedimientos de la empresa."),
@@ -286,8 +287,10 @@ SECRETARY_PERMISSIONS = frozenset(
         "followups.manage",
         "followups.contact",
         "budgets.view",
+        "budgets.create",
         "budgets.update",
         "treatments.view",
+        "treatments.prepare_budget",
         "procedure_catalog.view",
         "finance.dashboard.view",
         "payments.view",
@@ -315,6 +318,8 @@ SECRETARY_PERMISSIONS = frozenset(
         "consent.final_document.read",
         "consent.final_document.download",
         "consent.copy.resend",
+        "consent.paper.read",
+        "consent.paper.prepare",
     }
 )
 

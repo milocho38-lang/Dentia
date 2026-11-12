@@ -90,6 +90,7 @@ from app.schemas.treatment_schema import (
     TreatmentCreateRequest,
     TreatmentListItemResponse,
     TreatmentListResponse,
+    TreatmentOdontogramReadinessResponse,
     TreatmentResponse,
     TreatmentSummaryResponse,
     TreatmentUpdateRequest,
@@ -247,8 +248,16 @@ def _validate_scope_matches_procedure(
         )
     if tooth:
         expected = "PRIMARY" if tooth in VALID_FDI_PRIMARY_TEETH else "PERMANENT"
-        if dentition != expected:
+        if dentition != "SUPERNUMERARY" and dentition != expected:
             raise TreatmentError("La dentición no coincide con la pieza seleccionada.", 422)
+
+
+def _validate_tooth_dentition(tooth: str | None, dentition: str) -> None:
+    if not tooth:
+        return
+    expected = "PRIMARY" if tooth in VALID_FDI_PRIMARY_TEETH else "PERMANENT"
+    if dentition != "SUPERNUMERARY" and dentition != expected:
+        raise TreatmentError("La dentición no coincide con la pieza seleccionada.", 422)
 
 
 def _scope_label(
@@ -606,7 +615,7 @@ def _get_or_create_patient_odontogram(
     )
     if clinical_record is None:
         raise TreatmentError(
-            "El paciente debe tener historia clínica antes de registrar diagnóstico odontográfico.",
+            "El paciente debe tener historia clínica antes de registrar una marca odontográfica planificada o diagnóstica.",
             409,
         )
     odontogram = Odontogram(
@@ -672,6 +681,46 @@ def _authorized_sites(session: Session, context: AuthContext) -> set[UUID]:
         roles=context.roles,
         active_only=True,
     )
+
+
+def _is_budget_preparer(context: AuthContext) -> bool:
+    """Return true for the deliberately limited administrative treatment role."""
+    return (
+        "treatments.prepare_budget" in context.permissions
+        and "treatments.update" not in context.permissions
+    )
+
+
+def _catalog_has_odontogram_effect(item: ProcedureCatalogItem | None) -> bool:
+    return item is not None and (item.odontogram_behavior or "UNCONFIGURED") not in {
+        "NO_CHANGE",
+        "UNCONFIGURED",
+    }
+
+
+def _require_budget_preparation_procedure(
+    session: Session,
+    context: AuthContext,
+    procedure: TreatmentProcedure,
+    catalog_item: ProcedureCatalogItem | None,
+) -> None:
+    if procedure.site_id and procedure.site_id not in _authorized_sites(session, context):
+        raise TreatmentError("No tienes acceso a la sede de este procedimiento.", 403)
+    if procedure.status != "Pendiente":
+        raise TreatmentError(
+            "La preparación administrativa solo permite editar procedimientos pendientes.",
+            403,
+        )
+    if procedure.planned_odontogram_event_id or procedure.source_odontogram_event_id:
+        raise TreatmentError(
+            "Este procedimiento tiene vínculos clínicos y requiere permisos clínicos para modificarlo.",
+            403,
+        )
+    if _catalog_has_odontogram_effect(catalog_item) and not procedure.odontogram_integration_opt_out:
+        raise TreatmentError(
+            "Este procedimiento usa integración odontográfica y requiere permisos clínicos.",
+            403,
+        )
 
 
 def _require_site(session: Session, context: AuthContext, site_id: UUID) -> Site:
@@ -1499,6 +1548,23 @@ def get_treatment(session: Session, context: AuthContext, treatment_id: UUID) ->
     return _treatment_response(session, _require_treatment(session, context, treatment_id))
 
 
+def get_treatment_odontogram_readiness(
+    session: Session, context: AuthContext, treatment_id: UUID
+) -> TreatmentOdontogramReadinessResponse:
+    treatment = _require_treatment(session, context, treatment_id)
+    return TreatmentOdontogramReadinessResponse(
+        clinical_record_exists=session.scalar(select(ClinicalRecord.id).where(
+            ClinicalRecord.company_id == context.user.company_id,
+            ClinicalRecord.patient_id == treatment.patient_id,
+        )) is not None,
+        odontogram_exists=session.scalar(select(Odontogram.id).where(
+            Odontogram.company_id == context.user.company_id,
+            Odontogram.patient_id == treatment.patient_id,
+            Odontogram.status == "ACTIVE",
+        )) is not None,
+    )
+
+
 def update_treatment(
     session: Session,
     context: AuthContext,
@@ -1600,6 +1666,7 @@ def _procedure_response(
         appointment_id=procedure.appointment_id,
         source_odontogram_event_id=procedure.source_odontogram_event_id,
         planned_odontogram_event_id=procedure.planned_odontogram_event_id,
+        odontogram_integration_opt_out=procedure.odontogram_integration_opt_out,
         unit_value=_money(procedure.unit_value),
         quantity=Decimal(procedure.quantity),
         total_value=_money(procedure.total_value),
@@ -2016,12 +2083,71 @@ def create_procedure(
             payload.catalog_procedure_id,
             active_only=True,
         )
+    if _is_budget_preparer(context):
+        if payload.status != "Pendiente":
+            raise TreatmentError(
+                "La preparación de presupuestos solo permite crear procedimientos pendientes.",
+                403,
+            )
+        if _catalog_has_odontogram_effect(catalog_item) and not payload.odontogram_integration_opt_out:
+            raise TreatmentError(
+                "Para preparar este procedimiento sin permisos clínicos debe excluir expresamente la integración odontográfica.",
+                422,
+            )
+    if payload.odontogram_integration_opt_out:
+        if catalog_item is None or (catalog_item.odontogram_behavior or "UNCONFIGURED") == "NO_CHANGE":
+            raise TreatmentError(
+                "La exclusión del odontograma solo aplica a procedimientos configurados con efecto odontográfico.",
+                422,
+            )
+        if not payload.idempotency_key:
+            raise TreatmentError(
+                "La creación sin odontograma requiere una clave de idempotencia.", 422
+            )
     scope_type, zone, tooth, surfaces = _validate_dental_scope(
         payload.scope_type,
         payload.zone,
         payload.tooth,
         payload.surfaces,
     )
+    if payload.odontogram_integration_opt_out:
+        existing = session.scalar(
+            select(TreatmentProcedure).where(
+                TreatmentProcedure.company_id == context.user.company_id,
+                TreatmentProcedure.odontogram_idempotency_key == payload.idempotency_key,
+            )
+        )
+        if existing is not None:
+            same_request = (
+                existing.treatment_id == treatment.id
+                and existing.patient_id == treatment.patient_id
+                and existing.catalog_procedure_id == catalog_item.id
+                and existing.odontogram_integration_opt_out is True
+                and existing.name == payload.name
+                and existing.category == (
+                    payload.category if payload.category is not None else catalog_item.category
+                )
+                and existing.dentist_id == payload.dentist_id
+                and existing.site_id == payload.site_id
+                and _money(existing.unit_value) == _money(payload.unit_value)
+                and Decimal(existing.quantity) == payload.quantity
+                and (existing.scope_type or "GENERAL") == scope_type
+                and existing.zone == zone
+                and existing.tooth == tooth
+                and _canonical_surfaces(existing.surfaces) == _canonical_surfaces(surfaces)
+                and existing.observations == payload.observations
+            )
+            if not same_request:
+                raise TreatmentError(
+                    "La clave de idempotencia ya fue utilizada con otro procedimiento.", 409
+                )
+            row = session.execute(
+                select(TreatmentProcedure, Dentist, Site)
+                .outerjoin(Dentist, Dentist.id == TreatmentProcedure.dentist_id)
+                .outerjoin(Site, Site.id == TreatmentProcedure.site_id)
+                .where(TreatmentProcedure.id == existing.id)
+            ).one()
+            return _procedure_response(session, *row)
     procedure = TreatmentProcedure(
         company_id=context.user.company_id,
         treatment_id=treatment.id,
@@ -2042,6 +2168,10 @@ def create_procedure(
         zone=zone,
         tooth=tooth,
         surfaces=surfaces,
+        odontogram_integration_opt_out=payload.odontogram_integration_opt_out,
+        odontogram_idempotency_key=(
+            payload.idempotency_key if payload.odontogram_integration_opt_out else None
+        ),
         created_by=context.user.id,
     )
     session.add(procedure)
@@ -2054,9 +2184,20 @@ def create_procedure(
         "zone": procedure.zone,
         "tooth": procedure.tooth,
         "surfaces": procedure.surfaces,
+        "odontogram_integration_opt_out": procedure.odontogram_integration_opt_out,
     }
-    _event(session, context, treatment.id, "PROCEDURE_CREATED", "Procedimiento creado.", scope_detail)
-    _audit(session, context, metadata, entity="treatment_procedure", entity_id=procedure.id, action="PROCEDURE_CREATED", detail=scope_detail)
+    action = (
+        "PROCEDURE_CREATED_WITHOUT_ODONTOGRAM"
+        if procedure.odontogram_integration_opt_out
+        else "PROCEDURE_CREATED"
+    )
+    message = (
+        "Procedimiento creado expresamente sin integración odontográfica."
+        if procedure.odontogram_integration_opt_out
+        else "Procedimiento creado."
+    )
+    _event(session, context, treatment.id, action, message, scope_detail)
+    _audit(session, context, metadata, entity="treatment_procedure", entity_id=procedure.id, action=action, detail=scope_detail)
     session.commit()
     row = session.execute(
         select(TreatmentProcedure, Dentist, Site)
@@ -2488,6 +2629,11 @@ def create_procedure_with_diagnosis(
     metadata: RequestMetadata,
 ) -> ProcedureWithDiagnosisCreateResponse:
     _require_bridge_permission(context, "treatments.update")
+    if payload.odontogram_integration_opt_out:
+        raise TreatmentError(
+            "La exclusión del odontograma debe crearse por el flujo administrativo, sin diagnósticos ni marcas.",
+            422,
+        )
     treatment = _require_treatment(session, context, treatment_id, lock=True)
     if not payload.catalog_procedure_id:
         raise TreatmentError("Seleccione un procedimiento del catálogo para usar integración odontográfica.", 422)
@@ -2495,6 +2641,7 @@ def create_procedure_with_diagnosis(
     scope_type, zone, tooth, surfaces = _validate_dental_scope(
         payload.scope_type, payload.zone, payload.tooth, payload.surfaces
     )
+    _validate_tooth_dentition(tooth, payload.dentition)
     behavior = catalog_item.odontogram_behavior or "UNCONFIGURED"
     configured_result = (
         session.get(OdontogramCatalogItem, catalog_item.default_performed_catalog_item_id)
@@ -2911,9 +3058,21 @@ def update_procedure(
     procedure = _require_procedure(session, context, treatment, procedure_id, lock=True)
     if procedure.status == "Realizado":
         raise TreatmentError("No se puede modificar un procedimiento realizado sin flujo de corrección.")
+    current_catalog_item = (
+        _require_catalog_item(session, context, procedure.catalog_procedure_id, active_only=False)
+        if procedure.catalog_procedure_id
+        else None
+    )
+    if _is_budget_preparer(context):
+        _require_budget_preparation_procedure(session, context, procedure, current_catalog_item)
     if _has_approved_budget(session, treatment.id) and not _has_editable_budget(session, treatment.id):
         raise TreatmentError("Este procedimiento pertenece a un presupuesto aprobado. Cree una nueva versión del presupuesto antes de modificarlo.")
     data = payload.model_dump(exclude_unset=True)
+    if _is_budget_preparer(context) and data.get("status") not in {None, "Pendiente"}:
+        raise TreatmentError(
+            "La preparación administrativa no permite cambiar el estado clínico del procedimiento.",
+            403,
+        )
     if procedure.planned_odontogram_event_id is not None:
         incompatible = {"catalog_procedure_id", "scope_type", "zone", "tooth", "surfaces"}.intersection(data)
         if incompatible:
@@ -2941,6 +3100,11 @@ def update_procedure(
             procedure.catalog_procedure_id = catalog_item.id
             if "category" not in data:
                 procedure.category = catalog_item.category
+            if _is_budget_preparer(context) and _catalog_has_odontogram_effect(catalog_item) and not procedure.odontogram_integration_opt_out:
+                raise TreatmentError(
+                    "No puede activar integración odontográfica desde la preparación administrativa.",
+                    403,
+                )
     scope_keys = {"scope_type", "zone", "tooth", "surfaces"}
     if scope_keys.intersection(data):
         scope_type, zone, tooth, surfaces = _validate_dental_scope(
@@ -3004,8 +3168,12 @@ def mark_procedure_done(session: Session, context: AuthContext, treatment_id: UU
     procedure.updated_by = context.user.id
     if treatment.status in {"Borrador", "Presupuestado", "Aprobado"}:
         treatment.status = "En ejecución"
-    _event(session, context, treatment.id, "PROCEDURE_MARKED_DONE", "Procedimiento marcado como realizado.", {"procedure_id": str(procedure.id)})
-    _audit(session, context, metadata, entity="treatment_procedure", entity_id=procedure.id, action="PROCEDURE_MARKED_DONE")
+    completion_detail = {
+        "procedure_id": str(procedure.id),
+        "odontogram_integration_opt_out": procedure.odontogram_integration_opt_out,
+    }
+    _event(session, context, treatment.id, "PROCEDURE_MARKED_DONE", "Procedimiento marcado como realizado.", completion_detail)
+    _audit(session, context, metadata, entity="treatment_procedure", entity_id=procedure.id, action="PROCEDURE_MARKED_DONE", detail=completion_detail)
     session.commit()
     row = session.execute(
         select(TreatmentProcedure, Dentist, Site)
@@ -3029,6 +3197,10 @@ def complete_procedure_clinically(
 
     treatment = _require_treatment(session, context, treatment_id, lock=True)
     procedure = _require_procedure(session, context, treatment, procedure_id, lock=True)
+    if procedure.odontogram_integration_opt_out:
+        raise TreatmentError(
+            "Este procedimiento fue creado expresamente sin integración odontográfica.", 409
+        )
     completion_catalog = (
         session.get(ProcedureCatalogItem, procedure.catalog_procedure_id)
         if procedure.catalog_procedure_id else None
@@ -3658,6 +3830,13 @@ def delete_procedure(
 ) -> None:
     treatment = _require_treatment(session, context, treatment_id, lock=True)
     procedure = _require_procedure(session, context, treatment, procedure_id, lock=True)
+    if _is_budget_preparer(context):
+        catalog_item = (
+            _require_catalog_item(session, context, procedure.catalog_procedure_id, active_only=False)
+            if procedure.catalog_procedure_id
+            else None
+        )
+        _require_budget_preparation_procedure(session, context, procedure, catalog_item)
     if procedure.status == "Realizado":
         raise TreatmentError("No se puede eliminar un procedimiento realizado.")
     if _has_valid_payments(session, treatment.id):

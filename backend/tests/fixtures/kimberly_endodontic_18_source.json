@@ -1,0 +1,132 @@
+{
+  "source_sha256": "1d77bd1c0723fdfaf05e57f78dd4aed15f04eabc95797a2f7589b1446c8de5df",
+  "source_sheet": "prestaciones ",
+  "records": [
+    {
+      "excel_row": 179,
+      "source_name": "Endodoncia en incisivos y caninos",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 160000
+    },
+    {
+      "excel_row": 180,
+      "source_name": "Endodoncia en incisivos y caninos vitales",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 91000
+    },
+    {
+      "excel_row": 181,
+      "source_name": "Endodoncia en incisivos y caninos.",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 200000
+    },
+    {
+      "excel_row": 182,
+      "source_name": "Endodoncia en molar",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 200000
+    },
+    {
+      "excel_row": 183,
+      "source_name": "Endodoncia en molar inferior vital",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 138000
+    },
+    {
+      "excel_row": 184,
+      "source_name": "Endodoncia en molar superior no vital con lesión",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 193000
+    },
+    {
+      "excel_row": 185,
+      "source_name": "Endodoncia en molar superior no vital sin lesión",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 174000
+    },
+    {
+      "excel_row": 186,
+      "source_name": "Endodoncia en molar superior vital",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 148000
+    },
+    {
+      "excel_row": 187,
+      "source_name": "Endodoncia en molar.",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 220000
+    },
+    {
+      "excel_row": 188,
+      "source_name": "Endodoncia premolares",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 180000
+    },
+    {
+      "excel_row": 189,
+      "source_name": "Endodoncia premolares trirradiculares (con lesión)",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 172000
+    },
+    {
+      "excel_row": 190,
+      "source_name": "Endodoncia premolares trirradiculares (sin lesión)",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 148000
+    },
+    {
+      "excel_row": 191,
+      "source_name": "Endodoncia premolares vitales",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 103000
+    },
+    {
+      "excel_row": 192,
+      "source_name": "Endodoncia premolares.",
+      "source_scope": "por diente por cara",
+      "source_note": "por caris, fractura",
+      "source_price_clp": 200000
+    },
+    {
+      "excel_row": 282,
+      "source_name": "Pulpectomia en pieza temporal anterior",
+      "source_scope": "por diente y cara ",
+      "source_note": "se maraca como endo en rojo",
+      "source_price_clp": 28000
+    },
+    {
+      "excel_row": 283,
+      "source_name": "Pulpectomia en pieza temporal posterior",
+      "source_scope": "por diente y cara ",
+      "source_note": "se maraca como endo en rojo",
+      "source_price_clp": 29000
+    },
+    {
+      "excel_row": 292,
+      "source_name": "Tratamiento conducto pieza temporal desvitalizada anterior",
+      "source_scope": "por diente y cara ",
+      "source_note": "se maraca como endo en rojo",
+      "source_price_clp": 33000
+    },
+    {
+      "excel_row": 293,
+      "source_name": "Tratamiento conducto pieza temporal desvitalizada posterior",
+      "source_scope": "por diente y cara ",
+      "source_note": "se maraca como endo en rojo",
+      "source_price_clp": 44000
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import type {
   ProcedureWithDiagnosisResponse,
   Treatment,
   TreatmentListResponse,
+  TreatmentOdontogramReadiness,
 } from "@/types/treatment";
 
 export function listTreatments(query = "") {
@@ -39,6 +40,12 @@ export function createTreatment(data: {
 
 export function getTreatment(treatmentId: string) {
   return apiRequest<Treatment>(`/api/treatments/${treatmentId}`);
+}
+
+export function getTreatmentOdontogramReadiness(treatmentId: string) {
+  return apiRequest<TreatmentOdontogramReadiness>(
+    `/api/treatments/${treatmentId}/odontogram-readiness`,
+  );
 }
 
 export function approveTreatment(treatmentId: string) {
@@ -138,6 +145,8 @@ export function createProcedure(
     zone?: string | null;
     tooth?: string | null;
     surfaces?: string[] | null;
+    odontogram_integration_opt_out?: boolean;
+    idempotency_key?: string;
   },
 ) {
   return apiRequest<Procedure>(`/api/treatments/${treatmentId}/procedures`, {

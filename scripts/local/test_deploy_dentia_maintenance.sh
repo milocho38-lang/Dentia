@@ -76,8 +76,15 @@ MOCK
 
   cat >"$harness/bin/git" <<'MOCK'
 #!/usr/bin/env bash
+if [ "$1" = -C ]; then
+  case "${3:-} ${4:-}" in
+    'rev-parse --show-toplevel') printf '%s\n' "$2" ;;
+    'rev-parse --absolute-git-dir') printf '%s/.git\n' "$2" ;;
+    *) exit 0 ;;
+  esac
+  exit 0
+fi
 case "$1 ${2:-}" in
-  '-C '*) exit 0 ;;
   'rev-parse --abbrev-ref') printf 'master\n' ;;
   'rev-parse HEAD')
     if [ -f "$DEPLOY_TEST_HARNESS/pulled" ]; then printf '%s\n' "$DEPLOY_TEST_TARGET_SHA"; else printf '%s\n' "$DEPLOY_TEST_OLD_SHA"; fi ;;
@@ -190,17 +197,17 @@ case "$1" in
             printf 'role-admin|ADMINISTRATOR|permission-view|clinical_files.view|t|assignment-view|t\n'
           fi
         elif [ "${DEPLOY_TEST_SCENARIO:-success}" = recovery_hash_mismatch ] && [[ "$*" == *" -d dentia "* ]]; then
-          printf 'auditoria_eventos|1|changed\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
+          printf 'auditoria_eventos|1|changed\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nplatform_commercial_accounts|1|ca\nplatform_commercial_obligations|1|co\nplatform_commercial_rates|1|cr\nplatform_commercial_reconciliations|1|cc\nplatform_commercial_transfers|1|ct\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
         else
-          printf 'auditoria_eventos|1|a\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
+          printf 'auditoria_eventos|1|a\nauth_sessions|1|b\npacientes|1|c\npatient_external_references|0|d41d8\npatient_import_sources|1|source\nplatform_commercial_accounts|1|ca\nplatform_commercial_obligations|1|co\nplatform_commercial_rates|1|cr\nplatform_commercial_reconciliations|1|cc\nplatform_commercial_transfers|1|ct\nroles|1|d\nusuario_roles|1|e\nusuarios|1|f\n'
         fi
       elif [[ "$sql" == *'SELECT version_num'* ]]; then
         if [ -f "$DEPLOY_TEST_HARNESS/migrated" ]; then
-          if [ "${DEPLOY_TEST_SCENARIO:-success}" = unexpected_post_revision ]; then printf '20261102_0052\n'; else printf '20261108_0056\n'; fi
+          if [ "${DEPLOY_TEST_SCENARIO:-success}" = unexpected_post_revision ]; then printf '20261108_0056\n'; else printf '20261112_0059\n'; fi
         elif [ "${DEPLOY_TEST_SCENARIO:-success}" = unexpected_pre_revision ]; then
           printf '20261012_0049\n'
         else
-          printf '20261102_0052\n'
+          printf '20261108_0056\n'
         fi
       elif [[ "$sql" == *'pg_stat_activity'* ]]; then
         if [ "${DEPLOY_TEST_SCENARIO:-success}" = unknown_writers ]; then printf '1\n'; else printf '0\n'; fi
@@ -223,6 +230,12 @@ case "$1" in
         else
           printf '3\n'
         fi
+      elif [[ "$sql" == *"column_name='odontograma_integracion_omitida'"* ]]; then
+        printf '1\n'
+      elif [[ "$sql" == *"r.code='SECRETARY'"* ]] && [[ "$sql" == *"treatments.prepare_budget"* ]]; then
+        printf '0\n'
+      elif [[ "$sql" == *"code='treatments.prepare_budget'"* ]]; then
+        printf '1\n'
       elif [[ "$sql" == *"CROSS JOIN (VALUES ('clinical_files.view'),('clinical_files.create'))"* ]]; then
         if [ "${DEPLOY_TEST_SCENARIO:-success}" = recovery_0049_incomplete_authorized_role ]; then printf '1\n'; else printf '0\n'; fi
       elif [[ "$sql" == *"codigo='FIND_VENEER'"* ]]; then
@@ -372,11 +385,11 @@ prepare_recovery_harness() {
   printf 'false\n' >"$harness/state/dentia-frontend"
   printf 'false\n' >"$harness/state/dentia-website"
   mkdir -p "$harness/recovery-backup"
-  printf '{"alembic_revision":"20261102_0052"}\n' >"$harness/recovery-backup/manifest.json"
+  printf '{"alembic_revision":"20261108_0056"}\n' >"$harness/recovery-backup/manifest.json"
 }
 
 run_recovery_case() {
-  local scenario="$1" expect_success="$2" backup_revision="${3:-20261102_0052}"
+  local scenario="$1" expect_success="$2" backup_revision="${3:-20261108_0056}"
   local harness status=0 log
   harness="$(mktemp -d "${TMPDIR:-/tmp}/dentia-deploy-recovery.XXXXXX")"
   prepare_recovery_harness "$harness"
@@ -389,7 +402,7 @@ run_recovery_case() {
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
   DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261108_0056 DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION="$backup_revision" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261112_0059 DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION="$backup_revision" \
   DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
   if [ "$expect_success" = true ]; then
@@ -432,7 +445,7 @@ run_recovery_guard_case() {
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
   DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261108_0056 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261112_0059 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] || fail "recovery guard $guard unexpectedly succeeded"
   assert_absent "$log" 'start:dentia-backend'
@@ -450,7 +463,7 @@ run_recovery_backup_revision_guard_case() {
   DEPLOY_TEST_OLD_SHA="$OLD_SHA" DEPLOY_TEST_TARGET_SHA="$TARGET_SHA" \
   DENTIA_PRODUCTION_DIR="$harness/root" DENTIA_PROJECT_DIR="$harness/root" DENTIA_BACKUP_DIR="$harness/backup" \
   DENTIA_ENV_FILE="$harness/missing.env" PATH="$harness/bin:$PATH" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
-  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261108_0056 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261112_0059 DENTIA_RECOVERY_BACKUP_PATH="$harness/recovery-backup" \
     "$harness/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA" >/dev/null 2>&1 || status=$?
   [ "$status" -ne 0 ] || fail "recovery accepted a backup from unexpected revision 20261012_0049"
   assert_absent "$log" 'start:dentia-backend'

@@ -197,6 +197,13 @@ class TreatmentProcedure(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         nullable=True,
     )
+    odontogram_integration_opt_out: Mapped[bool] = mapped_column(
+        "odontograma_integracion_omitida",
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
     odontogram_idempotency_key: Mapped[str | None] = mapped_column(
         "odontograma_idempotency_key",
         String(120),

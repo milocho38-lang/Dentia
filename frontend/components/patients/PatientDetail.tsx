@@ -203,7 +203,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
           : Promise.resolve({ items: [], total: 0 }),
         hasPermission("budgets.view") ? listBudgets() : Promise.resolve([]),
         hasPermission("payments.view") ? listPayments() : Promise.resolve([]),
-        hasPermission("appointments.view") || hasPermission("payments.create") || hasPermission("treatments.create")
+        hasPermission("appointments.view") || hasPermission("payments.create") || hasPermission("treatments.create") || hasPermission("treatments.prepare_budget")
           ? getAgendaOptions()
           : Promise.resolve(null),
       ]);
@@ -484,7 +484,7 @@ export function PatientDetail({ patientId }: { patientId: string }) {
             treatments={patientTreatments}
             loading={workspaceLoading}
             error={workspaceError}
-            canCreate={hasPermission("treatments.create")}
+            canCreate={hasPermission("treatments.create") || hasPermission("treatments.prepare_budget")}
             onCreate={() => setTreatmentDialogOpen(true)}
           />
         )}

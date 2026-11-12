@@ -21,8 +21,9 @@ from app.services.procedure_catalog_seed_service import (
 
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "library_data" / "procedure_catalog_odontogram_endodontic_18_draft.json"
-APPROVED_FILE_SHA256 = "3ec2a6eca8fc8fa0ae621d57e4ebd151febe7e7ae013dcbcc62266fa1fc76a45"
+APPROVED_FILE_SHA256 = "0667a9b55cd8e9937f4d6093b69d841fe0f18ecdf08496cbacb422be6c0fec05"
 EXPECTED_ROWS = set(range(179, 193)) | {282, 283, 292, 293}
+PRIMARY_ROWS = {282, 283, 292, 293}
 EXPECTED_CODES = {"PLAN_ENDO", "DONE_ENDO", "FIND_CARIES", "FIND_FRACTURE"}
 
 
@@ -69,6 +70,8 @@ def _load_batch() -> dict:
             or item.get("odontogram_behavior") != "PLANNED_RESULT"
             or (item.get("planned_code"), item.get("default_performed_code")) != ("PLAN_ENDO", "DONE_ENDO")
             or allowed != expected_allowed
+            or item.get("required_dentition")
+            != ("PRIMARY" if item["source_row"] in PRIMARY_ROWS else None)
         ):
             raise ProcedureCatalogSeedError(f"La fila {item['source_row']} contiene una regla endodóntica inesperada.")
     return payload
@@ -144,6 +147,7 @@ def seed_odontogram_endodontic_catalog(
                     "generated_value": str(value),
                     "clp_to_cop_rate": payload["currency_policy"]["clp_to_cop_rate"],
                     "runtime_conversion": False,
+                    "required_dentition": source.get("required_dentition"),
                 },
                 "suggested_scope_type": "TOOTH",
                 "odontogram_behavior": "PLANNED_RESULT",

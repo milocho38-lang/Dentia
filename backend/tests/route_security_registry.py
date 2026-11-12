@@ -232,6 +232,12 @@ def _is_critical(path: str, method: str, category: RouteCategory) -> bool:
 
 def _status_and_coverage(method: str, path: str, category: RouteCategory, risk: RiskLevel) -> tuple[TestStatus, str, str]:
     key = (method, path)
+    if key == ("GET", "/api/treatments/{treatment_id}/odontogram-readiness"):
+        return (
+            TestStatus.DB_BACKED,
+            "backend/tests/treatments/test_odontogram_readiness_security.py::test_odontogram_readiness_is_authenticated_tenant_and_site_scoped",
+            "Autenticación, permiso, aislamiento por empresa y sede, y respuesta mínima cubiertos con PostgreSQL real.",
+        )
     if path.startswith("/api/public/demo-requests"):
         return TestStatus.DB_BACKED, "backend/tests/administration/test_demo_requests.py", "Validación, consentimiento, anti-spam, deduplicación y persistencia cubiertos con PostgreSQL real."
     if path.startswith("/api/public/consents"):

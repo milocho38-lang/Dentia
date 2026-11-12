@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 
-from app.core.auth_dependencies import get_request_metadata, require_permission
+from app.core.auth_dependencies import get_request_metadata, require_any_permission, require_permission
 from app.database.session import get_db
 from app.schemas.treatment_schema import (
     BudgetCreateRequest,
@@ -41,6 +41,7 @@ from app.schemas.treatment_schema import (
     StatusReasonRequest,
     TreatmentCreateRequest,
     TreatmentListResponse,
+    TreatmentOdontogramReadinessResponse,
     TreatmentResponse,
     TreatmentUpdateRequest,
 )
@@ -71,6 +72,7 @@ from app.services.treatment_service import (
     get_budget,
     get_payment,
     get_treatment,
+    get_treatment_odontogram_readiness,
     link_appointment_treatment_procedure,
     link_procedure_appointment,
     list_budgets,
@@ -296,7 +298,7 @@ def create_treatment_endpoint(
     payload: TreatmentCreateRequest,
     request: Request,
     session: Annotated[Session, Depends(get_db)],
-    context: Annotated[AuthContext, Depends(require_permission("treatments.create"))],
+    context: Annotated[AuthContext, Depends(require_any_permission("treatments.create", "treatments.prepare_budget"))],
 ) -> TreatmentResponse:
     try:
         return create_treatment(session, context, payload, get_request_metadata(request))
@@ -312,6 +314,21 @@ def get_treatment_endpoint(
 ) -> TreatmentResponse:
     try:
         return get_treatment(session, context, treatment_id)
+    except TreatmentError as exc:
+        raise handle_treatment_error(exc)
+
+
+@router.get(
+    "/api/treatments/{treatment_id}/odontogram-readiness",
+    response_model=TreatmentOdontogramReadinessResponse,
+)
+def get_treatment_odontogram_readiness_endpoint(
+    treatment_id: UUID,
+    session: Annotated[Session, Depends(get_db)],
+    context: Annotated[AuthContext, Depends(require_permission("treatments.view"))],
+) -> TreatmentOdontogramReadinessResponse:
+    try:
+        return get_treatment_odontogram_readiness(session, context, treatment_id)
     except TreatmentError as exc:
         raise handle_treatment_error(exc)
 
@@ -454,7 +471,7 @@ def create_procedure_endpoint(
     payload: ProcedureCreateRequest,
     request: Request,
     session: Annotated[Session, Depends(get_db)],
-    context: Annotated[AuthContext, Depends(require_permission("treatments.update"))],
+    context: Annotated[AuthContext, Depends(require_any_permission("treatments.update", "treatments.prepare_budget"))],
 ) -> ProcedureResponse:
     try:
         return create_procedure(session, context, treatment_id, payload, get_request_metadata(request))
@@ -493,7 +510,7 @@ def update_procedure_endpoint(
     payload: ProcedureUpdateRequest,
     request: Request,
     session: Annotated[Session, Depends(get_db)],
-    context: Annotated[AuthContext, Depends(require_permission("treatments.update"))],
+    context: Annotated[AuthContext, Depends(require_any_permission("treatments.update", "treatments.prepare_budget"))],
 ) -> ProcedureResponse:
     try:
         return update_procedure(
@@ -509,7 +526,7 @@ def delete_procedure_endpoint(
     procedure_id: UUID,
     request: Request,
     session: Annotated[Session, Depends(get_db)],
-    context: Annotated[AuthContext, Depends(require_permission("treatments.update"))],
+    context: Annotated[AuthContext, Depends(require_any_permission("treatments.update", "treatments.prepare_budget"))],
 ) -> Response:
     try:
         delete_procedure(

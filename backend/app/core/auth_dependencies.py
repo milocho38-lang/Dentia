@@ -110,3 +110,24 @@ def require_permission(permission: str) -> Callable:
         return context
 
     return permission_dependency
+
+
+def require_any_permission(*permissions: str) -> Callable:
+    allowed = frozenset(permissions)
+
+    def permission_dependency(
+        context: Annotated[AuthContext, Depends(get_current_auth_context)],
+    ) -> AuthContext:
+        if context.user.must_change_password:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debes cambiar tu contraseña antes de continuar.",
+            )
+        if allowed.isdisjoint(context.permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para realizar esta acción.",
+            )
+        return context
+
+    return permission_dependency

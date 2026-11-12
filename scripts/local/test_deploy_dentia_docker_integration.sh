@@ -119,6 +119,9 @@ cleanup() {
     if [ -n "${TARGET_SHA:-}" ]; then
       docker image rm "$repository:$TARGET_SHA" >/dev/null 2>&1 || true
     fi
+    if [ -n "${COMPATIBLE_ROLLBACK_SHA:-}" ]; then
+      docker image rm "$repository:$COMPATIBLE_ROLLBACK_SHA" >/dev/null 2>&1 || true
+    fi
     docker image rm "$repository:$OLD_SHA" >/dev/null 2>&1 || true
   done
   case "$HARNESS" in
@@ -140,11 +143,23 @@ if ! git -C "$ROOT" diff --cached --quiet; then
     git -C "$ROOT" commit -m "integration target" >/dev/null
 fi
 TARGET_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+COMPATIBLE_ROLLBACK_SHA=""
+if [ "$SCENARIO" = next_release_rollback ]; then
+  # Preserve the complete candidate as a distinct compatible rollback point,
+  # then add a harmless harness-only child commit as the deploy target.
+  COMPATIBLE_ROLLBACK_SHA="$TARGET_SHA"
+  printf 'docker recovery chain probe\n' >"$ROOT/.docker-recovery-chain-probe"
+  git -C "$ROOT" add .docker-recovery-chain-probe
+  GIT_AUTHOR_DATE=2026-11-12T00:00:00Z GIT_COMMITTER_DATE=2026-11-12T00:00:00Z \
+    git -C "$ROOT" commit -m "docker recovery chain probe" >/dev/null
+  TARGET_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+fi
 # GitHub Actions checks pull requests out at a detached merge commit. Create the
 # harness branch explicitly so the deployment simulation behaves the same from
 # branch and detached-HEAD source checkouts.
 git -C "$ROOT" checkout -B master "$TARGET_SHA" >/dev/null
-git -C "$ROOT" remote set-url origin "$ROOT"
+git clone --bare "$ROOT" "$HARNESS/origin.git" >/dev/null
+git -C "$ROOT" remote set-url origin "$HARNESS/origin.git"
 git -C "$ROOT" checkout "$OLD_SHA" >/dev/null
 
 cat >"$ROOT/.env.production" <<EOF
@@ -245,6 +260,11 @@ docker image tag "$OLD_FRONTEND_ID" "$PROJECT-dentia-frontend:$OLD_SHA"
 docker image tag "$OLD_WEBSITE_ID" "$PROJECT-dentia-website:$OLD_SHA"
 printf '%s\n' "$OLD_SHA" >"$ROOT/.run/last_deploy_commit"
 
+if [ -n "$COMPATIBLE_ROLLBACK_SHA" ]; then
+  git checkout "$COMPATIBLE_ROLLBACK_SHA" >/dev/null
+  DENTIA_IMAGE_TAG="$COMPATIBLE_ROLLBACK_SHA" \
+    DENTIA_BUILD_REVISION="$COMPATIBLE_ROLLBACK_SHA" compose build
+fi
 git checkout master >/dev/null
 RUN_BACKUP_DIR="$BACKUPS"
 RUN_HEALTH_URL="http://127.0.0.1:$BACKEND_PORT/health"
@@ -285,7 +305,7 @@ fi
 
 if [ "$SCENARIO" = post_failure_recovery ]; then
   [ "$DEPLOY_STATUS" -ne 0 ]
-  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261108_0056 ]
+  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261112_0059 ]
   for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
     [ "$(docker inspect -f '{{.State.Running}}' "$container")" = false ]
   done
@@ -323,7 +343,7 @@ PY
   [ "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$BACKEND_PORT/")" = 503 ]
   rm -f "$ROOT/.run/maintenance_active" "$ROOT/backend/storage/.dentia-maintenance"
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
-  printf 'docker_integration_post_failure_fail_closed_and_recovered db=20261108_0056 backup=%s\n' "$BACKUP_PATH"
+  printf 'docker_integration_post_failure_fail_closed_and_recovered db=20261112_0059 backup=%s\n' "$BACKUP_PATH"
   export_evidence passed
   exit 0
 fi
@@ -331,7 +351,7 @@ fi
 [ "$DEPLOY_STATUS" -eq 0 ]
 
 [ "$(git rev-parse HEAD)" = "$TARGET_SHA" ]
-[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261108_0056 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261112_0059 ]
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')" = 1 ]
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM permisos WHERE code LIKE 'clinical_files.%' AND is_active")" = 3 ]
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id='00000000-0000-4000-8000-000000000124' AND p.code LIKE 'clinical_files.%' AND rp.is_active")" = 0 ]
@@ -489,9 +509,9 @@ DENTIA_IMAGE_TAG="$TARGET_SHA" compose run --rm -T --no-deps dentia-backend \
   >"$HARNESS/downgrade-with-clinical-data.log" 2>&1 || DOWNGRADE_STATUS=$?
 cat "$HARNESS/downgrade-with-clinical-data.log"
 [ "$DOWNGRADE_STATUS" -ne 0 ]
-[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261108_0056 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261112_0059 ]
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc "SELECT count(*) FROM archivos_clinicos WHERE id='$CLINICAL_ID'")" = 1 ]
-printf 'CLINICAL_DOWNGRADE_GUARD_OK revision=20261108_0056 status=%s\n' "$DOWNGRADE_STATUS"
+printf 'CLINICAL_DOWNGRADE_GUARD_OK revision=20261112_0059 status=%s\n' "$DOWNGRADE_STATUS"
 PRE_0050_BACKUP_PATH="$(completed_backup_path)"
 PRE_RESTORE_COUNT="$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')"
 OLD_BACKUP_TARGET_DB="dentia_restore_old_backup_${SUFFIX}"
@@ -503,7 +523,7 @@ DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_
   "$ROOT/scripts/production/restore_dentia_backup.sh" --backup "$PRE_0050_BACKUP_PATH" --temporary \
   --database-name "$OLD_BACKUP_TARGET_DB" --storage-dir "$HARNESS/old-backup-reject-storage" >/dev/null 2>&1 || OLD_BACKUP_STATUS=$?
 [ "$OLD_BACKUP_STATUS" -ne 0 ]
-[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d "$OLD_BACKUP_TARGET_DB" -tAc 'SELECT version_num FROM alembic_version')" = 20261108_0056 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d "$OLD_BACKUP_TARGET_DB" -tAc 'SELECT version_num FROM alembic_version')" = 20261112_0059 ]
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d "$OLD_BACKUP_TARGET_DB" -tAc 'SELECT count(*) FROM archivos_clinicos')" = "$PRE_RESTORE_COUNT" ]
 [ ! -e "$HARNESS/old-backup-reject-storage" ]
 [ "$(clinical_fixture_sha256 "$CLINICAL_KEY")" = "$CLINICAL_SHA" ]
@@ -524,7 +544,7 @@ DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_
   --database-name dentia_integration --storage-dir "$PRODUCTION_DB_GUARD_STORAGE" >/dev/null 2>&1 || PRODUCTION_DB_GUARD_STATUS=$?
 [ "$PRODUCTION_DB_GUARD_STATUS" -ne 0 ]
 [ ! -e "$PRODUCTION_DB_GUARD_STORAGE" ]
-[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261108_0056 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261112_0059 ]
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')" = "$PRE_RESTORE_COUNT" ]
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT value FROM restore_temporary_guard_probe')" = preserved ]
 [ "$(clinical_fixture_sha256 "$CLINICAL_KEY")" = "$CLINICAL_SHA" ]
@@ -585,7 +605,7 @@ DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_
 [ "$COLLISION_STATUS" -ne 0 ]
 grep -Fqx 'corrupted-existing-destination' "$RESTORE_STORAGE/clinical_files/$CLINICAL_KEY"
 [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d "$RESTORE_DB" -tAc 'SELECT value FROM restore_preflight_probe')" = preserved ]
-[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d "$RESTORE_DB" -tAc 'SELECT version_num FROM alembic_version')" = 20261108_0056 ]
+[ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d "$RESTORE_DB" -tAc 'SELECT version_num FROM alembic_version')" = 20261112_0059 ]
 docker exec "$DB_CONTAINER" dropdb -U dentia_integration --if-exists "$RESTORE_DB" >/dev/null
 BACKUP_PATH="$PRE_0050_BACKUP_PATH"
 DENTIA_DB_CONTAINER="$DB_CONTAINER" \
@@ -615,30 +635,60 @@ if [ "$SCENARIO" = next_release_rollback ]; then
   done
   printf '%s\n' "$TARGET_SHA" >"$ROOT/.run/last_deploy_commit"
   printf 'ROLLBACK_STALE_STATE_FAIL_CLOSED_OK status=%s\n' "$STALE_STATE_STATUS"
+  INCOMPATIBLE_ROLLBACK_STATUS=0
   DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
   DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
   DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
   DENTIA_PRODUCTION_BACKEND_HEALTH_URL="http://127.0.0.1:$BACKEND_PORT/health" \
   DENTIA_PRODUCTION_FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT" \
   DENTIA_PRODUCTION_WEBSITE_URL="http://127.0.0.1:$WEBSITE_PORT" \
-    "$ROOT/scripts/production/rollback_dentia.sh" --maintenance --target-sha "$OLD_SHA"
-  [ "$(docker inspect -f '{{.Image}}' "$BACKEND_CONTAINER")" = "$OLD_BACKEND_ID" ]
-  [ "$(docker inspect -f '{{.Image}}' "$FRONTEND_CONTAINER")" = "$OLD_FRONTEND_ID" ]
-  [ "$(docker inspect -f '{{.Image}}' "$WEBSITE_CONTAINER")" = "$OLD_WEBSITE_ID" ]
+    "$ROOT/scripts/production/rollback_dentia.sh" --maintenance --target-sha "$OLD_SHA" \
+    >"$HARNESS/rollback-incompatible-optout.log" 2>&1 || INCOMPATIBLE_ROLLBACK_STATUS=$?
+  [ "$INCOMPATIBLE_ROLLBACK_STATUS" -ne 0 ]
+  grep -Fq 'ROLLBACK_INCOMPATIBLE_WITH_ODONTOGRAM_OPT_OUT' "$HARNESS/rollback-incompatible-optout.log"
   for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
-    [ "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")" = "$OLD_SHA" ]
+    [ "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")" = "$TARGET_SHA" ]
   done
-  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261108_0056 ]
+  [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT version_num FROM alembic_version')" = 20261112_0059 ]
   [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM pacientes')" = "$PRE_ROLLBACK_PATIENTS" ]
   [ "$(docker exec "$DB_CONTAINER" psql -U dentia_integration -d dentia_integration -tAc 'SELECT count(*) FROM archivos_clinicos')" = "$PRE_ROLLBACK_FILES" ]
   [ "$(clinical_fixture_sha256 "$CLINICAL_KEY")" = "$CLINICAL_SHA" ]
-  [ "$(tr -d '[:space:]' <"$ROOT/.run/last_deploy_commit")" = "$OLD_SHA" ]
+  [ "$(tr -d '[:space:]' <"$ROOT/.run/last_deploy_commit")" = "$TARGET_SHA" ]
+  [ "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA" ]
   [ ! -e "$ROOT/.run/maintenance_active" ]
   [ ! -e "$ROOT/backend/storage/.dentia-maintenance" ]
+  printf 'ROLLBACK_INCOMPATIBLE_OPT_OUT_FAIL_CLOSED_OK status=%s\n' "$INCOMPATIBLE_ROLLBACK_STATUS"
+
+  # Roll back to a distinct compatible candidate, then deploy forward again.
+  DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
+  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
+  DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
+  DENTIA_PRODUCTION_BACKEND_HEALTH_URL="http://127.0.0.1:$BACKEND_PORT/health" \
+  DENTIA_PRODUCTION_FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT" \
+  DENTIA_PRODUCTION_WEBSITE_URL="http://127.0.0.1:$WEBSITE_PORT" \
+    "$ROOT/scripts/production/rollback_dentia.sh" --maintenance --target-sha "$COMPATIBLE_ROLLBACK_SHA"
+  [ "$(git -C "$ROOT" rev-parse HEAD)" = "$COMPATIBLE_ROLLBACK_SHA" ]
+  [ "$(tr -d '[:space:]' <"$ROOT/.run/last_deploy_commit")" = "$COMPATIBLE_ROLLBACK_SHA" ]
+  for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
+    [ "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")" = "$COMPATIBLE_ROLLBACK_SHA" ]
+  done
+
+  DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
+  DENTIA_BACKUP_DIR="$BACKUPS/forward-after-rollback" DENTIA_DEPLOY_TARGET_SHA="$TARGET_SHA" \
+  DENTIA_EXPECTED_PRE_DEPLOY_REVISION=20261112_0059 \
+  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration \
+  DENTIA_DB_NAME=dentia_integration DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
+  DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
+  DENTIA_PRODUCTION_BACKEND_HEALTH_URL="http://127.0.0.1:$BACKEND_PORT/health" \
+  DENTIA_PRODUCTION_FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT" \
+  DENTIA_PRODUCTION_WEBSITE_URL="http://127.0.0.1:$WEBSITE_PORT" \
+    "$ROOT/scripts/production/deploy_dentia.sh" --maintenance --target-sha "$TARGET_SHA"
+  [ "$(git -C "$ROOT" rev-parse HEAD)" = "$TARGET_SHA" ]
+  [ "$(tr -d '[:space:]' <"$ROOT/.run/last_deploy_commit")" = "$TARGET_SHA" ]
   curl -fsS "http://127.0.0.1:$BACKEND_PORT/health" >/dev/null
   curl -fsS "http://127.0.0.1:$FRONTEND_PORT" >/dev/null
   curl -fsS "http://127.0.0.1:$WEBSITE_PORT" >/dev/null
-  printf 'NEXT_RELEASE_ROLLBACK_OK sha=%s db=20261108_0056 patients=%s clinical_files=%s\n' \
-    "$OLD_SHA" "$PRE_ROLLBACK_PATIENTS" "$PRE_ROLLBACK_FILES"
+  printf 'NEXT_RELEASE_ROLLBACK_GUARDS_OK sha=%s db=20261112_0059 patients=%s clinical_files=%s\n' \
+    "$TARGET_SHA" "$PRE_ROLLBACK_PATIENTS" "$PRE_ROLLBACK_FILES"
 fi
 export_evidence passed

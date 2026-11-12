@@ -15,3 +15,13 @@ export function resolveCatalogClinicalTargets(priceProvenance, tooth) {
     requiredDentition: required,
   };
 }
+
+export function filterTeethForRequiredDentition(teeth, requiredDentition) {
+  if (requiredDentition === "PRIMARY") {
+    return teeth.filter((tooth) => /^[5-8][1-5]$/.test(tooth));
+  }
+  if (requiredDentition === "PERMANENT") {
+    return teeth.filter((tooth) => !/^[5-8][1-5]$/.test(tooth));
+  }
+  return teeth;
+}

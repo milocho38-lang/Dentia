@@ -334,7 +334,44 @@ def test_tenant_site_role_and_professional_boundaries(api_client, db_session, se
     secretary_created = api_client.post("/api/consent-instances/batch", token=tenant_a.secretary.token, json={"context": context, "template_version_ids": [version["id"]]})
     assert secretary_created.status_code == 201, secretary_created.text
     instance = secretary_created.json()[0]
+    secretary_edited = api_client.patch(
+        f"/api/consent-instances/{instance['id']}",
+        token=tenant_a.secretary.token,
+        json={**context, "row_version": instance["row_version"]},
+    )
+    assert secretary_edited.status_code == 200, secretary_edited.text
+    instance = secretary_edited.json()
     assert api_client.post(f"/api/consent-instances/{instance['id']}/professional-confirm", token=tenant_a.secretary.token, json={"confirmed": True, "row_version": instance["row_version"]}).status_code == 403
+    confirmed = api_client.post(
+        f"/api/consent-instances/{instance['id']}/professional-confirm",
+        token=tenant_a.dentist_admin.token,
+        json={"confirmed": True, "row_version": instance["row_version"]},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    paper = api_client.post(
+        f"/api/consent-instances/{instance['id']}/paper",
+        token=tenant_a.secretary.token,
+    )
+    assert paper.status_code == 200, paper.text
+    assert api_client.get(
+        f"/api/consent-instances/{instance['id']}/paper",
+        token=tenant_a.secretary.token,
+    ).status_code == 200
+    assert api_client.post(
+        f"/api/consent-instances/{instance['id']}/paper/record-signed",
+        token=tenant_a.secretary.token,
+        json={},
+    ).status_code == 403
+    assert api_client.post(
+        f"/api/consent-instances/{instance['id']}/paper/pages",
+        token=tenant_a.secretary.token,
+        files={"file": ("page.png", b"not-an-image", "image/png")},
+    ).status_code == 403
+    assert api_client.post(
+        f"/api/consent-instances/{instance['id']}/paper/finalize",
+        token=tenant_a.secretary.token,
+        json={},
+    ).status_code == 403
     assert api_client.post(f"/api/consent-instances/{instance['id']}/professional-confirm", token=tenant_a.admin.token, json={"confirmed": True, "row_version": instance["row_version"]}).status_code == 403
     assert api_client.get(f"/api/consent-instances/{instance['id']}", token=tenant_b.dentist_admin.token).status_code == 404
     assert api_client.get(f"/api/consent-instances/{instance['id']}", token=security_world.platform_admin.token).status_code == 403

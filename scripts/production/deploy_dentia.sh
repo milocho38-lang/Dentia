@@ -110,6 +110,16 @@ UNION ALL
 SELECT 'patient_import_sources', count(*), md5(coalesce(string_agg(row_to_json(source_row)::text, ',' ORDER BY source_row.id), '')) FROM patient_import_sources source_row
 UNION ALL
 SELECT 'patient_external_references', count(*), md5(coalesce(string_agg(row_to_json(reference_row)::text, ',' ORDER BY reference_row.id), '')) FROM patient_external_references reference_row
+UNION ALL
+SELECT 'platform_commercial_accounts', count(*), md5(coalesce(string_agg(row_to_json(commercial_row)::text, ',' ORDER BY commercial_row.id), '')) FROM platform_commercial_accounts commercial_row
+UNION ALL
+SELECT 'platform_commercial_transfers', count(*), md5(coalesce(string_agg(row_to_json(commercial_row)::text, ',' ORDER BY commercial_row.id), '')) FROM platform_commercial_transfers commercial_row
+UNION ALL
+SELECT 'platform_commercial_obligations', count(*), md5(coalesce(string_agg(row_to_json(commercial_row)::text, ',' ORDER BY commercial_row.id), '')) FROM platform_commercial_obligations commercial_row
+UNION ALL
+SELECT 'platform_commercial_reconciliations', count(*), md5(coalesce(string_agg(row_to_json(commercial_row)::text, ',' ORDER BY commercial_row.id), '')) FROM platform_commercial_reconciliations commercial_row
+UNION ALL
+SELECT 'platform_commercial_rates', count(*), md5(coalesce(string_agg(row_to_json(commercial_row)::text, ',' ORDER BY commercial_row.id), '')) FROM platform_commercial_rates commercial_row
 ORDER BY 1;
 SQL
   [ -s "$output" ] || dentia_fail "Stable data snapshot is empty."
@@ -130,7 +140,7 @@ SQL
 }
 
 deploy_assert_pre_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261102_0052}"
+  local expected="${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-20261108_0056}"
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected pre-deploy Alembic revision: $revision (expected $expected)."
@@ -148,7 +158,7 @@ deploy_assert_current_account_identity_invariants() {
 }
 
 deploy_assert_post_migration_invariants() {
-  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261108_0056}"
+  local expected="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261112_0059}"
   local revision
   revision="$(deploy_current_revision)"
   [ "$revision" = "$expected" ] || dentia_fail "Unexpected post-deploy Alembic revision: $revision (expected $expected)."
@@ -156,11 +166,9 @@ deploy_assert_post_migration_invariants() {
   [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code = 'patients.import' AND is_active;")" = "1" ] || dentia_fail "Active patients.import permission was not created exactly once."
   [ "$(deploy_db_scalar "SELECT count(*) FROM rol_permisos rp JOIN permisos p ON p.id = rp.permiso_id JOIN roles r ON r.id = rp.rol_id WHERE p.code = 'patients.import' AND rp.is_active AND r.code NOT IN ('ADMINISTRATOR', 'DENTIST_ADMIN');")" = "0" ] || dentia_fail "patients.import was actively assigned to an unauthorized role."
   [ "$(deploy_db_scalar "SELECT count(*) FROM roles r WHERE r.code IN ('ADMINISTRATOR', 'DENTIST_ADMIN') AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id = rp.permiso_id WHERE rp.rol_id = r.id AND p.code = 'patients.import' AND p.is_active AND rp.is_active);")" = "0" ] || dentia_fail "Active patients.import is missing from an active authorized role."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_accounts;")" = "0" ] || dentia_fail "Commercial accounts must be empty immediately after rollout."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_transfers;")" = "0" ] || dentia_fail "Commercial transfers must be empty immediately after rollout."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_obligations;")" = "0" ] || dentia_fail "Commercial obligations must be empty immediately after rollout."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_reconciliations;")" = "0" ] || dentia_fail "Commercial reconciliations must be empty immediately after rollout."
-  [ "$(deploy_db_scalar "SELECT count(*) FROM platform_commercial_rates;")" = "0" ] || dentia_fail "Commercial rates must be empty immediately after rollout."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='tratamiento_procedimientos' AND column_name='odontograma_integracion_omitida';")" = "1" ] || dentia_fail "Procedure odontogram opt-out column is missing."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code='treatments.prepare_budget' AND is_active;")" = "1" ] || dentia_fail "Active treatments.prepare_budget permission was not created exactly once."
+  [ "$(deploy_db_scalar "SELECT count(*) FROM roles r WHERE r.code='SECRETARY' AND r.is_active AND NOT EXISTS (SELECT 1 FROM rol_permisos rp JOIN permisos p ON p.id=rp.permiso_id WHERE rp.rol_id=r.id AND p.code='treatments.prepare_budget' AND p.is_active AND rp.is_active);")" = "0" ] || dentia_fail "Active secretary role is missing treatments.prepare_budget."
   [ "$(deploy_db_scalar "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='archivos_clinicos';")" = "1" ] || dentia_fail "Clinical files table was not created exactly once."
   [ "$(deploy_db_scalar "SELECT count(*) FROM pg_trigger WHERE tgname='trg_archivos_clinicos_scope' AND NOT tgisinternal;")" = "1" ] || dentia_fail "Clinical file tenant-scope trigger was not created exactly once."
   [ "$(deploy_db_scalar "SELECT count(*) FROM permisos WHERE code IN ('clinical_files.view','clinical_files.create','clinical_files.manage') AND is_active;")" = "3" ] || dentia_fail "Clinical file permissions were not created exactly once."
@@ -212,7 +220,7 @@ deploy_validate_recovery_baseline() {
   local clinical_live="$STATE_DIR/deploy_recovery_clinical_permissions_live_${TARGET_SHA}.tsv"
   [ -d "$backup" ] || dentia_fail "Recovery backup directory is missing: $backup"
   "$SCRIPT_DIR/verify_dentia_backup.sh" "$backup" >/dev/null
-  local expected_backup_revision="${DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION:-20261102_0052}"
+  local expected_backup_revision="${DENTIA_EXPECTED_RECOVERY_BACKUP_REVISION:-20261108_0056}"
   grep -Eq '"alembic_revision"[[:space:]]*:[[:space:]]*"'"$expected_backup_revision"'"' "$backup/manifest.json" || \
     dentia_fail "Recovery backup is not from the required pre-migration revision $expected_backup_revision."
   RESTORE_SUFFIX="$(date -u +%Y%m%d_%H%M%S)_$$"
@@ -386,7 +394,7 @@ dentia_assert_storage_path_safe "$HOST_STORAGE_ROOT"
 [ -w "$HOST_STORAGE_ROOT" ] || dentia_fail "Persistent storage directory is not writable: $HOST_STORAGE_ROOT"
 
 if [ -n "$RECOVERY_BACKUP" ]; then
-  EXPECTED_RECOVERY_REVISION="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261108_0056}"
+  EXPECTED_RECOVERY_REVISION="${DENTIA_EXPECTED_POST_DEPLOY_REVISION:-20261112_0059}"
   [ "${DENTIA_EXPECTED_PRE_DEPLOY_REVISION:-}" = "$EXPECTED_RECOVERY_REVISION" ] || \
     dentia_fail "Recovery requires the explicit migrated revision guard."
   [ "$(deploy_current_revision)" = "$EXPECTED_RECOVERY_REVISION" ] || \

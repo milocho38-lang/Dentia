@@ -8,4 +8,9 @@ declare module "@/lib/catalogClinicalTargets.mjs" {
     dentition: string;
     requiredDentition: string | null;
   };
+
+  export function filterTeethForRequiredDentition(
+    teeth: string[],
+    requiredDentition: string | null | undefined,
+  ): string[];
 }

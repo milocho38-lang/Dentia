@@ -250,7 +250,16 @@ else
 fi
 
 require_cmd docker
-[ -d "$PROJECT_DIR/.git" ] || fail "Dentia project repository not found: $PROJECT_DIR"
+require_cmd git
+project_root="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null)" \
+  || fail "Dentia project repository not found: $PROJECT_DIR"
+project_root="$(cd "$project_root" && pwd -P)"
+expected_root="$(cd "$PROJECT_DIR" && pwd -P)"
+[ "$project_root" = "$expected_root" ] \
+  || fail "Dentia project path is not the Git worktree root: $PROJECT_DIR"
+git_dir="$(git -C "$PROJECT_DIR" rev-parse --absolute-git-dir 2>/dev/null)" \
+  || fail "Dentia Git metadata is unavailable: $PROJECT_DIR"
+[ -d "$git_dir" ] || fail "Dentia Git metadata directory not found: $git_dir"
 [ -f "$COMPOSE_FILE" ] || fail "Docker Compose file not found: $COMPOSE_FILE"
 info "Validating Docker Compose resolution..."
 DENTIA_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet

@@ -166,6 +166,8 @@ class ProcedureCreateRequest(BaseModel):
     zone: str | None = Field(default=None, max_length=40)
     tooth: str | None = Field(default=None, max_length=30)
     surfaces: list[str] | None = None
+    odontogram_integration_opt_out: bool = False
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=120)
 
     @field_validator("status")
     @classmethod
@@ -292,6 +294,7 @@ class ProcedureResponse(BaseModel):
     appointment_id: UUID | None
     source_odontogram_event_id: UUID | None = None
     planned_odontogram_event_id: UUID | None = None
+    odontogram_integration_opt_out: bool = False
     unit_value: Decimal
     quantity: Decimal
     total_value: Decimal
@@ -365,6 +368,11 @@ class ProcedureWithDiagnosisCreateResponse(BaseModel):
     idempotency_key: str
     idempotent_replay: bool = False
     message: str
+
+
+class TreatmentOdontogramReadinessResponse(BaseModel):
+    clinical_record_exists: bool
+    odontogram_exists: bool
 
 
 SOURCE_DIAGNOSIS_ACTIONS = {"KEEP_ACTIVE", "RESOLVE_ON_SIGN"}

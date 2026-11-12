@@ -113,6 +113,22 @@ BACKEND_IMAGE_ID="$(rollback_image_identity "$DENTIA_BACKEND_SERVICE")"
 FRONTEND_IMAGE_ID="$(rollback_image_identity "$DENTIA_FRONTEND_SERVICE")"
 WEBSITE_IMAGE_ID="$(rollback_image_identity "$DENTIA_WEBSITE_SERVICE")"
 
+OPT_OUT_SCHEMA_PRESENT="$(docker exec "$DENTIA_DB_CONTAINER" psql -v ON_ERROR_STOP=1 \
+  -U "$DENTIA_DB_USER" -d "$DENTIA_DB_NAME" -tAc \
+  "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='tratamiento_procedimientos' AND column_name='odontograma_integracion_omitida';" | tr -d '[:space:]')"
+if [ "$OPT_OUT_SCHEMA_PRESENT" = "1" ]; then
+  dentia_info "Verifying that the rollback backend understands the retained opt-out schema..."
+  dentia_compose run --rm --no-deps "$DENTIA_BACKEND_SERVICE" python - <<'PY'
+from app.models.treatment import TreatmentProcedure
+
+if not hasattr(TreatmentProcedure, "odontogram_integration_opt_out"):
+    raise SystemExit("ROLLBACK_INCOMPATIBLE_WITH_ODONTOGRAM_OPT_OUT")
+print("ROLLBACK_SCHEMA_COMPATIBLE")
+PY
+elif [ "$OPT_OUT_SCHEMA_PRESENT" != "0" ]; then
+  dentia_fail "Could not determine whether the retained opt-out schema is present."
+fi
+
 printf 'target_sha=%s\nstarted_at=%s\n' "$TARGET_SHA" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$MAINTENANCE_MARKER"
 printf 'target_sha=%s\nstarted_at=%s\n' "$TARGET_SHA" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$WRITE_BARRIER_FILE"
 chmod 600 "$MAINTENANCE_MARKER" "$WRITE_BARRIER_FILE" 2>/dev/null || true
@@ -131,6 +147,13 @@ rollback_verify_runtime "$DENTIA_WEBSITE_SERVICE" "$DENTIA_WEBSITE_CONTAINER" "$
 dentia_wait_http "$DENTIA_PRODUCTION_BACKEND_HEALTH_URL" 60 2 || dentia_fail "Backend health check failed."
 dentia_wait_http "$DENTIA_PRODUCTION_FRONTEND_URL" 60 2 || dentia_fail "Frontend health check failed."
 dentia_wait_http "$DENTIA_PRODUCTION_WEBSITE_URL" 60 2 || dentia_fail "Website health check failed."
+
+# Keep checkout, deployed-commit record and runtime images coherent so a later
+# forward deploy or another rollback can pass the same identity gates. --keep
+# refuses to overwrite local work; the repository was required clean above.
+git reset --keep "$TARGET_SHA"
+[ "$(git rev-parse HEAD)" = "$TARGET_SHA" ] || dentia_fail "Rollback checkout did not reach target SHA."
+[ "$(git rev-parse --abbrev-ref HEAD)" = "master" ] || dentia_fail "Rollback checkout left the master branch."
 
 printf '%s\n' "$CURRENT_SHA" >"$STATE_DIR/last_deploy_previous_commit"
 printf '%s\n' "$TARGET_SHA" >"$STATE_DIR/last_deploy_commit"

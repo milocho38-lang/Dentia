@@ -128,6 +128,7 @@ run_db_suite() {
     "backend/tests/storage"
     "backend/tests/finance"
     "backend/tests/administration"
+    "backend/tests/treatments"
   )
 
   if [ ! -x "backend/.venv/bin/pytest" ]; then

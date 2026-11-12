@@ -54,6 +54,7 @@ export interface Procedure {
   appointment_id: string | null;
   source_odontogram_event_id?: string | null;
   planned_odontogram_event_id?: string | null;
+  odontogram_integration_opt_out: boolean;
   unit_value: string;
   quantity: string;
   total_value: string;
@@ -68,6 +69,11 @@ export interface Procedure {
   tooth: string | null;
   surfaces: string[] | null;
   scope_label: string;
+}
+
+export interface TreatmentOdontogramReadiness {
+  clinical_record_exists: boolean;
+  odontogram_exists: boolean;
 }
 
 export interface ProcedureClinicalCompletionInput {
