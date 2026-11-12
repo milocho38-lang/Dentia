@@ -623,7 +623,8 @@ if [ "$SCENARIO" = next_release_rollback ]; then
   printf '%s\n' "$OLD_SHA" >"$ROOT/.run/last_deploy_commit"
   STALE_STATE_STATUS=0
   DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
-  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
+  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+  DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
   DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
     "$ROOT/scripts/production/rollback_dentia.sh" --maintenance --target-sha "$OLD_SHA" \
     >"$HARNESS/rollback-stale-state.log" 2>&1 || STALE_STATE_STATUS=$?
@@ -637,7 +638,8 @@ if [ "$SCENARIO" = next_release_rollback ]; then
   printf 'ROLLBACK_STALE_STATE_FAIL_CLOSED_OK status=%s\n' "$STALE_STATE_STATUS"
   INCOMPATIBLE_ROLLBACK_STATUS=0
   DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
-  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
+  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+  DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
   DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
   DENTIA_PRODUCTION_BACKEND_HEALTH_URL="http://127.0.0.1:$BACKEND_PORT/health" \
   DENTIA_PRODUCTION_FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT" \
@@ -645,7 +647,11 @@ if [ "$SCENARIO" = next_release_rollback ]; then
     "$ROOT/scripts/production/rollback_dentia.sh" --maintenance --target-sha "$OLD_SHA" \
     >"$HARNESS/rollback-incompatible-optout.log" 2>&1 || INCOMPATIBLE_ROLLBACK_STATUS=$?
   [ "$INCOMPATIBLE_ROLLBACK_STATUS" -ne 0 ]
-  grep -Fq 'ROLLBACK_INCOMPATIBLE_WITH_ODONTOGRAM_OPT_OUT' "$HARNESS/rollback-incompatible-optout.log"
+  if ! grep -Fq 'ROLLBACK_INCOMPATIBLE_WITH_ODONTOGRAM_OPT_OUT' "$HARNESS/rollback-incompatible-optout.log"; then
+    printf '%s\n' 'Expected opt-out incompatibility guard was not observed:' >&2
+    sed -n '1,200p' "$HARNESS/rollback-incompatible-optout.log" >&2
+    exit 1
+  fi
   for container in "$BACKEND_CONTAINER" "$FRONTEND_CONTAINER" "$WEBSITE_CONTAINER"; do
     [ "$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container")" = "$TARGET_SHA" ]
   done
@@ -661,7 +667,8 @@ if [ "$SCENARIO" = next_release_rollback ]; then
 
   # Roll back to a distinct compatible candidate, then deploy forward again.
   DENTIA_ENV_FILE="$ROOT/.env.production" DENTIA_PROJECT_DIR="$ROOT" DENTIA_PRODUCTION_DIR="$ROOT" \
-  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
+  DENTIA_DB_CONTAINER="$DB_CONTAINER" DENTIA_DB_USER=dentia_integration DENTIA_DB_NAME=dentia_integration \
+  DENTIA_BACKEND_CONTAINER="$BACKEND_CONTAINER" \
   DENTIA_FRONTEND_CONTAINER="$FRONTEND_CONTAINER" DENTIA_WEBSITE_CONTAINER="$WEBSITE_CONTAINER" \
   DENTIA_PRODUCTION_BACKEND_HEALTH_URL="http://127.0.0.1:$BACKEND_PORT/health" \
   DENTIA_PRODUCTION_FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT" \
